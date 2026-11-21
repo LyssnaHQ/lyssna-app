@@ -118,6 +118,11 @@ import {
   clearLines,
   removeLines,
   canSeed,
+  sectionVoices,
+  lineVoice,
+  unitVoice,
+  setLineVoice,
+  setUnitVoice,
 } from "./ttml-creator-model";
 import { romanizeAway } from "./romanization";
 import { MetadataDialog } from "./ttml-metadata";
@@ -188,6 +193,8 @@ const GLIDE_MS = 550;
 const OFFSET_KEY = "lyssna.ttml-offset";
 const CLASSIC_KEY = "lyssna.ttml-classic-tabs";
 const WORD_ROMAN_KEY = "lyssna.ttml-word-roman";
+const VOICE_CLASS = ["", " sung-second", " sung-third"];
+const WORD_VOICE_CLASS = [" sung-first", " sung-second", " sung-third"];
 type Tab = "write" | "sync" | "preview";
 const HISTORY_LIMIT = 200;
 
@@ -1240,6 +1247,32 @@ export function TtmlCreator({
   };
   const dropClass = (key: string) =>
     drop.startsWith(`${key}:`) ? ` drop-${drop.slice(key.length + 1)}` : "";
+  const voiceGroup = (index: number): MenuAction[][] => {
+    const voices = sectionVoices(lines, index);
+    if (!voices.length) return [];
+    const current = lineVoice(lines, index);
+    const targets = picked.has(index) ? picked : [index];
+    return [
+      voices.map((voice, at) => ({
+        label: `Sung by ${voice}`,
+        checked: at === current,
+        run: () => setLines(setLineVoice(lines, targets, voice)),
+      })),
+    ];
+  };
+  const wordVoiceGroup = (at: Cursor, targets: Cursor[]): MenuAction[][] => {
+    const voices = sectionVoices(lines, at.line);
+    if (!voices.length) return [];
+    const own = unitVoice(lines, at);
+    const current = own >= 0 ? own : lineVoice(lines, at.line);
+    return [
+      voices.map((voice, index) => ({
+        label: `${targets.length > 1 ? "Words" : "Word"} sung by ${voice}`,
+        checked: index === current,
+        run: () => setLines(setUnitVoice(lines, targets, voice)),
+      })),
+    ];
+  };
   const lineMenuGroups = (index: number): MenuAction[][] => {
     const line = lines[index];
     if (!line) return [];
@@ -1264,12 +1297,17 @@ export function TtmlCreator({
           checked: line.background,
           run: () => flagLine(index, "background"),
         },
-        {
-          label: "Second singer",
-          checked: line.opposite,
-          run: () => flagLine(index, "opposite"),
-        },
+        ...(sectionVoices(lines, index).length
+          ? []
+          : [
+              {
+                label: "Second singer",
+                checked: line.opposite,
+                run: () => flagLine(index, "opposite"),
+              },
+            ]),
       ],
+      ...voiceGroup(index),
       [
         {
           label: "Play from this line",
@@ -1346,12 +1384,18 @@ export function TtmlCreator({
           checked: line.background,
           run: () => setLines(toggleLine(lines, at.line, "background")),
         },
-        {
-          label: "Duet line",
-          checked: line.opposite,
-          run: () => setLines(toggleLine(lines, at.line, "opposite")),
-        },
+        ...(sectionVoices(lines, at.line).length
+          ? []
+          : [
+              {
+                label: "Duet line",
+                checked: line.opposite,
+                run: () => setLines(toggleLine(lines, at.line, "opposite")),
+              },
+            ]),
       ],
+      ...wordVoiceGroup(at, chosen ? group : [at]),
+      ...voiceGroup(at.line),
       [
         {
           label: "Insert new line before",
@@ -2936,7 +2980,7 @@ export function TtmlCreator({
                     data-line={lineIndex}
                     {...pickProps(lineIndex)}
                     onContextMenu={(event) => openLineMenu(event, lineIndex)}
-                    className={`ttml-card ttml-line${line.background ? " background" : ""}${line.opposite ? " opposite" : ""}${cursor.line === lineIndex ? " current" : ""}${line.units.length ? "" : " empty"}${playingLine === lineIndex || liveWords.singing.has(lineIndex) ? " playing" : ""}${picked.has(lineIndex) ? " picked" : ""}${drag?.kind === "line" && drag.line === lineIndex ? " dragging" : ""}${dropClass(`line:${lineIndex}`)}`}
+                    className={`ttml-card ttml-line${VOICE_CLASS[lineVoice(lines, lineIndex)] ?? ""}${line.background ? " background" : ""}${line.opposite ? " opposite" : ""}${cursor.line === lineIndex ? " current" : ""}${line.units.length ? "" : " empty"}${playingLine === lineIndex || liveWords.singing.has(lineIndex) ? " playing" : ""}${picked.has(lineIndex) ? " picked" : ""}${drag?.kind === "line" && drag.line === lineIndex ? " dragging" : ""}${dropClass(`line:${lineIndex}`)}`}
                     onClick={(event) => {
                       const target = event.target as Element;
                       if (
@@ -3359,7 +3403,7 @@ export function TtmlCreator({
                             >
                               <TimePill ms={unit.start} />
                               <span
-                                className="ttml-word"
+                                className={`ttml-word${WORD_VOICE_CLASS[unitVoice(lines, at)] ?? ""}`}
                                 title={
                                   syncRoman && unit.roman
                                     ? unit.text

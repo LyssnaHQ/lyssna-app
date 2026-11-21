@@ -1,6 +1,11 @@
 import type { Line, Lyrics, Word } from "./types";
 import { repeatedPieces, symbolPieces } from "./ttml-syllables";
-import { sectionLabel, songSection, type SongSection } from "./song-parts";
+import {
+  sectionLabel,
+  songSection,
+  voicesOf,
+  type SongSection,
+} from "./song-parts";
 
 export interface CreatorUnit {
   text: string;
@@ -8,6 +13,8 @@ export interface CreatorUnit {
   roman?: string;
   start?: number;
   end?: number;
+  /** Which of the section's voices sings this word, when not the line's. */
+  sungBy?: string;
 }
 export interface CreatorLine {
   units: CreatorUnit[];
@@ -21,6 +28,8 @@ export interface CreatorLine {
   part?: string;
   /** Who sings that section, when the song has more than one artist. */
   singer?: string;
+  /** Which of the section's voices sings this line; the first when unset. */
+  sungBy?: string;
 }
 export interface Cursor {
   line: number;
@@ -348,12 +357,16 @@ export function keepTimings(
           ...line,
           translation: match.translation,
           romanization: match.romanization,
+          ...(match.sungBy && { sungBy: match.sungBy }),
           units: line.units.map((unit, index) => ({
             ...unit,
             start: match.units[index].start,
             end: match.units[index].end,
             ...(match.units[index].roman && {
               roman: match.units[index].roman,
+            }),
+            ...(match.units[index].sungBy && {
+              sungBy: match.units[index].sungBy,
             }),
           })),
         }
@@ -367,9 +380,15 @@ export function canSeed(lyrics: Lyrics) {
   return !["spicy_lyrics", "apple_music", "aml"].includes(lyrics.source);
 }
 
+const STYLE_INDEX = { first: 0, second: 1, third: 2 } as const;
+
 export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
+  let voices: string[] = [];
   return lyrics.lines
     .map((line): CreatorLine => {
+      if (line.section) voices = voicesOf(line.section_singer ?? "");
+      const voiceFor = (style?: keyof typeof STYLE_INDEX) =>
+        style && voices.length > 1 ? voices[STYLE_INDEX[style]] : undefined;
       const authored =
         lyrics.synced &&
         !lyrics.estimated_words &&
@@ -378,12 +397,16 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
       const units: CreatorUnit[] = authored
         ? line.words
             .filter((word) => word.text.trim())
-            .map((word, index) => ({
-              text: word.text.trim(),
-              joined: index > 0 && !/^\s/.test(word.text),
-              start: word.start_ms,
-              end: word.end_ms,
-            }))
+            .map((word, index) => {
+              const sungBy = voiceFor(word.sung_by);
+              return {
+                text: word.text.trim(),
+                joined: index > 0 && !/^\s/.test(word.text),
+                start: word.start_ms,
+                end: word.end_ms,
+                ...(sungBy && { sungBy }),
+              };
+            })
         : (parseText(line.text.replace(/\|/g, ""))[0]?.units ?? []);
       if (
         !authored &&
@@ -408,6 +431,9 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
         ...(line.translation && { translation: line.translation }),
         ...(line.romanization &&
           !perWord && { romanization: line.romanization }),
+        ...(line.section && { part: line.section }),
+        ...(line.section && line.section_singer && { singer: line.section_singer }),
+        ...(voiceFor(line.sung_by) && { sungBy: voiceFor(line.sung_by) }),
       };
     })
     .filter((line) => line.units.length > 0);
@@ -1386,12 +1412,17 @@ const escape = (text: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-function spans(line: CreatorLine, roman = false): string {
+function spans(
+  line: CreatorLine,
+  roman = false,
+  agentOf: (unit: CreatorUnit) => string | undefined = () => undefined,
+): string {
   return line.units
     .filter(timed)
     .map((unit, index) => {
       const text = roman ? unit.roman || unit.text : unit.text;
-      const span = `<span begin="${formatTime(unit.start!)}" end="${formatTime(Math.max(unit.start!, unit.end!))}">${escape(text)}</span>`;
+      const agent = agentOf(unit);
+      const span = `<span begin="${formatTime(unit.start!)}" end="${formatTime(Math.max(unit.start!, unit.end!))}"${agent ? ` ttm:agent="${agent}"` : ""}>${escape(text)}</span>`;
       return index > 0 && !unit.joined ? ` ${span}` : span;
     })
     .join("");
@@ -1437,6 +1468,17 @@ export function toTtml(
     else paragraphs.push({ lead: line, backgrounds: [], section });
     section = undefined;
   }
+  // Each artist the sections name gets a voice of their own, in order;
+  // voices that are groups ("A & B") share v1000, Apple's group voice.
+  const artistAgents = new Map<string, string>();
+  for (const line of lines)
+    for (const voice of line.part && line.singer ? voicesOf(line.singer) : [])
+      if (!voice.includes(" & ") && !artistAgents.has(voice))
+        artistAgents.set(voice, `v${artistAgents.size + 1}`);
+  const agentOfVoice = (voice: string) =>
+    voice.includes(" & ") ? "v1000" : artistAgents.get(voice)!;
+  const used = new Set<string>(["v1"]);
+  let voices: string[] = [];
   const opposite = lines.some((line) => line.opposite);
   let end = 0;
   const readings: string[] = [];
@@ -1454,20 +1496,37 @@ export function toTtml(
     const begin = Math.min(...spansOf.map((span) => span.start));
     const finish = Math.max(...spansOf.map((span) => span.end));
     end = Math.max(end, finish);
-    const agent = (paragraph.lead ?? paragraph.backgrounds[0]).opposite
-      ? "v2"
-      : "v1";
+    if (paragraph.section)
+      voices = paragraph.section.singer ? voicesOf(paragraph.section.singer) : [];
+    const first = paragraph.lead ?? paragraph.backgrounds[0];
+    const voiceOf = (sungBy?: string) =>
+      voices.length
+        ? agentOfVoice(
+            sungBy && voices.includes(sungBy) ? sungBy : voices[0],
+          )
+        : undefined;
+    const agent = voiceOf(first.sungBy) ?? (first.opposite ? "v2" : "v1");
+    used.add(agent);
+    // A word or backing vocal another voice sings names its own voice.
+    const own = (sungBy?: string) => {
+      if (voices.length < 2 || !sungBy || !voices.includes(sungBy)) return;
+      const voice = agentOfVoice(sungBy);
+      used.add(voice);
+      return voice === agent ? undefined : voice;
+    };
     if (paragraph.lead && hasWordRoman(paragraph.lead))
       readings.push(
         `<text for="L${index + 1}">${spans(paragraph.lead, true)}</text>`,
       );
     const lead = paragraph.lead
-      ? spans(paragraph.lead) + extras(paragraph.lead)
+      ? spans(paragraph.lead, false, (unit) => own(unit.sungBy)) +
+        extras(paragraph.lead)
       : "";
     const backgrounds = paragraph.backgrounds
       .map((line) => {
         const span = lineSpan(line, true)!;
-        return `<span ttm:role="x-bg" begin="${formatTime(span.start)}" end="${formatTime(span.end)}">${spans(line)}</span>`;
+        const voice = own(line.sungBy);
+        return `<span ttm:role="x-bg" begin="${formatTime(span.start)}" end="${formatTime(span.end)}"${voice ? ` ttm:agent="${voice}"` : ""}>${spans(line, false, (unit) => (unit.sungBy && unit.sungBy !== line.sungBy ? own(unit.sungBy) : undefined))}</span>`;
       })
       .join("");
     const p = `<p begin="${formatTime(begin)}" end="${formatTime(finish)}" ttm:agent="${agent}" itunes:key="L${index + 1}">${lead}${backgrounds}</p>`;
@@ -1500,8 +1559,19 @@ export function toTtml(
       .flatMap((entry) => entry.values),
   );
   const metadata = [
-    `<ttm:agent type="person" xml:id="v1"/>`,
-    opposite ? `<ttm:agent type="other" xml:id="v2"/>` : "",
+    ...[...used, ...(opposite && !artistAgents.size ? ["v2"] : [])]
+      .filter((agent, index, all) => all.indexOf(agent) === index)
+      .sort()
+      .map((agent) => {
+        const name = [...artistAgents].find(([, id]) => id === agent)?.[0];
+        const type =
+          agent === "v1000"
+            ? "group"
+            : agent === "v1" || name
+              ? "person"
+              : "other";
+        return `<ttm:agent type="${type}" xml:id="${agent}">${name ? `<ttm:name type="full">${escape(name)}</ttm:name>` : ""}</ttm:agent>`;
+      }),
     ...[
       ...entries.filter((entry) => !SONG_KEYS.includes(entry.key.trim())),
       { key: "album", values: meta.album ? [meta.album] : [] },
@@ -1598,4 +1668,66 @@ export function applyRomanized(
       : line;
   });
   return changed ? next : lines;
+}
+
+/** The voices the section around a line names; empty when it names fewer than two. */
+export function sectionVoices(lines: CreatorLine[], index: number): string[] {
+  for (let at = index; at >= 0; at--) {
+    const line = lines[at];
+    if (line?.part) {
+      const voices = line.singer ? voicesOf(line.singer) : [];
+      return voices.length > 1 ? voices : [];
+    }
+  }
+  return [];
+}
+
+/** Which voice sings a line, by its place in the section's list (0 is the first). */
+export function lineVoice(lines: CreatorLine[], index: number) {
+  const voices = sectionVoices(lines, index);
+  const at = voices.indexOf(lines[index]?.sungBy ?? "");
+  return voices.length ? Math.max(0, at) : -1;
+}
+
+/** Which voice sings a word, or -1 when it follows its line. */
+export function unitVoice(lines: CreatorLine[], at: Cursor) {
+  const voices = sectionVoices(lines, at.line);
+  const sungBy = lines[at.line]?.units[at.unit]?.sungBy;
+  return sungBy ? voices.indexOf(sungBy) : -1;
+}
+
+/** Sets who sings each of these lines; the first voice clears it. */
+export function setLineVoice(
+  lines: CreatorLine[],
+  indexes: Iterable<number>,
+  voice: string,
+): CreatorLine[] {
+  const chosen = new Set(indexes);
+  return lines.map((line, index) => {
+    if (!chosen.has(index)) return line;
+    const voices = sectionVoices(lines, index);
+    const { sungBy: _, ...rest } = line;
+    return voice === voices[0] ? rest : { ...rest, sungBy: voice };
+  });
+}
+
+/** Sets who sings these words; their line's own voice clears it. */
+export function setUnitVoice(
+  lines: CreatorLine[],
+  cursors: Cursor[],
+  voice: string,
+): CreatorLine[] {
+  return lines.map((line, index) => {
+    const here = cursors.filter((at) => at.line === index);
+    if (!here.length) return line;
+    const lineVoice = line.sungBy ?? sectionVoices(lines, index)[0];
+    return {
+      ...line,
+      units: line.units.map((unit, at) => {
+        if (!here.some((cursor) => cursor.unit === at)) return unit;
+        const { sungBy: _, ...rest } = unit;
+        return voice === lineVoice ? rest : { ...rest, sungBy: voice };
+      }),
+    };
+  });
 }

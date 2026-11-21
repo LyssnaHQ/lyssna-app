@@ -1013,3 +1013,39 @@ describe("geniusBackgrounds", () => {
     ]);
   });
 });
+
+describe("voices in a section that names several singers", () => {
+  const unit = (text: string, start: number) => ({
+    text,
+    joined: false,
+    start,
+    end: start + 500,
+  });
+  const lines: CreatorLine[] = [
+    {
+      units: [unit("Okay", 0), unit("go", 500)],
+      background: false,
+      opposite: false,
+      part: "Chorus",
+      singer: "The Kid LAROI & Juice WRLD",
+    },
+    {
+      units: [unit("Go", 1000)],
+      background: true,
+      opposite: false,
+    },
+  ];
+
+  it("writes a voice per artist on lines, words and backing vocals", async () => {
+    const { setLineVoice, setUnitVoice, toTtml } = await import(
+      "./ttml-creator-model"
+    );
+    let next = setLineVoice(lines, [1], "Juice WRLD");
+    next = setUnitVoice(next, [{ line: 0, unit: 1 }], "Juice WRLD");
+    const ttml = toTtml(next, { name: "GO", artists: [], album: "" } as never);
+    expect(ttml).toContain('<p begin="00:00.000" end="00:01.500" ttm:agent="v1"');
+    expect(ttml).toContain('ttm:agent="v2">go</span>');
+    expect(ttml).toContain('<span ttm:role="x-bg" begin="00:01.000" end="00:01.500" ttm:agent="v2">');
+    expect(ttml).toContain('xml:id="v2"><ttm:name type="full">Juice WRLD</ttm:name>');
+  });
+});

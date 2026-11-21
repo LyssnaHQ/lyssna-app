@@ -80,6 +80,12 @@ pub struct Line {
     /// first: `second` (shown italic) or `third` (bold), like Genius.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sung_by: Option<String>,
+    /// The song section this line starts (`itunes:songPart`), like "Chorus".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+    /// Who sings the section this line starts (`lyssna:singer`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_singer: Option<String>,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -87,6 +93,9 @@ pub struct Word {
     pub start_ms: u64,
     pub end_ms: u64,
     pub text: String,
+    /// Like the line's, for a word another voice sings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sung_by: Option<String>,
 }
 
 impl Lyrics {
@@ -338,28 +347,52 @@ fn voices(singer: &str) -> Vec<Vec<String>> {
 
 /// Genius styles a section's voices plain, italic, bold in the order its
 /// heading lists them; `second` and `third` are the italic and bold ones.
-fn sung_by(
+fn voice_index(
     paragraph: roxmltree::Node<'_, '_>,
+    agent: Option<&str>,
     artists: &HashMap<String, String>,
-) -> Option<String> {
+) -> Option<usize> {
     let voices = voices(section_singer(paragraph)?);
     if voices.len() < 2 {
         return None;
     }
-    let agent = attribute(paragraph, "agent")?;
-    let index = if agent == "v1000" {
-        voices.iter().position(|voice| voice.len() > 1)?
+    let agent = agent?;
+    if agent == "v1000" {
+        voices.iter().position(|voice| voice.len() > 1)
     } else {
         let artist = artists.get(agent)?;
         voices
             .iter()
-            .position(|voice| voice.len() == 1 && &voice[0] == artist)?
-    };
-    match index {
-        1 => Some("second".into()),
-        2 => Some("third".into()),
-        _ => None,
+            .position(|voice| voice.len() == 1 && &voice[0] == artist)
     }
+}
+
+const VOICE_STYLES: [&str; 3] = ["first", "second", "third"];
+
+fn sung_by(
+    paragraph: roxmltree::Node<'_, '_>,
+    agent: Option<&str>,
+    artists: &HashMap<String, String>,
+) -> Option<String> {
+    voice_index(paragraph, agent, artists)
+        .filter(|index| *index > 0)
+        .and_then(|index| VOICE_STYLES.get(index))
+        .map(|style| (*style).to_owned())
+}
+
+/// The section a paragraph starts, when it is the first in a tagged div.
+fn section_start(paragraph: roxmltree::Node<'_, '_>) -> Option<(String, Option<String>)> {
+    let div = paragraph
+        .ancestors()
+        .find(|node| node.has_tag_name("div"))?;
+    let part = attribute(div, "songPart").or_else(|| attribute(div, "song-part"))?;
+    let first = div.descendants().find(|node| node.has_tag_name("p"))?;
+    (first == paragraph).then(|| {
+        (
+            part.to_owned(),
+            section_singer(paragraph).map(str::to_owned),
+        )
+    })
 }
 
 fn annotation(node: roxmltree::Node<'_, '_>) -> bool {
@@ -523,6 +556,7 @@ fn split_bracketed_line(line: &Line) -> Option<(Line, Line)> {
         background: true,
         opposite: line.opposite,
         sung_by: line.sung_by.clone(),
+        ..Line::default()
     };
     fit_to_words(&mut background);
     let lead = Line {
@@ -603,7 +637,8 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
         let opposite = !named_singers
             && attribute(paragraph, "agent")
                 .is_some_and(|agent| agent != lead_agent && !agent.ends_with("000"));
-        let sung_by = sung_by(paragraph, &artists);
+        let sung_by = sung_by(paragraph, attribute(paragraph, "agent"), &artists);
+        let (section, section_singer) = section_start(paragraph).unzip();
         let mut line = Line {
             start_ms,
             end_ms,
@@ -611,6 +646,8 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
             background: attribute(paragraph, "role") == Some("x-bg"),
             opposite,
             sung_by: sung_by.clone(),
+            section,
+            section_singer: section_singer.flatten(),
             ..Line::default()
         };
         let blank_background = Line {
@@ -630,12 +667,29 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
             let owner = span
                 .ancestors()
                 .take_while(|parent| *parent != paragraph)
-                .find(|parent| attribute(*parent, "role") == Some("x-bg"))
-                .map(|parent| parent.id());
+                .find(|parent| attribute(*parent, "role") == Some("x-bg"));
             let target = match owner {
-                Some(id) => {
+                Some(owner) => {
+                    let id = owner.id();
                     if !backgrounds.iter().any(|(owner, _)| *owner == id) {
-                        backgrounds.push((id, blank_background.clone()));
+                        // A backing vocal can name its own voice.
+                        let voice = attribute(owner, "agent")
+                            .and_then(|agent| voice_index(paragraph, Some(agent), &artists))
+                            .and_then(|index| VOICE_STYLES.get(index))
+                            .filter(|style| **style != "first")
+                            .map(|style| (*style).to_owned());
+                        let own = attribute(owner, "agent").is_some();
+                        backgrounds.push((
+                            id,
+                            Line {
+                                sung_by: if own {
+                                    voice
+                                } else {
+                                    blank_background.sung_by.clone()
+                                },
+                                ..blank_background.clone()
+                            },
+                        ));
                     }
                     &mut backgrounds
                         .iter_mut()
@@ -696,10 +750,18 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
                     text.insert(0, ' ');
                 }
                 if !text.trim().is_empty() && word_end >= word_start {
+                    let word_agent = attribute(span, "agent");
                     target.words.push(Word {
                         start_ms: word_start,
                         end_ms: word_end,
                         text,
+                        // `first` too, so a word sung by the first voice in a
+                        // line another voice sings shows plain.
+                        sung_by: word_agent
+                            .filter(|agent| Some(*agent) != attribute(paragraph, "agent"))
+                            .and_then(|agent| voice_index(paragraph, Some(agent), &artists))
+                            .and_then(|index| VOICE_STYLES.get(index))
+                            .map(|style| (*style).to_owned()),
                     });
                 }
             }
@@ -1397,6 +1459,7 @@ mod tests {
                 start_ms: *start,
                 end_ms: start + 400,
                 text: (*text).to_owned(),
+                sung_by: None,
             })
             .collect();
         Line {
@@ -1604,6 +1667,18 @@ mod tests {
             ]
         );
         assert!(lyrics.lines.iter().all(|line| !line.opposite));
+    }
+
+    #[test]
+    fn words_another_voice_sings_and_section_starts_are_kept() {
+        let text = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xmlns:lyssna="https://lyssna.org/ns/ttml"><body><div itunes:songPart="Verse" lyssna:singer="A"><p begin="00:01.000" end="00:02.000" ttm:agent="v1"><span begin="00:01.000" end="00:02.000">One</span></p></div><div itunes:songPart="Verse" lyssna:singer="B"><p begin="00:03.000" end="00:04.000" ttm:agent="v2"><span begin="00:03.000" end="00:04.000">Two</span></p></div><div itunes:songPart="Outro" lyssna:singer="A &amp; B"><p begin="00:05.000" end="00:07.000" ttm:agent="v1"><span begin="00:05.000" end="00:06.000">Three</span> <span begin="00:06.000" end="00:07.000" ttm:agent="v2">four</span></p><p begin="00:08.000" end="00:09.000" ttm:agent="v1"><span begin="00:08.000" end="00:09.000">Five</span></p></div></body></tt>"#;
+        let lyrics = parse_ttml(text, 10_000).unwrap();
+        let outro = &lyrics.lines[2];
+        assert_eq!(outro.section.as_deref(), Some("Outro"));
+        assert_eq!(outro.section_singer.as_deref(), Some("A & B"));
+        assert_eq!(outro.words[0].sung_by, None);
+        assert_eq!(outro.words[1].sung_by.as_deref(), Some("second"));
+        assert_eq!(lyrics.lines[3].section, None);
     }
 
     #[test]

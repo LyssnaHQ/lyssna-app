@@ -454,6 +454,7 @@ fn parse_line(value: &Value, start_ms: u64, end_ms: u64) -> Line {
                 start_ms: seconds(&syllable["StartTime"]).unwrap_or(start_ms),
                 end_ms: seconds(&syllable["EndTime"]).unwrap_or(end_ms),
                 text: format!("{prefix}{text}"),
+                sung_by: None,
             });
         }
         line.text = line.words.iter().map(|word| word.text.as_str()).collect();

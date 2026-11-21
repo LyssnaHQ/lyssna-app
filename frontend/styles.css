@@ -8357,3 +8357,28 @@ button.contributor-avatar {
 .lyric-line.sung-third {
   font-weight: 900;
 }
+
+.ttml-line.sung-second .ttml-word,
+.ttml-word.sung-second {
+  font-style: italic;
+}
+.ttml-line.sung-third .ttml-word,
+.ttml-word.sung-third {
+  font-weight: 900;
+}
+.ttml-line.sung-second .ttml-word.sung-first,
+.ttml-line.sung-third .ttml-word.sung-first {
+  font-style: normal;
+  font-weight: inherit;
+}
+
+.lyric-syllable.sung-second {
+  font-style: italic;
+}
+.lyric-syllable.sung-third {
+  font-weight: 900;
+}
+.lyric-syllable.sung-first {
+  font-style: normal;
+  font-weight: 700;
+}

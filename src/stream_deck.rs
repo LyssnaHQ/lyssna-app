@@ -614,6 +614,7 @@ mod tests {
                 start_ms,
                 end_ms: start_ms + 1000,
                 text: text.into(),
+                sung_by: None,
             }],
             background,
             ..Default::default()

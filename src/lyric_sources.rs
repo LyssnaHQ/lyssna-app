@@ -803,6 +803,7 @@ pub fn from_musixmatch_richsync(value: &Value) -> Option<Lyrics> {
                 start_ms: word_start,
                 end_ms: word_end,
                 text: format!("{}{clean}", if words.is_empty() || join { "" } else { " " }),
+                sung_by: None,
             });
             join = joins_next(text, next_text);
         }
@@ -1007,6 +1008,7 @@ mod tests {
                         start_ms: 0,
                         end_ms: 100,
                         text: "Hi".into(),
+                        sung_by: None,
                     }]
                 } else {
                     Vec::new()
@@ -1125,6 +1127,7 @@ mod tests {
                 start_ms,
                 end_ms: start_ms + 1000,
                 text: "Hi".into(),
+                sung_by: None,
             }],
             ..Line::default()
         };

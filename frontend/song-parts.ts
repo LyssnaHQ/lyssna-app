@@ -563,3 +563,26 @@ export const sectionLabel = (section: SongSection) =>
   section.singer ? `${section.part} - ${section.singer}` : section.part;
 
 export const SONG_PARTS = Object.keys(PARTS);
+
+/** "Kanye West, Kanye West & JAY-Z" as each artist once, in order. */
+export const artistNames = (singer: string) => [
+  ...new Set(
+    singer
+      .split(/\s*(?:,|&|\band\b)\s*/i)
+      .map((name) => name.trim())
+      .filter(Boolean),
+  ),
+];
+
+/**
+ * The voices a section names, in order, each as it reads: Genius styles them
+ * plain, italic, bold. Commas separate voices when one is a group ("Kanye
+ * West, Kanye West & JAY-Z, JAY-Z"); otherwise each artist is one ("A & B").
+ */
+export const voicesOf = (singer: string): string[] =>
+  singer.includes(",")
+    ? singer
+        .split(",")
+        .map((voice) => artistNames(voice).join(" & "))
+        .filter(Boolean)
+    : artistNames(singer);

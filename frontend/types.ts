@@ -262,6 +262,8 @@ export interface Word {
   text: string;
   /** Timing estimated by experimental word sync, not authored. */
   estimated?: boolean;
+  /** Set when another voice than the line's sings this word. */
+  sung_by?: "first" | "second" | "third";
 }
 export interface Line {
   start_ms: number;
@@ -276,6 +278,10 @@ export interface Line {
   opposite: boolean;
   /** Genius style in a section several voices sing: the second is italic, the third bold. */
   sung_by?: "second" | "third";
+  /** The song section this line starts, like "Chorus". */
+  section?: string;
+  /** Who sings that section. */
+  section_singer?: string;
 }
 export interface Lyrics {
   songwriters?: string[];
