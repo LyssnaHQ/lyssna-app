@@ -1553,7 +1553,7 @@ const LyricRow = memo(function LyricRow({
   return (
     <button
       ref={action.ref}
-      className={`lyric-line ${playing ? "active" : ""} ${line.background ? "background-vocal" : ""} ${line.opposite ? "opposite" : ""} ${past ? "past" : ""}`}
+      className={`lyric-line ${playing ? "active" : ""} ${line.background ? "background-vocal" : ""} ${line.opposite ? "opposite" : ""} ${line.sung_by ? `sung-${line.sung_by}` : ""} ${past ? "past" : ""}`}
       style={{ "--blur": `${blur}px` } as CSSProperties}
       onClick={action.click}
       disabled={!synced}

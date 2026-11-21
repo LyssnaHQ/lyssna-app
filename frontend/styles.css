@@ -8350,3 +8350,10 @@ button.contributor-avatar {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.lyric-line.sung-other {
+  font-weight: 900;
+}
+.lyric-line.sung-together {
+  font-style: italic;
+}

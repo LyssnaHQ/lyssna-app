@@ -76,6 +76,10 @@ pub struct Line {
     pub words: Vec<Word>,
     pub background: bool,
     pub opposite: bool,
+    /// In a section sung by more than one artist, Genius style: `other` for
+    /// the artists after the first, `together` for lines they sing together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sung_by: Option<String>,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -247,6 +251,89 @@ fn attribute<'a>(node: roxmltree::Node<'a, 'a>, name: &str) -> Option<&'a str> {
         .map(|attribute| attribute.value())
 }
 
+/// The singer a paragraph's section names (`lyssna:singer`), if any.
+fn section_singer<'a>(paragraph: roxmltree::Node<'a, 'a>) -> Option<&'a str> {
+    paragraph
+        .ancestors()
+        .find(|node| node.has_tag_name("div"))
+        .and_then(|div| attribute(div, "singer"))
+        .map(str::trim)
+        .filter(|singer| !singer.is_empty())
+}
+
+/// "Kanye West, Kanye West & JAY-Z" as each artist once, in order.
+fn artist_names(singer: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for piece in singer.split([',', '&']) {
+        let lower = piece.to_lowercase();
+        let mut rest = piece;
+        let mut offset = 0;
+        let mut parts = Vec::new();
+        while let Some(at) = lower[offset..].find(" and ") {
+            parts.push(&rest[..at]);
+            rest = &rest[at + 5..];
+            offset += at + 5;
+        }
+        parts.push(rest);
+        for name in parts
+            .into_iter()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        {
+            if !names.iter().any(|known| known == name) {
+                names.push(name.to_owned());
+            }
+        }
+    }
+    names
+}
+
+/// Which artist each voice (`ttm:agent`) is, from the sections only one
+/// artist sings: whoever sings most of that voice's lines there.
+fn voice_artists(document: &roxmltree::Document) -> HashMap<String, String> {
+    let mut counts: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    for paragraph in document.descendants().filter(|node| node.has_tag_name("p")) {
+        let (Some(agent), Some(singer)) =
+            (attribute(paragraph, "agent"), section_singer(paragraph))
+        else {
+            continue;
+        };
+        let names = artist_names(singer);
+        if let [name] = names.as_slice() {
+            *counts
+                .entry(agent.to_owned())
+                .or_default()
+                .entry(name.clone())
+                .or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .filter_map(|(agent, tally)| {
+            tally
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(name, _)| (agent, name))
+        })
+        .collect()
+}
+
+fn sung_by(
+    paragraph: roxmltree::Node<'_, '_>,
+    artists: &HashMap<String, String>,
+) -> Option<String> {
+    let names = artist_names(section_singer(paragraph)?);
+    if names.len() < 2 {
+        return None;
+    }
+    let agent = attribute(paragraph, "agent")?;
+    if agent == "v1000" {
+        return Some("together".into());
+    }
+    let artist = artists.get(agent)?;
+    (artist != &names[0] && names.contains(artist)).then(|| "other".into())
+}
+
 fn annotation(node: roxmltree::Node<'_, '_>) -> bool {
     attribute(node, "role").is_some_and(|role| {
         role.contains("translation") || role.contains("roman") || role.contains("transliteration")
@@ -407,6 +494,7 @@ fn split_bracketed_line(line: &Line) -> Option<(Line, Line)> {
         words: background,
         background: true,
         opposite: line.opposite,
+        sung_by: line.sung_by.clone(),
     };
     fit_to_words(&mut background);
     let lead = Line {
@@ -458,6 +546,11 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
             None => None,
         };
     }
+    let artists = voice_artists(&document);
+    // Sections that name who sings them already tell the singers apart.
+    let named_singers = document
+        .descendants()
+        .any(|node| node.has_tag_name("div") && attribute(node, "singer").is_some());
     let mut lines = Vec::new();
     for paragraph in document.descendants().filter(|node| node.has_tag_name("p")) {
         let Some(start_ms) = attribute(paragraph, "begin").and_then(timestamp) else {
@@ -479,14 +572,17 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
         // Recover from word timings below; drop the paragraph if it has none.
         let broken_end = end_ms < start_ms;
         let end_ms = end_ms.max(start_ms);
-        let opposite = attribute(paragraph, "agent")
-            .is_some_and(|agent| agent != lead_agent && !agent.ends_with("000"));
+        let opposite = !named_singers
+            && attribute(paragraph, "agent")
+                .is_some_and(|agent| agent != lead_agent && !agent.ends_with("000"));
+        let sung_by = sung_by(paragraph, &artists);
         let mut line = Line {
             start_ms,
             end_ms,
             text: node_text(paragraph, true).trim().to_owned(),
             background: attribute(paragraph, "role") == Some("x-bg"),
             opposite,
+            sung_by: sung_by.clone(),
             ..Line::default()
         };
         let blank_background = Line {
@@ -494,6 +590,7 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
             end_ms,
             background: true,
             opposite,
+            sung_by,
             ..Line::default()
         };
         // Each `x-bg` span is its own background vocal, not one merged line.
@@ -1455,7 +1552,30 @@ mod tests {
         let words: Vec<&str> = lyrics.lines.iter().map(|line| line.text.as_str()).collect();
         assert_eq!(words, ["One", "Two", "Three"]);
         assert_eq!(lyrics.lines[2].words[0].start_ms, 4000);
-        assert!(lyrics.lines[2].opposite);
+        assert!(!lyrics.lines[2].opposite);
+    }
+
+    #[test]
+    fn ttml_styles_lines_by_who_sings_them_when_sections_name_singers() {
+        let text = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xmlns:lyssna="https://lyssna.org/ns/ttml"><body><div itunes:songPart="Verse" lyssna:singer="Kanye West"><p begin="00:01.000" end="00:02.000" ttm:agent="v1"><span begin="00:01.000" end="00:02.000">One</span></p></div><div itunes:songPart="Verse" lyssna:singer="JAY-Z"><p begin="00:03.000" end="00:04.000" ttm:agent="v2"><span begin="00:03.000" end="00:04.000">Two</span></p></div><div itunes:songPart="Chorus" lyssna:singer="Kanye West, Kanye West &amp; JAY-Z, JAY-Z"><p begin="00:05.000" end="00:06.000" ttm:agent="v1"><span begin="00:05.000" end="00:06.000">Three</span></p><p begin="00:06.000" end="00:07.000" ttm:agent="v1000"><span begin="00:06.000" end="00:07.000">Four</span></p><p begin="00:07.000" end="00:08.000" ttm:agent="v2"><span begin="00:07.000" end="00:08.000">Five</span><span ttm:role="x-bg"><span begin="00:07.500" end="00:08.000">(yeah)</span></span></p></div></body></tt>"#;
+        let lyrics = parse_ttml(text, 10_000).unwrap();
+        let styles: Vec<(&str, Option<&str>)> = lyrics
+            .lines
+            .iter()
+            .map(|line| (line.text.as_str(), line.sung_by.as_deref()))
+            .collect();
+        assert_eq!(
+            styles,
+            [
+                ("One", None),
+                ("Two", None),
+                ("Three", None),
+                ("Four", Some("together")),
+                ("Five", Some("other")),
+                ("yeah", Some("other")),
+            ]
+        );
+        assert!(lyrics.lines.iter().all(|line| !line.opposite));
     }
 
     #[test]

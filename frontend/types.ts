@@ -274,6 +274,8 @@ export interface Line {
   words: Word[];
   background: boolean;
   opposite: boolean;
+  /** Genius style in a section several artists sing: bold for the others, italic together. */
+  sung_by?: "other" | "together";
 }
 export interface Lyrics {
   songwriters?: string[];
