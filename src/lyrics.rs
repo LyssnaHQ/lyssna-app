@@ -76,8 +76,8 @@ pub struct Line {
     pub words: Vec<Word>,
     pub background: bool,
     pub opposite: bool,
-    /// In a section sung by more than one artist, Genius style: `other` for
-    /// the artists after the first, `together` for lines they sing together.
+    /// In a section several voices sing, which one sings this line after the
+    /// first: `second` (shown italic) or `third` (bold), like Genius.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sung_by: Option<String>,
 }
@@ -318,20 +318,48 @@ fn voice_artists(document: &roxmltree::Document) -> HashMap<String, String> {
         .collect()
 }
 
+/// The voices a section heading lists, in order. Genius separates them
+/// with commas when one is a group ("Kanye West, Kanye West & JAY-Z,
+/// JAY-Z"); otherwise each artist is its own voice ("A & B").
+fn voices(singer: &str) -> Vec<Vec<String>> {
+    if singer.contains(',') {
+        singer
+            .split(',')
+            .map(artist_names)
+            .filter(|names| !names.is_empty())
+            .collect()
+    } else {
+        artist_names(singer)
+            .into_iter()
+            .map(|name| vec![name])
+            .collect()
+    }
+}
+
+/// Genius styles a section's voices plain, italic, bold in the order its
+/// heading lists them; `second` and `third` are the italic and bold ones.
 fn sung_by(
     paragraph: roxmltree::Node<'_, '_>,
     artists: &HashMap<String, String>,
 ) -> Option<String> {
-    let names = artist_names(section_singer(paragraph)?);
-    if names.len() < 2 {
+    let voices = voices(section_singer(paragraph)?);
+    if voices.len() < 2 {
         return None;
     }
     let agent = attribute(paragraph, "agent")?;
-    if agent == "v1000" {
-        return Some("together".into());
+    let index = if agent == "v1000" {
+        voices.iter().position(|voice| voice.len() > 1)?
+    } else {
+        let artist = artists.get(agent)?;
+        voices
+            .iter()
+            .position(|voice| voice.len() == 1 && &voice[0] == artist)?
+    };
+    match index {
+        1 => Some("second".into()),
+        2 => Some("third".into()),
+        _ => None,
     }
-    let artist = artists.get(agent)?;
-    (artist != &names[0] && names.contains(artist)).then(|| "other".into())
 }
 
 fn annotation(node: roxmltree::Node<'_, '_>) -> bool {
@@ -1570,12 +1598,24 @@ mod tests {
                 ("One", None),
                 ("Two", None),
                 ("Three", None),
-                ("Four", Some("together")),
-                ("Five", Some("other")),
-                ("yeah", Some("other")),
+                ("Four", Some("second")),
+                ("Five", Some("third")),
+                ("yeah", Some("third")),
             ]
         );
         assert!(lyrics.lines.iter().all(|line| !line.opposite));
+    }
+
+    #[test]
+    fn two_artists_joined_by_and_sign_are_plain_then_italic() {
+        let text = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:lyssna="https://lyssna.org/ns/ttml"><body><div lyssna:singer="Justin Vernon"><p begin="00:01.000" end="00:02.000" ttm:agent="v1"><span begin="00:01.000" end="00:02.000">One</span></p></div><div lyssna:singer="Charlie Wilson"><p begin="00:03.000" end="00:04.000" ttm:agent="v2"><span begin="00:03.000" end="00:04.000">Two</span></p></div><div lyssna:singer="Justin Vernon &amp; Charlie Wilson"><p begin="00:05.000" end="00:06.000" ttm:agent="v1"><span begin="00:05.000" end="00:06.000">Three</span></p><p begin="00:06.000" end="00:07.000" ttm:agent="v2"><span begin="00:06.000" end="00:07.000">Four</span></p></div></body></tt>"#;
+        let lyrics = parse_ttml(text, 10_000).unwrap();
+        let styles: Vec<Option<&str>> = lyrics
+            .lines
+            .iter()
+            .map(|line| line.sung_by.as_deref())
+            .collect();
+        assert_eq!(styles, [None, None, None, Some("second")]);
     }
 
     #[test]

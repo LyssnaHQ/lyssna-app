@@ -8351,9 +8351,9 @@ button.contributor-avatar {
   white-space: nowrap;
 }
 
-.lyric-line.sung-other {
-  font-weight: 900;
-}
-.lyric-line.sung-together {
+.lyric-line.sung-second {
   font-style: italic;
+}
+.lyric-line.sung-third {
+  font-weight: 900;
 }
