@@ -78,6 +78,23 @@
 .playlist-search:focus-within {
   border-color: light-dark(#00000035, #ffffff35);
 }
+.playlist-search-clear {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: light-dark(#565656, #a9a9a9);
+  cursor: pointer;
+}
+.playlist-search-clear:hover {
+  background: light-dark(#0000001a, #ffffff1a);
+  color: light-dark(#0c0c0c, #f3f3f3);
+}
 .song-filters small {
   color: light-dark(#565656, #a9a9a9);
 }

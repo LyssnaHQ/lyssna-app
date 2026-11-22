@@ -4847,6 +4847,19 @@ function App() {
                                     }
                                   }}
                                 />
+                                {songQuery && (
+                                  <button
+                                    type="button"
+                                    className="playlist-search-clear"
+                                    aria-label="Clear search"
+                                    title="Clear search"
+                                    // Keeps the input focused so the box stays open for a new search.
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => setSongQuery("")}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
                               </label>
                             ) : (
                               <button
