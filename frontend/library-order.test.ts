@@ -124,6 +124,17 @@ it("remembers when contexts were played, newest 64 kept", () => {
   expect(order.played![LOCAL_FILES]).toBe(100);
   expect(order.played!["spotify:playlist:0"]).toBeUndefined();
 });
+it("records Liked Songs for users with dots or underscores, never odd contexts", () => {
+  let order = recordPlayed(
+    emptyOrder(),
+    "spotify:user:some_one.x:collection",
+    1,
+  );
+  order = recordPlayed(order, "lyssna:creator/../x", 2);
+  expect(Object.keys(order.played!)).toEqual([
+    "spotify:user:some_one.x:collection",
+  ]);
+});
 it("pins Local Files within the pin limit without listing it as a playlist", () => {
   let order = toggleLocalPin(emptyOrder());
   expect(order.pinned).toEqual([LOCAL_FILES]);

@@ -582,9 +582,11 @@ fn played_key(key: &str) -> bool {
     key == LOCAL_FILES
         || (key.len() <= 128
             && key.starts_with("spotify:")
+            && !key.contains("..")
+            // Spotify user IDs, as in Liked Songs' context, may hold '.', '_' and '-'.
             && key
                 .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b':'))
+                .all(|byte| byte.is_ascii_alphanumeric() || b":._-".contains(&byte)))
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -787,6 +789,7 @@ mod tests {
     fn library_play_times_take_only_spotify_contexts_and_local_files() {
         assert!(super::played_key("spotify:playlist:4123456789abcdefghijkl"));
         assert!(super::played_key("spotify:user:someone:collection"));
+        assert!(super::played_key("spotify:user:some_one.x-y:collection"));
         assert!(super::played_key(super::LOCAL_FILES));
         assert!(!super::played_key("https://example.com"));
         assert!(!super::played_key("spotify:playlist:../x"));

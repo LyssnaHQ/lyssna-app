@@ -23,12 +23,20 @@ export const emptyOrder = (): LibraryOrder => ({
   items: [],
 });
 const PLAYED_LIMIT = 64;
+export const playedKey = (key: string) =>
+  key === LOCAL_FILES ||
+  (key.length <= 128 &&
+    key.startsWith("spotify:") &&
+    !key.includes("..") &&
+    /^[A-Za-z0-9:._-]+$/.test(key));
 /** Remembers that `context` started playing at `at`, newest 64 kept. */
 export function recordPlayed(
   order: LibraryOrder,
   context: string,
   at: number,
 ): LibraryOrder {
+  // Settings refuse the whole save over one context they can't take.
+  if (!playedKey(context)) return order;
   const played = Object.entries({ ...order.played, [context]: at })
     .sort((a, b) => b[1] - a[1])
     .slice(0, PLAYED_LIMIT);
