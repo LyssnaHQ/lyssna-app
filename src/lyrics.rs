@@ -609,10 +609,6 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
         };
     }
     let artists = voice_artists(&document);
-    // Sections that name who sings them already tell the singers apart.
-    let named_singers = document
-        .descendants()
-        .any(|node| node.has_tag_name("div") && attribute(node, "singer").is_some());
     let mut lines = Vec::new();
     for paragraph in document.descendants().filter(|node| node.has_tag_name("p")) {
         let Some(start_ms) = attribute(paragraph, "begin").and_then(timestamp) else {
@@ -634,9 +630,8 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
         // Recover from word timings below; drop the paragraph if it has none.
         let broken_end = end_ms < start_ms;
         let end_ms = end_ms.max(start_ms);
-        let opposite = !named_singers
-            && attribute(paragraph, "agent")
-                .is_some_and(|agent| agent != lead_agent && !agent.ends_with("000"));
+        let opposite = attribute(paragraph, "agent")
+            .is_some_and(|agent| agent != lead_agent && !agent.ends_with("000"));
         let sung_by = sung_by(paragraph, attribute(paragraph, "agent"), &artists);
         let (section, section_singer) = section_start(paragraph).unzip();
         let mut line = Line {
@@ -1643,7 +1638,7 @@ mod tests {
         let words: Vec<&str> = lyrics.lines.iter().map(|line| line.text.as_str()).collect();
         assert_eq!(words, ["One", "Two", "Three"]);
         assert_eq!(lyrics.lines[2].words[0].start_ms, 4000);
-        assert!(!lyrics.lines[2].opposite);
+        assert!(lyrics.lines[2].opposite);
     }
 
     #[test]
@@ -1666,7 +1661,8 @@ mod tests {
                 ("yeah", Some("third")),
             ]
         );
-        assert!(lyrics.lines.iter().all(|line| !line.opposite));
+        let sides: Vec<bool> = lyrics.lines.iter().map(|line| line.opposite).collect();
+        assert_eq!(sides, [false, true, false, false, true, true]);
     }
 
     #[test]
