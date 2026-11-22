@@ -197,43 +197,124 @@ const isSectionLine = (text: string) => /^\[[^\]]*\]$/.test(text.trim());
 
 const plain = (text: string) =>
   text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+const words = (text: string) =>
+  text.split(/[^\p{L}\p{N}']+/u).map(plain).filter(Boolean);
 const lineWords = (line: CreatorLine) =>
-  plain(line.units.map((unit) => unit.text).join(""));
-const LOOK_AHEAD = 12;
+  words(
+    line.units
+      .map((unit, index) => (index && !unit.joined ? " " : "") + unit.text)
+      .join(""),
+  );
+
+function edits(a: string, b: string) {
+  let row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++)
+      next[j] = Math.min(
+        row[j] + 1,
+        next[j - 1] + 1,
+        row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    row = next;
+  }
+  return row[b.length];
+}
+
+// Spellings drift between Genius and a draft ("walkin'" against "walking"),
+// so longer words a letter apart still match.
+const sameWord = (a: string, b: string) =>
+  a === b || (Math.min(a.length, b.length) >= 4 && edits(a, b) <= 1);
+
+/** Word positions the two lists share, in order, as many as fit (longest common subsequence). */
+function alignWords(ours: string[], theirs: string[]) {
+  const width = theirs.length + 1;
+  const best = new Uint16Array((ours.length + 1) * width);
+  for (let i = ours.length - 1; i >= 0; i--)
+    for (let j = theirs.length - 1; j >= 0; j--)
+      best[i * width + j] = sameWord(ours[i], theirs[j])
+        ? best[(i + 1) * width + j + 1] + 1
+        : Math.max(best[(i + 1) * width + j], best[i * width + j + 1]);
+  const pairs = new Map<number, number>();
+  let i = 0;
+  let j = 0;
+  while (i < ours.length && j < theirs.length) {
+    if (
+      sameWord(ours[i], theirs[j]) &&
+      best[i * width + j] === best[(i + 1) * width + j + 1] + 1
+    )
+      pairs.set(j++, i++);
+    else if (best[(i + 1) * width + j] >= best[i * width + j + 1]) i++;
+    else j++;
+  }
+  return pairs;
+}
 
 /**
  * Puts the sections named in `text` ("[Chorus]" lines, as Genius writes
  * them) on the matching lines of a synced draft. Words and timings stay
- * as they are; lines are matched by their words, in order. A section
- * whose first line has no match starts at the next line that does.
+ * as they are. Genius often breaks lines elsewhere than the draft does, so
+ * the two are lined up word by word, and each section starts at the draft
+ * line nearest its first word.
  * Undefined when no section could be placed.
  */
 export function applySections(
   lines: CreatorLine[],
   text: string,
 ): CreatorLine[] | undefined {
+  const ours: string[] = [];
+  const lineOf: number[] = [];
+  const firstWord = new Map<number, number>();
+  const leads: number[] = [];
+  lines.forEach((line, index) => {
+    if (line.background) return;
+    leads.push(index);
+    firstWord.set(index, ours.length);
+    for (const word of lineWords(line)) {
+      ours.push(word);
+      lineOf.push(index);
+    }
+  });
+
   const named = parseText(geniusBackgrounds(text)).filter(
     (line) => !line.background,
   );
-  const parts = new Map<number, SongSection>();
-  let from = 0;
+  const theirs: string[] = [];
+  const lineStart: number[] = [];
+  const sections: { section: SongSection; from: number; to: number }[] = [];
   let pending: SongSection | undefined;
   for (const line of named) {
     pending = sectionFrom(line) ?? pending;
-    const want = lineWords(line);
-    if (!want) continue;
-    let at = -1;
-    for (let index = from; index < lines.length; index++) {
-      if (index >= from + LOOK_AHEAD) break;
-      if (!lines[index].background && lineWords(lines[index]) === want) {
-        at = index;
-        break;
-      }
-    }
-    if (at < 0) continue;
-    if (pending) parts.set(at, pending);
+    const found = lineWords(line);
+    if (!found.length) continue;
+    if (pending)
+      sections.push({ section: pending, from: theirs.length, to: 0 });
     pending = undefined;
-    from = at + 1;
+    for (const _ of found) lineStart.push(theirs.length);
+    theirs.push(...found);
+    if (sections.length) sections[sections.length - 1].to = theirs.length;
+  }
+
+  const pairs = alignWords(ours, theirs);
+  const parts = new Map<number, SongSection>();
+  for (const { section, from, to } of sections) {
+    let j = from;
+    while (j < to && !pairs.has(j)) j++;
+    if (j === to) continue;
+    // Step back over words of that Genius line the draft left out, then
+    // round to the nearest line start.
+    let before = j - 1;
+    while (before >= 0 && !pairs.has(before)) before--;
+    const word = Math.max(
+      before < 0 ? 0 : pairs.get(before)! + 1,
+      pairs.get(j)! - (j - lineStart[j]),
+    );
+    const lead = leads.indexOf(lineOf[word]);
+    const start = firstWord.get(leads[lead])!;
+    const end = firstWord.get(leads[lead + 1]) ?? ours.length;
+    const at = word - start <= (end - start) / 2 ? lead : lead + 1;
+    if (at < leads.length && !parts.has(leads[at]))
+      parts.set(leads[at], section);
   }
   if (!parts.size) return;
   return lines.map((line, index) => {

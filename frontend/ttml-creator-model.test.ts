@@ -174,6 +174,23 @@ describe("TTML Creator model", () => {
     expect(applySections(lines, "[Chorus]\nnothing alike")).toBeUndefined();
   });
 
+  it("places Genius sections when Genius breaks lines elsewhere", () => {
+    const lines = timeAll(
+      "alpha river runs\nbravo stones under, charlie lantern\ndelta window\necho meadow foxtrot\ngolf tower",
+    );
+    const tagged = applySections(
+      lines,
+      "[Chorus]\nalpha river runs\nbravo stones\n\n[Verse 2]\ncharlie lanterns, delta window\n[Pre-Chorus]\necho meadow\nfoxtrot golf tower",
+    )!;
+    expect(tagged.map((line) => line.part)).toEqual([
+      "Chorus",
+      undefined,
+      "Verse",
+      "Pre-Chorus",
+      undefined,
+    ]);
+  });
+
   it("editing text keeps timings of unchanged lines", () => {
     const timedLines = timeAll("keep me\nchange me");
     const edited = keepTimings(timedLines, parseText("keep me\nchanged me"));
