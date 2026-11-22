@@ -79,7 +79,13 @@ fn lyrics_url(platform: &str, id: &str, isrc: Option<&str>, fresh: bool) -> Stri
 }
 
 /// `None` when Lyssna has no lyrics under this platform ID.
-fn view(client: &Client, platform: &str, id: &str, isrc: Option<&str>, fresh: bool) -> Result<Option<LyricsView>> {
+fn view(
+    client: &Client,
+    platform: &str,
+    id: &str,
+    isrc: Option<&str>,
+    fresh: bool,
+) -> Result<Option<LyricsView>> {
     let url = lyrics_url(platform, id, isrc, fresh);
     let mut response = crate::lyssna_account::keyed(client.get(&url))
         .send()
@@ -227,9 +233,19 @@ mod tests {
 
     #[test]
     fn the_isrc_travels_in_the_same_request() {
-        let url = lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", Some("USUM71900001"), false);
+        let url = lyrics_url(
+            "spotify",
+            "0VjIjW4GlUZAMYd2vXMi3b",
+            Some("USUM71900001"),
+            false,
+        );
         assert!(url.ends_with("/v1/lyrics/spotify/0VjIjW4GlUZAMYd2vXMi3b?isrc=USUM71900001"));
-        let url = lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", Some("USUM71900001"), true);
+        let url = lyrics_url(
+            "spotify",
+            "0VjIjW4GlUZAMYd2vXMi3b",
+            Some("USUM71900001"),
+            true,
+        );
         assert!(url.contains("?isrc=USUM71900001&fresh="));
     }
 
