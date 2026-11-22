@@ -1,5 +1,5 @@
 import { rpc } from "./bridge";
-import type { Track } from "./types";
+import type { Line, Lyrics, Track } from "./types";
 
 export type ReviewLane = "priority" | "backlog";
 export type ReviewAction = "approve" | "reject" | "request-changes";
@@ -173,4 +173,92 @@ export function diffLines(base: DiffLine[], head: DiffLine[]): DiffRow[] {
   while (row < rows) out.push({ kind: "removed", text: base[row++].text });
   while (col < cols) out.push({ kind: "added", text: head[col++].text });
   return out;
+}
+
+const EDIT_KINDS = [
+  "Lyrics",
+  "Sections",
+  "Singers",
+  "Syllables",
+  "Timing",
+  "Background vocals",
+  "Translations",
+  "Romanization",
+] as const;
+export type EditKind = (typeof EDIT_KINDS)[number];
+
+const lineKey = (line: Line) =>
+  `${line.background ? "bg:" : ""}${line.text.trim().toLowerCase()}`;
+const voicedWords = (line: Line) =>
+  line.words
+    .filter((word) => word.sung_by)
+    .map((word) => `${word.text.trim()}:${word.sung_by}`)
+    .join("|");
+const moved = (a: number, b: number) => Math.abs(a - b) > RETIMED_MS;
+
+/** What sort of edit a submission is, with how many lines each kind touches,
+ *  so a reviewer can tell a sections pass from a retime at a glance. */
+export function editKinds(
+  before: Lyrics,
+  after: Lyrics,
+): { kind: EditKind; lines: number }[] {
+  const base = before.lines;
+  const head = after.lines;
+  const width = head.length + 1;
+  const best = new Uint16Array((base.length + 1) * width);
+  for (let i = base.length - 1; i >= 0; i--)
+    for (let j = head.length - 1; j >= 0; j--)
+      best[i * width + j] =
+        lineKey(base[i]) === lineKey(head[j])
+          ? best[(i + 1) * width + j + 1] + 1
+          : Math.max(best[(i + 1) * width + j], best[i * width + j + 1]);
+
+  const counts = new Map<EditKind, number>();
+  const add = (kind: EditKind) => counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  const unmatched = (line: Line) =>
+    add(line.background ? "Background vocals" : "Lyrics");
+  let i = 0;
+  let j = 0;
+  while (i < base.length && j < head.length) {
+    if (lineKey(base[i]) !== lineKey(head[j])) {
+      if (best[(i + 1) * width + j] >= best[i * width + j + 1])
+        unmatched(base[i++]);
+      else unmatched(head[j++]);
+      continue;
+    }
+    const a = base[i++];
+    const b = head[j++];
+    if (
+      (a.section ?? "") !== (b.section ?? "") ||
+      (a.section_singer ?? "") !== (b.section_singer ?? "")
+    )
+      add("Sections");
+    if (
+      a.opposite !== b.opposite ||
+      a.sung_by !== b.sung_by ||
+      voicedWords(a) !== voicedWords(b)
+    )
+      add("Singers");
+    const split = (line: Line) =>
+      line.words.map((word) => word.text.trim()).join("|");
+    if (split(a) !== split(b)) add("Syllables");
+    else if (
+      moved(a.start_ms, b.start_ms) ||
+      moved(a.end_ms, b.end_ms) ||
+      a.words.some(
+        (word, at) =>
+          moved(word.start_ms, b.words[at].start_ms) ||
+          moved(word.end_ms, b.words[at].end_ms),
+      )
+    )
+      add("Timing");
+    if (a.translation.trim() !== b.translation.trim()) add("Translations");
+    if (a.romanization.trim() !== b.romanization.trim()) add("Romanization");
+  }
+  while (i < base.length) unmatched(base[i++]);
+  while (j < head.length) unmatched(head[j++]);
+  return EDIT_KINDS.filter((kind) => counts.has(kind)).map((kind) => ({
+    kind,
+    lines: counts.get(kind)!,
+  }));
 }

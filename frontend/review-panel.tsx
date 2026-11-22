@@ -20,6 +20,7 @@ import {
   addReviewComment,
   decideReview,
   diffLines,
+  editKinds,
   reviewComments,
   reviewPublished,
   reviewQueue,
@@ -27,6 +28,7 @@ import {
   reviewTrackUri,
   revisionTtml,
   type DiffRow,
+  type EditKind,
   type RejectReason,
   type ReviewAction,
   type ReviewComment,
@@ -298,6 +300,7 @@ function ReviewDetail({
   const [uri, setUri] = useState<string | null>();
   const [ttml, setTtml] = useState<string>();
   const [diff, setDiff] = useState<DiffRow[] | null>();
+  const [kinds, setKinds] = useState<{ kind: EditKind; lines: number }[]>([]);
   const [comments, setComments] = useState<ReviewComment[]>();
   const [reply, setReply] = useState("");
   const [grade, setGrade] = useState<1 | 2 | 3>(3);
@@ -340,8 +343,11 @@ function ReviewDetail({
     revisionTtml(submission.base_revision_id)
       .then((base) => Promise.all([parse.current(base), parse.current(ttml)]))
       .then(
-        ([before, after]) =>
-          live && setDiff(diffLines(lines(before), lines(after))),
+        ([before, after]) => {
+          if (!live) return;
+          setDiff(diffLines(lines(before), lines(after)));
+          setKinds(editKinds(before, after));
+        },
         () => live && setDiff(null),
       );
     return () => {
@@ -439,6 +445,18 @@ function ReviewDetail({
       {submission.kind === "edit" && (
         <section className="review-section">
           <h4>Changes</h4>
+          {!!kinds.length && (
+            <ul className="review-kinds">
+              {kinds.map(({ kind, lines }) => (
+                <li key={kind}>
+                  {kind}{" "}
+                  <span>
+                    {lines} {lines === 1 ? "line" : "lines"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
           {diff === undefined ? (
             <p className="review-empty">Comparing…</p>
           ) : diff === null ? (
@@ -446,9 +464,11 @@ function ReviewDetail({
               Couldn't compare with the live lyrics.
             </p>
           ) : !changed?.length ? (
-            <p className="review-empty">
-              No line changes; only details differ.
-            </p>
+            !kinds.length && (
+              <p className="review-empty">
+                No line changes; only song details differ.
+              </p>
+            )
           ) : (
             <ol className="review-diff">
               {diff.map((row, index) =>

@@ -2251,6 +2251,26 @@
   margin: 0;
   font-size: 13px;
 }
+.review-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.review-kinds li {
+  padding: 3px 9px;
+  border: 1px solid #ffffff1f;
+  border-radius: 6px;
+  background: #ffffff0d;
+  font-weight: 600;
+}
+.review-kinds span {
+  color: #a9a9a9;
+  font-weight: 400;
+}
 .review-diff,
 .review-comments {
   display: grid;
