@@ -61,20 +61,26 @@ fn recently_changed(id: &str) -> bool {
     })
 }
 
-fn lyrics_url(platform: &str, id: &str, fresh: bool) -> String {
-    let url = format!("{}/v1/lyrics/{platform}/{id}", crate::lyssna_account::API);
-    if !fresh {
-        return url;
+/// The ISRC rides along, so the server can fall back to it in the same request.
+fn lyrics_url(platform: &str, id: &str, isrc: Option<&str>, fresh: bool) -> String {
+    let mut url = format!("{}/v1/lyrics/{platform}/{id}", crate::lyssna_account::API);
+    let mut separator = '?';
+    if let Some(isrc) = isrc {
+        url.push_str(&format!("{separator}isrc={isrc}"));
+        separator = '&';
     }
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_nanos());
-    format!("{url}?fresh={nonce}")
+    if fresh {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos());
+        url.push_str(&format!("{separator}fresh={nonce}"));
+    }
+    url
 }
 
 /// `None` when Lyssna has no lyrics under this platform ID.
-fn view(client: &Client, platform: &str, id: &str, fresh: bool) -> Result<Option<LyricsView>> {
-    let url = lyrics_url(platform, id, fresh);
+fn view(client: &Client, platform: &str, id: &str, isrc: Option<&str>, fresh: bool) -> Result<Option<LyricsView>> {
+    let url = lyrics_url(platform, id, isrc, fresh);
     let mut response = crate::lyssna_account::keyed(client.get(&url))
         .send()
         .context("Cannot reach Lyssna")?;
@@ -94,8 +100,9 @@ fn view(client: &Client, platform: &str, id: &str, fresh: bool) -> Result<Option
     Ok(Some(response.json().context("Unreadable Lyssna lyrics")?))
 }
 
-/// Looks the song up by its Spotify ID, then by its ISRC: the same recording is often on
-/// Spotify several times (singles, albums, compilations), and lyrics are uploaded for one.
+/// Looks the song up by its Spotify ID, falling back to its ISRC in the same request: the same
+/// recording is often on Spotify several times (singles, albums, compilations), and lyrics are
+/// uploaded for one. One song is one lookup.
 pub fn fetch(
     client: &Client,
     isrc: impl FnOnce() -> Option<String>,
@@ -105,13 +112,8 @@ pub fn fetch(
         bail!("Lyssna has no lyrics for local songs");
     };
     let fresh = recently_changed(id);
-    let found = match view(client, "spotify", id, fresh)? {
-        Some(found) => Some(found),
-        None => match isrc() {
-            Some(isrc) => view(client, "isrc", &isrc, fresh)?,
-            None => None,
-        },
-    };
+    let isrc = isrc().map(|isrc| isrc.trim().to_ascii_uppercase());
+    let found = view(client, "spotify", id, isrc.as_deref(), fresh)?;
     let Some(view) = found else {
         bail!("No Lyssna lyrics for this song");
     };
@@ -203,10 +205,18 @@ mod tests {
             ..Track::default()
         };
         assert!(!recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
-        assert!(!lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", false).contains('?'));
+        assert!(!lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, false).contains('?'));
         mark_changed(&track);
         assert!(recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
-        assert!(lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", true).contains("?fresh="));
+        assert!(lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, true).contains("?fresh="));
+    }
+
+    #[test]
+    fn the_isrc_travels_in_the_same_request() {
+        let url = lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", Some("USUM71900001"), false);
+        assert!(url.ends_with("/v1/lyrics/spotify/0VjIjW4GlUZAMYd2vXMi3b?isrc=USUM71900001"));
+        let url = lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", Some("USUM71900001"), true);
+        assert!(url.contains("?isrc=USUM71900001&fresh="));
     }
 
     #[test]
