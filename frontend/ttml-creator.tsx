@@ -2478,6 +2478,7 @@ export function TtmlCreator({
           <button onClick={copy} disabled={!done} title="Copy TTML">
             <Copy size={15} />
           </button>
+          {geniusMenu}
           <button
             onClick={pickImport}
             title="Import lyrics file (TTML, LRC, QRC, YRC, Lyricify Syllable or ESLyric)"
@@ -2485,7 +2486,6 @@ export function TtmlCreator({
             <Upload size={15} />
           </button>
           {importInput}
-          {geniusMenu}
           <span className="ttml-export">
             <button
               onClick={() => setExporting(!exporting)}
