@@ -18,6 +18,8 @@ interface Account {
   role: string;
   reputation: number;
   tier_name: string;
+  /** The reputation tier's number; 3 is Trusted. */
+  tier?: number;
   email_verified: boolean;
 }
 

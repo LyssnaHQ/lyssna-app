@@ -259,7 +259,12 @@ import {
   markTemporaryLoad,
   reviewerSettings,
 } from "./ttml-reviewer";
-import { canReview, reviewQueue, type ReviewSubmission } from "./review-api";
+import {
+  canMarkInstrumental,
+  canReview,
+  reviewQueue,
+  type ReviewSubmission,
+} from "./review-api";
 import { ReviewQueue } from "./review-panel";
 import { libraryTree, type LibraryEntry } from "./library-tree";
 import {
@@ -706,6 +711,8 @@ function App() {
   // undefined while checking, null when signed out of Lyssna.
   const [lyssnaRole, setLyssnaRole] = useState<string | null | undefined>();
   const reviewer = canReview(lyssnaRole);
+  const [lyssnaTier, setLyssnaTier] = useState(0);
+  const marksInstrumental = canMarkInstrumental(lyssnaRole, lyssnaTier);
   const [reviewWaiting, setReviewWaiting] = useState(0);
   const [reviewPick, setReviewPick] = useState<ReviewSubmission>();
   const [reviewInCreator, setReviewInCreator] = useState(false);
@@ -717,10 +724,11 @@ function App() {
     let live = true;
     const check = () => {
       if (document.hidden) return;
-      void rpc<{ role: string } | null>("lyssna_account")
+      void rpc<{ role: string; tier?: number } | null>("lyssna_account")
         .then((account) => {
           if (!live) return;
           setLyssnaRole(account?.role ?? null);
+          setLyssnaTier(account?.tier ?? 0);
           if (!canReview(account?.role)) return setReviewWaiting(0);
           return Promise.all([
             reviewQueue("priority", 200),
@@ -743,8 +751,12 @@ function App() {
     if (!ttmlOpen) return;
     let live = true;
     setLyssnaRole(undefined);
-    void rpc<{ role: string } | null>("lyssna_account").then(
-      (account) => live && setLyssnaRole(account?.role ?? null),
+    void rpc<{ role: string; tier?: number } | null>("lyssna_account").then(
+      (account) => {
+        if (!live) return;
+        setLyssnaRole(account?.role ?? null);
+        setLyssnaTier(account?.tier ?? 0);
+      },
       () => live && setLyssnaRole(null),
     );
     return () => {
@@ -4184,6 +4196,7 @@ function App() {
               onSpectrogramBar={setTtmlSpectral}
               onClose={() => setCenter("lyrics")}
               reviewer={reviewer}
+              marksInstrumental={marksInstrumental}
               reviewPick={reviewPick}
               reviewRestore={reviewRestore}
               onReviewOpen={setReviewInCreator}
@@ -4253,7 +4266,7 @@ function App() {
               onArtist={openArtist}
               onImport={() => setTtmlOpen("load")}
               onRetry={() => void call("retry_lyrics")}
-              onMarked={reviewer ? notify : undefined}
+              onMarked={marksInstrumental ? notify : undefined}
               onCreate={() => {
                 if (!state.settings.ttml_creator)
                   updateSettings({ ttml_creator: true });

@@ -122,6 +122,11 @@ export const REVIEWER_ROLES = ["reviewer", "moderator", "admin"];
 export const canReview = (role?: string | null) =>
   !!role && REVIEWER_ROLES.includes(role);
 
+/** Lyssna lets Trusted users (tier 3) and every role above the tiers decide
+ *  which songs are instrumental. */
+export const canMarkInstrumental = (role?: string | null, tier = 0) =>
+  !!role && (["uploader", ...REVIEWER_ROLES].includes(role) || tier >= 3);
+
 export interface DiffLine {
   text: string;
   startMs?: number;

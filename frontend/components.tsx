@@ -1997,7 +1997,7 @@ function SongLyricsPage({
   onRetry: () => void;
   /** Opens the TTML Creator to sync this song. */
   onCreate?: () => void;
-  /** A Lyssna reviewer can mark the song instrumental from the no lyrics notice. */
+  /** A Trusted Lyssna member or above can mark the song instrumental from the no lyrics notice. */
   onMarked?: (message: string, error?: boolean) => void;
   onSave: (track: Track) => void;
   onCanvasActive?: (active: boolean) => void;

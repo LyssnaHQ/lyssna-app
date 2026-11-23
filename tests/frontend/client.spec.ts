@@ -21207,10 +21207,11 @@ test(`credits in view stay whole when a pause's dots open near the end (${room}p
   await expect.poll(overhang).toBeLessThanOrEqual(1);
 });
 
-test("reviewers mark a song without lyrics instrumental", async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as any).__lyssnaAccount = { role: "reviewer" };
-  });
+const noLyricsAs = async (page: Page, account: object) => {
+  await page.addInitScript(
+    (account) => ((window as any).__lyssnaAccount = account),
+    account,
+  );
   await startClient(page);
   await page.getByTitle("Lyrics", { exact: true }).click();
   await page.evaluate((uri) => {
@@ -21220,6 +21221,24 @@ test("reviewers mark a song without lyrics instrumental", async ({ page }) => {
       message: "No lyrics found for this song",
     });
   }, track.uri);
+  await expect(
+    page.getByRole("heading", { name: "No lyrics yet" }),
+  ).toBeVisible();
+};
+
+test("members below Trusted cannot mark songs instrumental", async ({
+  page,
+}) => {
+  await noLyricsAs(page, { role: "user", tier: 2 });
+  await expect(
+    page.getByRole("button", { name: "Mark instrumental" }),
+  ).toHaveCount(0);
+});
+
+test("Trusted members mark a song without lyrics instrumental", async ({
+  page,
+}) => {
+  await noLyricsAs(page, { role: "user", tier: 3 });
   const marked = () =>
     page.evaluate(
       () =>

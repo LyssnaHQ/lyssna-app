@@ -102,6 +102,9 @@ pub struct Account {
     pub role: String,
     pub reputation: i64,
     pub tier_name: String,
+    /// The reputation tier's number; 3 is Trusted.
+    #[serde(default)]
+    pub tier: i64,
     pub email_verified: bool,
 }
 
@@ -116,6 +119,8 @@ struct MeUser {
     username: String,
     role: String,
     reputation: i64,
+    #[serde(default)]
+    tier: i64,
     email_verified: bool,
 }
 #[derive(Deserialize)]
@@ -413,6 +418,7 @@ pub fn account(client: &Client) -> Result<Option<Account>> {
         role: me.user.role,
         reputation: me.user.reputation,
         tier_name: me.tier.name,
+        tier: me.user.tier,
         email_verified: me.user.email_verified,
     }))
 }
@@ -761,7 +767,7 @@ pub fn set_instrumental(
     if !response.status().is_success() {
         let rejected = rejection(response);
         if rejected.code.as_deref() == Some("forbidden") {
-            bail!("Only Lyssna reviewers can mark songs instrumental");
+            bail!("Only Trusted Lyssna members and up can mark songs instrumental");
         }
         return Err(rejected.into_error());
     }
