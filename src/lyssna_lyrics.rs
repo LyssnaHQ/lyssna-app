@@ -27,6 +27,24 @@ struct LyricsView {
 #[derive(Deserialize)]
 struct Song {
     id: String,
+    #[serde(default)]
+    instrumental: bool,
+}
+
+/// What Lyssna's lyrics route answers: a song's lyrics, or a recording a
+/// reviewer marked instrumental, which has no song behind it.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum LyssnaAnswer {
+    Lyrics(LyricsView),
+    Instrumental(InstrumentalView),
+}
+
+#[derive(Deserialize)]
+struct InstrumentalView {
+    instrumental: bool,
+    #[serde(default)]
+    credit: Option<SourceCredit>,
 }
 
 /// Apple Music's lyrics as Lyssna serves them: no song, revision or
@@ -128,11 +146,30 @@ pub fn fetch(
     let fresh = recently_changed(id);
     let isrc = isrc().map(|isrc| isrc.trim().to_ascii_uppercase());
     let url = lyrics_url("spotify", id, "lyssna", isrc.as_deref(), fresh);
-    let Some(view) = view::<LyricsView>(client, &url)? else {
-        bail!("No Lyssna lyrics for this song");
+    match view::<LyssnaAnswer>(client, &url)? {
+        None => bail!("No Lyssna lyrics for this song"),
+        Some(LyssnaAnswer::Lyrics(view)) => read_view(view, track.duration_ms),
+        Some(LyssnaAnswer::Instrumental(view)) if view.instrumental => Ok(Lyrics {
+            instrumental: true,
+            synced: true,
+            source: "lyssna".into(),
+            source_credit: view.credit.filter(|credit| !credit.text.trim().is_empty()),
+            ..Lyrics::default()
+        }),
+        Some(LyssnaAnswer::Instrumental(_)) => bail!("No Lyssna lyrics for this song"),
+    }
+}
+
+/// A song marked instrumental that has no lyrics lines shows as instrumental.
+fn read_view(view: LyricsView, duration_ms: u64) -> Result<Lyrics> {
+    let mut lyrics = if view.song.instrumental && view.ttml.trim().is_empty() {
+        Lyrics::default()
+    } else {
+        parse_ttml(&view.ttml, duration_ms)?
     };
-    let mut lyrics = parse_ttml(&view.ttml, track.duration_ms)?;
     shift(&mut lyrics, view.offset_ms);
+    lyrics.instrumental |= view.song.instrumental && lyrics.lines.is_empty();
+    lyrics.synced |= lyrics.instrumental;
     lyrics.source = "lyssna".into();
     lyrics.credits = view.contributors;
     lyrics.song_id = Some(view.song.id);
@@ -292,6 +329,28 @@ mod tests {
             true,
         );
         assert!(url.contains("?source=lyssna&isrc=USUM71900001&fresh="));
+    }
+
+    #[test]
+    fn a_recording_marked_instrumental_reads_as_instrumental() {
+        let answer: LyssnaAnswer = serde_json::from_value(serde_json::json!({
+            "source": "lyssna", "instrumental": true, "isrc": "USUM71900001",
+            "timing_kind": "static", "offset_ms": 0, "ttml": "",
+            "credit": {"text": "Lyrics provided by Lyssna", "url": "https://lyssna.org"}
+        }))
+        .unwrap();
+        assert!(matches!(answer, LyssnaAnswer::Instrumental(ref view) if view.instrumental));
+        let answer: LyssnaAnswer = serde_json::from_value(serde_json::json!({
+            "song": {"id": "0193", "title": "T", "artists": ["A"], "instrumental": true},
+            "offset_ms": 0, "contributors": [], "ttml": ""
+        }))
+        .unwrap();
+        let LyssnaAnswer::Lyrics(view) = answer else {
+            panic!("a song's answer reads as lyrics");
+        };
+        let lyrics = read_view(view, 1000).unwrap();
+        assert!(lyrics.instrumental && lyrics.lines.is_empty());
+        assert_eq!(lyrics.song_id.as_deref(), Some("0193"));
     }
 
     #[test]
