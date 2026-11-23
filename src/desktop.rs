@@ -5460,28 +5460,57 @@ fn song_page_url(song_id: &str) -> Result<url::Url> {
 }
 /// Marks a sheet navigation that should open in the browser instead.
 const OPEN_IN_BROWSER: &str = "lyssna-browser";
-/// An "Open in browser" button over the song sheet. Song pages stay in the
-/// sheet, so the button asks for the page with a marker the sheet's
-/// navigation handler sends to the browser instead.
-const SONG_SHEET_SCRIPT: &str = r#"(() => {
+/// Marks a sheet navigation that asks for the sheet to close.
+const CLOSE_SHEET: &str = "lyssna-close";
+/// The song sheet's top bar, as in Lyssna Lyrics: "Open in browser" and a
+/// close button over the page's top right. The page is told how far the bar
+/// reaches in from the right, so a profile's search docks beside it. The
+/// sheet is its own window, so both buttons navigate to a marked URL that
+/// its navigation handler acts on instead.
+const SONG_SHEET_SCRIPT: &str = r##"(() => {
   if (window.top !== window) return;
-  const add = () => {
-    if (document.getElementById("lyssna-open-browser")) return;
-    const button = document.createElement("button");
-    button.id = "lyssna-open-browser";
-    button.type = "button";
-    button.textContent = "Open in browser";
-    button.style.cssText = "position:fixed;top:16px;right:16px;z-index:2147483647;padding:8px 16px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(18,18,20,.72);color:#fff;font:600 13px/1 inherit;cursor:pointer;backdrop-filter:blur(12px)";
-    button.addEventListener("click", () => {
-      const page = new URL(location.href);
-      page.searchParams.set("lyssna-browser", "1");
-      location.href = page.href;
-    });
-    document.body.append(button);
+  const go = (marker) => {
+    const page = new URL(location.href);
+    page.searchParams.set(marker, "1");
+    location.href = page.href;
   };
+  const icon = (paths, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  const add = () => {
+    if (document.getElementById("lyssna-sheet-actions")) return;
+    const bar = document.createElement("div");
+    bar.id = "lyssna-sheet-actions";
+    bar.style.cssText = "position:fixed;top:12px;right:12px;z-index:2147483647;display:flex;align-items:center;gap:8px";
+    const button = (label, html, marker) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.innerHTML = html;
+      element.setAttribute("aria-label", label);
+      element.style.cssText = `box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 10px;border:1px solid #ffffff24;border-radius:999px;background:#101014b8;color:#fff;font:600 13px/1 ${getComputedStyle(document.body).fontFamily};cursor:pointer;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)`;
+      element.addEventListener("mouseenter", () => { element.style.background = "#28282ee8"; });
+      element.addEventListener("mouseleave", () => { element.style.background = "#101014b8"; });
+      element.addEventListener("click", () => go(marker));
+      return element;
+    };
+    bar.append(
+      button("Open in browser", `${icon('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>')} Open in browser`, "lyssna-browser"),
+      button("Close Lyssna song page", icon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 18), "lyssna-close"),
+    );
+    document.body.append(bar);
+    const edge = () => document.documentElement.style.setProperty(
+      "--spotify-sheet-actions-edge", `${Math.ceil(innerWidth - bar.getBoundingClientRect().left)}px`);
+    new ResizeObserver(edge).observe(bar);
+    addEventListener("resize", edge);
+    edge();
+  };
+  addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) go("lyssna-close");
+  });
   if (document.body) add();
   else document.addEventListener("DOMContentLoaded", add);
-})();"#;
+})();"##;
+fn closes_sheet(url: &url::Url) -> bool {
+    url.query_pairs().any(|(key, _)| key == CLOSE_SHEET)
+}
 /// The page a sheet's "Open in browser" asked for, without the sheet's own
 /// query parameters.
 fn browser_page(url: &url::Url) -> Option<url::Url> {
@@ -5533,6 +5562,15 @@ async fn open_song_page(
                 .on_navigation(move |url| {
                     if let Some(uri) = listen_uri(url) {
                         let _ = listens.emit("lyssna", json!({"type":"play_uri","uri":uri}));
+                        return false;
+                    }
+                    if closes_sheet(url) {
+                        let app = listens.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Some(window) = app.get_webview_window(LABEL) {
+                                let _ = window.close();
+                            }
+                        });
                         return false;
                     }
                     if let Some(page) = browser_page(url) {
@@ -7103,6 +7141,12 @@ mod tests {
         assert!(
             browser_page(&url::Url::parse("https://lyssna.org/song/x?embed").unwrap()).is_none()
         );
+        assert!(closes_sheet(
+            &url::Url::parse("https://lyssna.org/u/Arashii?embed&lyssna-close=1").unwrap()
+        ));
+        assert!(!closes_sheet(
+            &url::Url::parse("https://lyssna.org/u/Arashii?embed").unwrap()
+        ));
     }
     #[test]
     fn creator_profiles_use_usernames_and_encode_path_characters() {
