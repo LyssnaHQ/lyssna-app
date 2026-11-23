@@ -4252,6 +4252,39 @@ small {
 .lyrics-message > .inline-actions .pill:active {
   transform: scale(0.97);
 }
+.lyrics-message.no-lyrics h2 {
+  font-size: 34px;
+}
+.lyrics-message.no-lyrics p {
+  max-width: 400px;
+}
+.lyrics-message-links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+  font-size: 13px;
+  color: light-dark(#0e0e0e8c, #f1f1f18c);
+}
+.lyrics-message-links button {
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition:
+    color 0.15s,
+    text-decoration-color 0.15s;
+}
+.lyrics-message-links button:hover,
+.lyrics-message-links button:focus-visible {
+  color: light-dark(#090909, #f6f6f6);
+  text-decoration-color: currentColor;
+}
 .lyrics-toolbar {
   position: absolute;
   right: 16px;

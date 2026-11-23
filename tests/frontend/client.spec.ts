@@ -14387,7 +14387,25 @@ test("songs without lyrics can show only the song", async ({ page }) => {
       { uri: track.uri, message },
     );
   await fail("No lyrics found for this song");
-  const heading = page.getByRole("heading", { name: "Lyrics unavailable" });
+  const heading = page.getByRole("heading", { name: "No lyrics yet" });
+  await expect(heading).toBeVisible();
+  await page
+    .locator(".lyrics-page")
+    .screenshot({ path: "target/diagnostics/no-lyrics.png" });
+  await page.getByRole("button", { name: "Join our Discord" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__clientTest.commands
+            .filter((entry: any) => entry.command === "open_link")
+            .at(-1)?.args.url,
+      ),
+    )
+    .toBe("https://discord.gg/qfYAsFQawp");
+  await page.getByRole("button", { name: "Open TTML Creator" }).click();
+  await expect(page.getByRole("region", { name: "TTML Creator" })).toBeVisible();
+  await page.getByTitle("Lyrics", { exact: true }).click();
   await expect(heading).toBeVisible();
   await openSettings(page, "Lyrics");
   await page.getByRole("switch", { name: "No lyrics notice" }).click();
@@ -14398,7 +14416,9 @@ test("songs without lyrics can show only the song", async ({ page }) => {
   );
   // A source that cannot be reached still says so.
   await fail("Spicy Lyrics is unreachable");
-  await expect(heading).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Lyrics unavailable" }),
+  ).toBeVisible();
 });
 
 test("a library pin stays in place while pressed and plays its pin animation", async ({

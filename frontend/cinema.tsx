@@ -31,6 +31,7 @@ export const CINEMA_VIEW = "cinema";
 export type CinemaRequest =
   | { kind: "route"; route: string }
   | { kind: "import" }
+  | { kind: "create" }
   | { kind: "database" }
   | { kind: "animator" }
   | { kind: "settings" };
@@ -140,6 +141,7 @@ export function CinemaLyrics() {
               if (id) open(`artist:${id}`);
             }}
             onImport={() => askMain({ kind: "import" })}
+            onCreate={() => askMain({ kind: "create" })}
             onRetry={() => void rpc("retry_lyrics").catch(() => {})}
             onSave={save}
           >

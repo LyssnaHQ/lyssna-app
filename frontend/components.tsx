@@ -28,6 +28,8 @@ import {
   Upload,
   RotateCw,
   Mic2,
+  FilePenLine,
+  MessagesSquare,
   CirclePlus,
   CircleCheck,
   ChevronUp,
@@ -1980,6 +1982,7 @@ function SongLyricsPage({
   onArtist,
   onImport,
   onRetry,
+  onCreate,
   onSave,
   onCanvasActive,
   immersive = false,
@@ -1990,6 +1993,8 @@ function SongLyricsPage({
   onPlayer: (request: PlayerRequest) => void;
   onImport: () => void;
   onRetry: () => void;
+  /** Opens the TTML Creator to sync this song. */
+  onCreate?: () => void;
   onSave: (track: Track) => void;
   onCanvasActive?: (active: boolean) => void;
   immersive?: boolean;
@@ -2503,7 +2508,41 @@ function SongLyricsPage({
               state.settings.lyrics_skeleton !== false ? (
               <LyricsSkeleton />
             ) : state.lyric_error === NO_LYRICS &&
-              state.settings.lyrics_no_lyrics_notice === false ? null : (
+              state.settings.lyrics_no_lyrics_notice ===
+                false ? null : state.lyric_error === NO_LYRICS ? (
+              <div className="lyrics-message no-lyrics">
+                <Mic2 />
+                <h2>No lyrics yet</h2>
+                <p>
+                  Nobody has synced this song yet. Sync it in the TTML Creator,
+                  or ask the community on Discord.
+                </p>
+                <div className="inline-actions">
+                  {onCreate && (
+                    <button className="pill primary" onClick={onCreate}>
+                      <FilePenLine size={18} />
+                      Open TTML Creator
+                    </button>
+                  )}
+                  <button
+                    className="pill"
+                    onClick={() =>
+                      void rpc("open_link", { url: DISCORD_INVITE }).catch(
+                        () => {},
+                      )
+                    }
+                  >
+                    <MessagesSquare size={18} />
+                    Join our Discord
+                  </button>
+                </div>
+                <div className="lyrics-message-links">
+                  <button onClick={onRetry}>Search again</button>
+                  <span aria-hidden="true">·</span>
+                  <button onClick={onImport}>Import a lyric file</button>
+                </div>
+              </div>
+            ) : (
               <div className="lyrics-message">
                 <Mic2 />
                 <h2>
@@ -2542,7 +2581,9 @@ function SongLyricsPage({
 }
 
 /** The backend's answer when every source had no lyrics (not a failure). */
-const NO_LYRICS = "No lyrics found for this song";
+export const NO_LYRICS = "No lyrics found for this song";
+/** Lyssna's community Discord, where people ask for and sync lyrics. */
+const DISCORD_INVITE = "https://discord.gg/qfYAsFQawp";
 /** Ragged placeholder widths, fixed so the lines never reshuffle. */
 const SKELETON_WIDTHS = [71, 56, 87, 48, 76, 63, 90, 52, 69, 81, 59, 74];
 /** Placeholder lines where the lyrics will land, while they are fetched. */

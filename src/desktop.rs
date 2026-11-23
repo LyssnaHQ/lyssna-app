@@ -6088,6 +6088,8 @@ fn allowed_link(url: &url::Url) -> bool {
             Some("github.com") => {
                 CREDITED.contains(&url.path()) && url.query().is_none() && url.fragment().is_none()
             }
+            // Lyssna's community server invite, from the no lyrics notice.
+            Some("discord.gg") => url.path() == "/qfYAsFQawp" && url.query().is_none(),
             _ => false,
         }
 }
@@ -7242,6 +7244,8 @@ mod tests {
         assert!(allowed("https://github.com/iPixelGalaxy/spotify-plus"));
         assert!(allowed("https://github.com/LyssLabs/lyssna-app"));
         assert!(allowed("https://lrc.red/"));
+        assert!(allowed("https://discord.gg/qfYAsFQawp"));
+        assert!(!allowed("https://discord.gg/another"));
         assert!(!allowed("https://github.com/someone/else"));
         assert!(!allowed(
             "https://github.com/iPixelGalaxy/spotify-plus/releases"

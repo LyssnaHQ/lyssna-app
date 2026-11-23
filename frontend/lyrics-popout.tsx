@@ -15,7 +15,12 @@ import {
 } from "./player-icons";
 import { Ambience, useBackgroundBrightness } from "./ambience";
 import { useMotionCover } from "./motion-cover";
-import { LyricsDisplay, useLyricPosition, usePosition } from "./components";
+import {
+  LyricsDisplay,
+  NO_LYRICS,
+  useLyricPosition,
+  usePosition,
+} from "./components";
 import { displayLyrics } from "./word-sync";
 import { romanizeFor, useRomanization } from "./romanization";
 import { filterWords } from "./word-filter";
@@ -131,7 +136,9 @@ export function LyricsPopout() {
             {lyrics?.instrumental
               ? "Instrumental"
               : state.lyric_error
-                ? "Lyrics unavailable"
+                ? state.lyric_error === NO_LYRICS
+                  ? "No lyrics yet"
+                  : "Lyrics unavailable"
                 : track
                   ? "Finding lyrics…"
                   : ""}

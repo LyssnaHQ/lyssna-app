@@ -1292,6 +1292,11 @@ function App() {
       void window.unminimize().then(() => window.setFocus());
       if (payload.kind === "route") navigate(payload.route);
       else if (payload.kind === "import") setTtmlOpen("load");
+      else if (payload.kind === "create") {
+        if (!stateRef.current.settings.ttml_creator)
+          updateSettings({ ttml_creator: true });
+        setCenter("ttml");
+      }
       else if (payload.kind === "database") setTtmlOpen("database");
       else if (payload.kind === "animator") manageAnimator.current();
       else
@@ -4248,6 +4253,11 @@ function App() {
               onArtist={openArtist}
               onImport={() => setTtmlOpen("load")}
               onRetry={() => void call("retry_lyrics")}
+              onCreate={() => {
+                if (!state.settings.ttml_creator)
+                  updateSettings({ ttml_creator: true });
+                setCenter("ttml");
+              }}
               onSave={save}
               queueOpen={sidebar && panel === "queue"}
             >
