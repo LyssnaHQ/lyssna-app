@@ -1362,7 +1362,9 @@ const LyricCredits = memo(function LyricCredits({
       <div
         className={`lyric-source community-credits lyssna-credits ${expanded ? "expanded" : ""}`}
       >
-        <span className="community-lead">Lyrics provided by: Lyssna</span>
+        <span className="community-lead">
+          {lyrics.instrumental ? "Provided by: Lyssna" : "Lyrics provided by: Lyssna"}
+        </span>
         <LyssnaContributors credits={lyrics.credits} song={lyrics.song_id} />
       </div>
     );
@@ -1432,8 +1434,12 @@ const LyricCredits = memo(function LyricCredits({
           }
           disabled={!lyrics.source_credit.url.startsWith("https://")}
         >
-          {lyrics.source_credit.text}
+          {lyrics.instrumental && lyrics.source === "lyssna"
+            ? "Provided by: Lyssna"
+            : lyrics.source_credit.text}
         </button>
+      ) : lyrics.instrumental ? (
+        "Provided by: "
       ) : (
         "Lyrics provided by: "
       )}

@@ -3397,6 +3397,31 @@ test("playlist toolbar stays above the track table", async ({ page }) => {
   expect(toolbar!.y + toolbar!.height).toBeLessThanOrEqual(rows!.y);
 });
 
+test("instrumental songs from Lyssna credit it without saying lyrics", async ({
+  page,
+}) => {
+  await startClient(page);
+  await page.getByTitle("Lyrics", { exact: true }).click();
+  await page.evaluate((uri) => {
+    (window as any).__clientTest.emit({
+      type: "lyrics",
+      uri,
+      lyrics: {
+        source: "lyssna",
+        synced: true,
+        instrumental: true,
+        lines: [],
+        source_credit: {
+          text: "Lyrics provided by Lyssna",
+          url: "https://lyssna.org",
+        },
+      },
+    });
+  }, track.uri);
+  const credit = page.locator(".lyrics-page .lyric-source");
+  await expect(credit).toHaveText("Provided by: Lyssna");
+});
+
 test("Lyssna lyrics list their contributors with stacked avatars", async ({
   page,
 }) => {
