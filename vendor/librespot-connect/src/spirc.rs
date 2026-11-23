@@ -46,6 +46,16 @@ use std::{
 use thiserror::Error;
 use tokio::{sync::mpsc, time::sleep};
 
+// A load's context requests run inside the command loop, so one that stalls
+// holds back every command after it, Play and Pause included.
+const LOAD_FETCH_TIMEOUT: Duration = Duration::from_secs(8);
+
+async fn within_load_timeout<T>(fetch: impl Future<Output = Result<T, Error>>) -> Result<T, Error> {
+    tokio::time::timeout(LOAD_FETCH_TIMEOUT, fetch)
+        .await
+        .map_err(Error::deadline_exceeded)?
+}
+
 #[derive(Debug, Error)]
 enum SpircError {
     #[error("response payload empty")]
@@ -2738,7 +2748,9 @@ impl SpircTask {
             self.context_resolver.clear_prepared_dj();
             Some((**context).clone())
         } else if let Some(url) = options.session_url.as_deref() {
-            self.session.spclient().get_context_url(url).await.ok()
+            within_load_timeout(self.session.spclient().get_context_url(url))
+                .await
+                .ok()
         } else {
             None
         };
@@ -2813,7 +2825,8 @@ impl SpircTask {
                     .starting_fresh(fresh),
                 );
             }
-            let mut context = self.context_resolver.get_next_context(Vec::new).await?;
+            let mut context =
+                within_load_timeout(self.context_resolver.get_next_context(Vec::new)).await?;
             if resumed && let Some(track) = options.playing_track.as_ref() {
                 let offset = options.relative_offset.max(0) as usize;
                 for _ in 0..MAX_REQUESTED_TRACK_PAGES {
@@ -2828,7 +2841,8 @@ impl SpircTask {
                     else {
                         break;
                     };
-                    let page = self.session.spclient().get_context_page(url).await?;
+                    let page =
+                        within_load_timeout(self.session.spclient().get_context_page(url)).await?;
                     if page.tracks.is_empty() {
                         break;
                     }
