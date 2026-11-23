@@ -2921,9 +2921,9 @@ test("Canvas defaults on, Space Gravity is optional, with sharp video left and m
   await openSettings(page, "Effects");
   await expect(page.getByLabel("Lyrics API key")).toHaveCount(0);
   await expect(page.getByLabel("Canvas in lyrics")).toBeChecked();
-  await expect(page.getByLabel("Space Gravity")).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Space Gravity" })).not.toBeChecked();
   await page.getByLabel("Canvas in lyrics").check();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.keyboard.press("Escape");
   await showLyrics(page);
   await expect(page.locator(".canvas-lyrics video")).toBeVisible();
@@ -6132,7 +6132,7 @@ test("Space Gravity waiting dots share the normal countdown and drift with words
   }
   await openSettings(page, "Effects");
   await page.getByLabel("Canvas in lyrics").uncheck();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.keyboard.press("Escape");
   await showLyrics(page);
   const waiting = page.locator(".gravity-wait");
@@ -6231,7 +6231,7 @@ test("Space Gravity shares normal syllable joins and held-letter timing", async 
   }
   await openSettings(page, "Effects");
   await page.getByLabel("Canvas in lyrics").uncheck();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.keyboard.press("Escape");
   await showLyrics(page);
   await expect(page.locator(".gravity-word")).toHaveCount(4);
@@ -6269,7 +6269,7 @@ test("Highlighter inks each floating word in Space Gravity", async ({
   await startClient(page);
   await openSettings(page, "Effects");
   await page.getByLabel("Canvas in lyrics").uncheck();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.getByRole("switch", { name: "Highlighter" }).click();
   await page.keyboard.press("Escape");
   await page.getByTitle("Lyrics", { exact: true }).click();
@@ -6338,7 +6338,7 @@ test("Highlighter joins sung words with marker lines in Space Gravity", async ({
   await startClient(page);
   await openSettings(page, "Effects");
   await page.getByLabel("Canvas in lyrics").uncheck();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.getByRole("switch", { name: "Highlighter" }).click();
   await page.keyboard.press("Escape");
   await page.getByTitle("Lyrics", { exact: true }).click();
@@ -6529,7 +6529,7 @@ test("Space Gravity marker links leave each word once it is inked, at the Highli
   await startClient(page);
   await openSettings(page, "Effects");
   await page.getByLabel("Canvas in lyrics").uncheck();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.getByRole("switch", { name: "Highlighter" }).click();
   await page.keyboard.press("Escape");
   await page.getByTitle("Lyrics", { exact: true }).click();
@@ -6645,7 +6645,7 @@ test("Space Gravity words keep drifting while the song plays", async ({
   await startClient(page);
   await openSettings(page, "Effects");
   await page.getByLabel("Canvas in lyrics").uncheck();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.keyboard.press("Escape");
   await page.getByTitle("Lyrics", { exact: true }).click();
   await page.locator(".file-input").setInputFiles({
@@ -6855,7 +6855,7 @@ test("romanization replaces non-Latin lyrics in normal, floating and preview vie
   await expect(page.locator(".lyrics-page .lyric-main")).toHaveText("東京");
   await romanization.click();
   await openSettings(page, "Effects");
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.keyboard.press("Escape");
   await showLyrics(page);
   for (const [text, reading, expected] of samples) {
@@ -12486,7 +12486,7 @@ async function gravityWithoutCanvas(page: Page) {
   await startClient(page);
   await openSettings(page, "Effects");
   await page.getByLabel("Canvas in lyrics").uncheck();
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.keyboard.press("Escape");
   await page.getByTitle("Lyrics", { exact: true }).click();
   await page.locator(".file-input").setInputFiles({
@@ -15539,7 +15539,7 @@ test("Space Gravity over a canvas uses the left side too", async ({ page }) => {
   await page.getByTitle("Lyrics", { exact: true }).click();
   await emitCanvas(page);
   await openSettings(page, "Effects");
-  await page.getByLabel("Space Gravity").check();
+  await page.getByRole("switch", { name: "Space Gravity" }).check();
   await page.keyboard.press("Escape");
   await showLyrics(page);
   await page.evaluate((uri) => {
