@@ -246,12 +246,35 @@ pub fn fetch_apple(
     let Some(view) = view::<AppleView>(client, &url)? else {
         bail!("No Apple Music lyrics for this song");
     };
+    if !same_recording(&view.ttml, track.duration_ms) {
+        bail!("Apple Music's lyrics are for another version of this song");
+    }
     let mut lyrics = parse_ttml(&view.ttml, track.duration_ms)?;
     shift(&mut lyrics, view.offset_ms);
     lyrics.source = "apple_music".into();
     lyrics.source_credit = view.credit.filter(|credit| !credit.text.trim().is_empty());
     lyrics.apple_original = apple_original(view.apple_id, &view.ttml);
     Ok(lyrics)
+}
+
+/// Apple can file several recordings under one ISRC, and Lyssna may answer
+/// with lyrics timed to another one (a live take, an extended cut). Apple's
+/// TTML states the length of the recording it was timed to, so lyrics for a
+/// recording longer or shorter than the one playing are not used.
+fn same_recording(ttml: &str, duration_ms: u64) -> bool {
+    const TOLERANCE_MS: u64 = 10_000;
+    let Ok(document) = roxmltree::Document::parse(ttml) else {
+        return true;
+    };
+    let Some(length) = document
+        .descendants()
+        .find(|node| node.has_tag_name("body"))
+        .and_then(|body| body.attribute("dur"))
+        .and_then(crate::lyrics::timestamp)
+    else {
+        return true;
+    };
+    duration_ms == 0 || length.abs_diff(duration_ms) <= TOLERANCE_MS
 }
 
 fn apple_original(apple_id: Option<String>, ttml: &str) -> Option<crate::lyrics::AppleOriginal> {
@@ -326,6 +349,23 @@ pub fn record_view(client: &Client, song_id: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn apple_lyrics_for_another_recording_are_refused() {
+        let ttml = |dur: &str| {
+            format!(
+                r#"<tt xmlns="http://www.w3.org/ns/ttml"><body dur="{dur}"><div><p begin="00:00:14.660" end="00:00:20.910">Line</p></div></body></tt>"#
+            )
+        };
+        assert!(same_recording(&ttml("00:04:27.973"), 267_973));
+        assert!(same_recording(&ttml("00:04:30.000"), 267_973));
+        assert!(!same_recording(&ttml("00:10:38.930"), 267_973));
+        assert!(!same_recording(&ttml("00:03:10.000"), 267_973));
+        assert!(same_recording(
+            r#"<tt xmlns="http://www.w3.org/ns/ttml"><body/></tt>"#,
+            267_973
+        ));
+    }
+
     #[test]
     fn apple_original_names_the_sync_by_id_and_hash() {
         let original = apple_original(Some("1440857781".into()), "abc").unwrap();

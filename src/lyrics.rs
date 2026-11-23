@@ -135,7 +135,7 @@ impl Lyrics {
     }
 }
 
-fn timestamp(value: &str) -> Option<u64> {
+pub(crate) fn timestamp(value: &str) -> Option<u64> {
     let value = value.trim();
     let seconds = if let Some(value) = value.strip_suffix("ms") {
         value.parse::<f64>().ok()? / 1000.0
@@ -1300,7 +1300,7 @@ fn fetch_from(
     );
     let fetch = move |source: &str| -> Result<Lyrics> {
         match source {
-            "apple" => cache.get("apple-lyssna", &|| {
+            "apple" => cache.get("apple-lyssna-2", &|| {
                 crate::lyssna_lyrics::fetch_apple(
                     &client,
                     || native.isrc(&track.uri).ok().flatten(),
