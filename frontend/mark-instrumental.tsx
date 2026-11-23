@@ -7,6 +7,16 @@ import type { Track } from "./types";
 type Notify = (message: string, error?: boolean) => void;
 
 /** Lyssna answered this song's lookup with an instrumental mark. */
+/** The playing song already has lyrics lines, so it can't be instrumental. */
+export function hasLyrics(state: AppState, track?: Track) {
+  return (
+    !!track &&
+    state.playback.item?.uri === track.uri &&
+    !state.lyrics?.instrumental &&
+    !!state.lyrics?.lines.length
+  );
+}
+
 export function markedInstrumental(state: AppState, track?: Track) {
   return (
     !!track &&

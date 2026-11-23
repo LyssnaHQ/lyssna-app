@@ -21337,6 +21337,45 @@ const commandArgs = (page: Page, name: string) =>
     name,
   );
 
+test("the TTML Creator offers Mark instrumental only for songs without lyrics", async ({
+  page,
+}) => {
+  await page.addInitScript(
+    (account) => ((window as any).__lyssnaAccount = account),
+    { role: "user", tier: 1 },
+  );
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await openSettings(page, "Lyrics");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page
+    .locator(".player-extras")
+    .getByTitle("TTML Creator", { exact: true })
+    .click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  const mark = creator.getByRole("button", { name: "Mark instrumental" });
+  // The playing song already has lyrics.
+  await expect(creator).toBeVisible();
+  await expect(mark).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as any).__clientTest.emit({
+      type: "lyrics",
+      uri: "spotify:track:0123456789abcdefghijkl",
+      lyrics: {
+        source: "lyssna",
+        synced: true,
+        instrumental: false,
+        lines: [],
+      },
+    });
+  });
+  await expect(mark).toBeVisible();
+});
+
 test("listeners signed out of Lyssna can request lyrics but not mark instrumental", async ({
   page,
 }) => {
