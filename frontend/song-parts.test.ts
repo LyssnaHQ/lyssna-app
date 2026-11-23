@@ -16,6 +16,12 @@ it("names Genius sections in any language under the English name", () => {
   expect(songPart("Non-Lyrical Vocals")).toBe("Non-Lyrical Vocals");
 });
 
+it("knows the sections Genius's pages use beyond its guide", () => {
+  expect(songPart("Pre-Drop")).toBe("Pre-Drop");
+  expect(songPart("Post-Drop 2")).toBe("Post-Drop");
+  expect(unknownSections("[Pre-Drop]\nla\n[Post-Drop]")).toEqual([]);
+});
+
 it("knows no section Genius doesn't use", () => {
   expect(songPart("")).toBeUndefined();
   expect(songPart("Produced by someone")).toBeUndefined();
