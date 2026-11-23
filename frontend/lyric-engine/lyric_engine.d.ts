@@ -12,6 +12,24 @@ export class Countdown {
 }
 
 /**
+ * A word group split into floating pieces.
+ */
+export class GravityPieces {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * `timing` holds `start, end, estimated` per word.
+     */
+    constructor(texts: string[], timing: Float64Array);
+    texts(): string[];
+    /**
+     * Per piece: `start, end, first, count, split, word start, word end,
+     * letter offset, letter count` (letters negative when not held).
+     */
+    values(): Float64Array;
+}
+
+/**
  * A song's lines, parsed once and kept in the engine for the view's
  * per-frame questions.
  */
@@ -103,6 +121,10 @@ export class Syllable {
     values(): Float64Array;
 }
 
+export function bodyIntersects(body: Float64Array, rect: Float64Array): boolean;
+
+export function constrainBody(body: Float64Array, field: Float64Array): Float64Array;
+
 /**
  * Three dots as `opacity, scale, glow, lift` fours.
  */
@@ -112,9 +134,15 @@ export function countdownTime(gap_start: number, gap_end: number, position: numb
 
 export function countdownVisible(gap_start: number, gap_end: number, time: number): boolean;
 
+export function createBody(seed: number, speed: number, line_start: number, order: number): Float64Array;
+
 export function cueHolds(playing: boolean, position: number, clicked_at: number, line_start: number): boolean;
 
 export function glideScroll(from: number, to: number, elapsed: number): number;
+
+export function gravityHash(text: string): number;
+
+export function gravityRandom(seed: number): number;
 
 export function heldTarget(target: number, line_top: number, card: boolean, focus: number, end: number): number;
 
@@ -127,9 +155,17 @@ export function letterGoals(start: number, end: number, time: number, count: num
 export function lineBlur(distance: number): number;
 
 /**
+ * Sizes as `width, height` pairs; returns each word's centre pair, then the
+ * line height.
+ */
+export function lineLayout(sizes: Float64Array, width: number, opposite: boolean, gap: number): Float64Array;
+
+/**
  * Fill position of a line without word timing, or NaN when it should rest.
  */
 export function lineWipe(start: number, end: number, time: number, simple: boolean): number;
+
+export function measureBody(body: Float64Array, width: number, height: number): Float64Array;
 
 /**
  * 0 scale, 1 letter scale, 2 lift, 3 letter lift, 4 glow.
@@ -151,6 +187,22 @@ export function scrollTarget(line_top: number, line_height: number, centred: boo
 
 export function simpleGoal(start: number, end: number, time: number): Float64Array;
 
+export function spawnBody(body: Float64Array, occupied: Float64Array, field: Float64Array, reduced: boolean, across: number, down: number, phase: number): Float64Array;
+
+export function spawnOverlap(body: Float64Array, other: Float64Array): number;
+
+export function speedMultiplier(word_starts: Float64Array): number;
+
+/**
+ * `sizes` holds each line's body count; bodies run line after line.
+ */
+export function staticLayout(bodies: Float64Array, sizes: Uint32Array, field: Float64Array): Float64Array;
+
+/**
+ * Steps shown bodies and fading ones together; returns both, shown first.
+ */
+export function stepBodies(bodies: Float64Array, dt: number, field: Float64Array, window_vx: number, window_vy: number, exiting: Float64Array): Float64Array;
+
 export function stepScroll(position: number, velocity: number, target: number, seconds: number): Float64Array;
 
 /**
@@ -158,7 +210,14 @@ export function stepScroll(position: number, velocity: number, target: number, s
  */
 export function sungState(start: number, end: number, time: number): number;
 
+/**
+ * Window motion as `x, y, vx, vy`, with NaN x and y before the first sample.
+ */
+export function trackWindow(motion: Float64Array, x: number, y: number, dt: number): Float64Array;
+
 export function tuneMotion(legacy: boolean, idle_scale: number, word_peak_scale: number, letter_peak_scale: number, vertical_strength: number, glow_strength: number, scale_frequency: number, scale_damping: number, vertical_frequency: number, vertical_damping: number, glow_frequency: number, glow_damping: number, blur_strength: number): void;
+
+export function visibleWordCount(field: Float64Array): number;
 
 export function vocalEnd(end: number, word_ends: Float64Array): number;
 
@@ -166,28 +225,40 @@ export function wordGoal(start: number, end: number, time: number): Float64Array
 
 export function wordGroupSizes(texts: string[]): Uint32Array;
 
+export function wordWindow(anchor: number, total: number, count: number): Float64Array;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_countdown_free: (a: number, b: number) => void;
+    readonly __wbg_gravitypieces_free: (a: number, b: number) => void;
     readonly __wbg_lyriclines_free: (a: number, b: number) => void;
     readonly __wbg_scroller_free: (a: number, b: number) => void;
     readonly __wbg_spline_free: (a: number, b: number) => void;
     readonly __wbg_spring_free: (a: number, b: number) => void;
     readonly __wbg_syllable_free: (a: number, b: number) => void;
+    readonly bodyIntersects: (a: number, b: number, c: number, d: number) => number;
+    readonly constrainBody: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly countdownDots: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly countdownTime: (a: number, b: number, c: number) => number;
     readonly countdownVisible: (a: number, b: number, c: number) => number;
     readonly countdown_frame: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly countdown_new: () => number;
+    readonly createBody: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly cueHolds: (a: number, b: number, c: number, d: number) => number;
     readonly glideScroll: (a: number, b: number, c: number) => number;
+    readonly gravityHash: (a: number, b: number) => number;
+    readonly gravityRandom: (a: number) => number;
+    readonly gravitypieces_new: (a: number, b: number, c: number, d: number) => number;
+    readonly gravitypieces_texts: (a: number, b: number) => void;
+    readonly gravitypieces_values: (a: number, b: number) => void;
     readonly heldTarget: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly isEmphasis: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly leadTop: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly letterGoals: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly lineBlur: (a: number) => number;
+    readonly lineLayout: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly lineWipe: (a: number, b: number, c: number, d: number) => number;
     readonly lyriclines_activeLines: (a: number, b: number, c: number) => void;
     readonly lyriclines_allSung: (a: number, b: number) => number;
@@ -198,6 +269,7 @@ export interface InitOutput {
     readonly lyriclines_vocalEnd: (a: number, b: number) => number;
     readonly lyriclines_vocalGap: (a: number, b: number, c: number) => void;
     readonly lyriclines_vocalGaps: (a: number, b: number) => void;
+    readonly measureBody: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly motionCurve: (a: number, b: number) => number;
     readonly motionSettings: (a: number) => void;
     readonly positionJumped: (a: number, b: number) => number;
@@ -220,6 +292,9 @@ export interface InitOutput {
     readonly scroller_tick: (a: number, b: number) => number;
     readonly scroller_velocity: (a: number) => number;
     readonly simpleGoal: (a: number, b: number, c: number, d: number) => void;
+    readonly spawnBody: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
+    readonly spawnOverlap: (a: number, b: number, c: number, d: number) => number;
+    readonly speedMultiplier: (a: number, b: number) => number;
     readonly spline_at: (a: number, b: number) => number;
     readonly spline_new: (a: number, b: number) => number;
     readonly spring_asleep: (a: number) => number;
@@ -233,15 +308,20 @@ export interface InitOutput {
     readonly spring_set_velocity: (a: number, b: number) => void;
     readonly spring_step: (a: number, b: number) => number;
     readonly spring_velocity: (a: number) => number;
+    readonly staticLayout: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly stepBodies: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
     readonly stepScroll: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly sungState: (a: number, b: number, c: number) => number;
     readonly syllable_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
     readonly syllable_step: (a: number, b: number, c: number, d: number) => number;
     readonly syllable_values: (a: number, b: number) => void;
+    readonly trackWindow: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly tuneMotion: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
+    readonly visibleWordCount: (a: number, b: number) => number;
     readonly vocalEnd: (a: number, b: number, c: number) => number;
     readonly wordGoal: (a: number, b: number, c: number, d: number) => void;
     readonly wordGroupSizes: (a: number, b: number, c: number) => void;
+    readonly wordWindow: (a: number, b: number, c: number, d: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;

@@ -1,6 +1,7 @@
 //! Lyssna's lyric timing and motion. The web view loads this as WebAssembly
 //! and keeps only DOM work in TypeScript.
 
+pub mod gravity;
 pub mod motion;
 pub mod view;
 
@@ -702,6 +703,241 @@ pub fn line_wipe(start: f64, end: f64, time: f64, simple: bool) -> f64 {
     }
     let span = if end - start == 0.0 { 1.0 } else { end - start };
     120.0 * ((time - start) / span).clamp(0.0, 1.0) - 20.0
+}
+
+fn rect_at(values: &[f64], at: usize) -> Option<gravity::Rect> {
+    let rect = values.get(at..at + 4)?;
+    rect[0].is_finite().then(|| gravity::Rect {
+        left: rect[0],
+        top: rect[1],
+        right: rect[2],
+        bottom: rect[3],
+    })
+}
+
+/// Fields as `width, height`, then `area, layout, cover, footer` rects of
+/// four (NaN when absent), then any blocker rects.
+fn field_from(values: &[f64]) -> gravity::Field {
+    gravity::Field {
+        width: values.first().copied().unwrap_or(0.0),
+        height: values.get(1).copied().unwrap_or(0.0),
+        area: rect_at(values, 2),
+        layout: rect_at(values, 6),
+        cover: rect_at(values, 10),
+        footer: rect_at(values, 14),
+        blockers: (18..values.len())
+            .step_by(4)
+            .filter_map(|at| rect_at(values, at))
+            .collect(),
+    }
+}
+
+fn bodies_from(values: &[f64]) -> Vec<gravity::Body> {
+    values
+        .chunks(gravity::BODY_VALUES)
+        .map(gravity::Body::from_values)
+        .collect()
+}
+
+fn body_values(bodies: &[gravity::Body]) -> Vec<f64> {
+    bodies.iter().flat_map(gravity::Body::to_values).collect()
+}
+
+#[wasm_bindgen(js_name = gravityHash)]
+pub fn gravity_hash(text: &str) -> u32 {
+    gravity::hash(text)
+}
+
+#[wasm_bindgen(js_name = gravityRandom)]
+pub fn gravity_random(seed: f64) -> f64 {
+    gravity::random(seed)
+}
+
+#[wasm_bindgen(js_name = speedMultiplier)]
+pub fn speed_multiplier(word_starts: &[f64]) -> f64 {
+    gravity::speed_multiplier(word_starts)
+}
+
+#[wasm_bindgen(js_name = createBody)]
+pub fn create_body(seed: f64, speed: f64, line_start: f64, order: f64) -> Vec<f64> {
+    gravity::create_body(seed, speed, line_start, order)
+        .to_values()
+        .to_vec()
+}
+
+#[wasm_bindgen(js_name = measureBody)]
+pub fn measure_body(body: &[f64], width: f64, height: f64) -> Vec<f64> {
+    let mut body = gravity::Body::from_values(body);
+    gravity::measure(&mut body, width, height);
+    body.to_values().to_vec()
+}
+
+#[wasm_bindgen(js_name = constrainBody)]
+pub fn constrain_body(body: &[f64], field: &[f64]) -> Vec<f64> {
+    let mut body = gravity::Body::from_values(body);
+    gravity::constrain(&mut body, &field_from(field));
+    body.to_values().to_vec()
+}
+
+#[wasm_bindgen(js_name = bodyIntersects)]
+pub fn body_intersects(body: &[f64], rect: &[f64]) -> bool {
+    gravity::intersects(&gravity::Body::from_values(body), rect_at(rect, 0).as_ref())
+}
+
+/// Window motion as `x, y, vx, vy`, with NaN x and y before the first sample.
+#[wasm_bindgen(js_name = trackWindow)]
+pub fn track_window(motion: &[f64], x: f64, y: f64, dt: f64) -> Vec<f64> {
+    let value = |index: usize| motion.get(index).copied().unwrap_or(f64::NAN);
+    let mut window = gravity::WindowMotion {
+        position: (value(0).is_finite() && value(1).is_finite()).then(|| (value(0), value(1))),
+        vx: value(2),
+        vy: value(3),
+    };
+    gravity::track_window(&mut window, Some((x, y)), dt);
+    let (x, y) = window.position.unwrap_or((f64::NAN, f64::NAN));
+    vec![x, y, window.vx, window.vy]
+}
+
+/// Steps shown bodies and fading ones together; returns both, shown first.
+#[wasm_bindgen(js_name = stepBodies)]
+pub fn step_bodies(
+    bodies: &[f64],
+    dt: f64,
+    field: &[f64],
+    window_vx: f64,
+    window_vy: f64,
+    exiting: &[f64],
+) -> Vec<f64> {
+    let mut shown = bodies_from(bodies);
+    let mut fading = bodies_from(exiting);
+    gravity::step(
+        &mut shown,
+        dt,
+        &field_from(field),
+        (window_vx, window_vy),
+        &mut fading,
+    );
+    let mut values = body_values(&shown);
+    values.extend(body_values(&fading));
+    values
+}
+
+#[wasm_bindgen(js_name = spawnOverlap)]
+pub fn spawn_overlap(body: &[f64], other: &[f64]) -> f64 {
+    gravity::spawn_overlap(
+        &gravity::Body::from_values(body),
+        &gravity::Body::from_values(other),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen(js_name = spawnBody)]
+pub fn spawn_body(
+    body: &[f64],
+    occupied: &[f64],
+    field: &[f64],
+    reduced: bool,
+    across: f64,
+    down: f64,
+    phase: f64,
+) -> Vec<f64> {
+    let mut body = gravity::Body::from_values(body);
+    gravity::spawn(
+        &mut body,
+        &bodies_from(occupied),
+        &field_from(field),
+        reduced,
+        [across, down, phase],
+    );
+    body.to_values().to_vec()
+}
+
+/// `sizes` holds each line's body count; bodies run line after line.
+#[wasm_bindgen(js_name = staticLayout)]
+pub fn static_layout(bodies: &[f64], sizes: &[u32], field: &[f64]) -> Vec<f64> {
+    let mut all = bodies_from(bodies).into_iter();
+    let mut lines: Vec<Vec<gravity::Body>> = sizes
+        .iter()
+        .map(|&size| all.by_ref().take(size as usize).collect())
+        .collect();
+    gravity::static_layout(&mut lines, &field_from(field));
+    lines.iter().flat_map(|line| body_values(line)).collect()
+}
+
+#[wasm_bindgen(js_name = visibleWordCount)]
+pub fn visible_word_count(field: &[f64]) -> f64 {
+    gravity::visible_word_count(&field_from(field))
+}
+
+#[wasm_bindgen(js_name = wordWindow)]
+pub fn word_window(anchor: f64, total: f64, count: f64) -> Vec<f64> {
+    gravity::word_window(anchor, total, count)
+        .map(|(first, last)| vec![first, last])
+        .unwrap_or_default()
+}
+
+/// Sizes as `width, height` pairs; returns each word's centre pair, then the
+/// line height.
+#[wasm_bindgen(js_name = lineLayout)]
+pub fn line_layout(sizes: &[f64], width: f64, opposite: bool, gap: f64) -> Vec<f64> {
+    let sizes: Vec<(f64, f64)> = sizes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[width, height]| (width, height))
+        .collect();
+    let (places, height) = gravity::line_layout(&sizes, width, opposite, gap);
+    let mut values: Vec<f64> = places.into_iter().flat_map(|(x, y)| [x, y]).collect();
+    values.push(height);
+    values
+}
+
+/// A word group split into floating pieces.
+#[wasm_bindgen]
+pub struct GravityPieces(Vec<gravity::Piece>);
+
+#[wasm_bindgen]
+impl GravityPieces {
+    /// `timing` holds `start, end, estimated` per word.
+    #[wasm_bindgen(constructor)]
+    pub fn new(texts: Vec<String>, timing: &[f64]) -> Self {
+        let words: Vec<gravity::WordInput> = texts
+            .into_iter()
+            .zip(timing.as_chunks::<3>().0)
+            .map(|(text, &[start, end, estimated])| gravity::WordInput {
+                text,
+                start,
+                end,
+                estimated: estimated != 0.0,
+            })
+            .collect();
+        Self(gravity::gravity_pieces(&words))
+    }
+
+    pub fn texts(&self) -> Vec<String> {
+        self.0.iter().map(|piece| piece.text.clone()).collect()
+    }
+
+    /// Per piece: `start, end, first, count, split, word start, word end,
+    /// letter offset, letter count` (letters negative when not held).
+    pub fn values(&self) -> Vec<f64> {
+        self.0
+            .iter()
+            .flat_map(|piece| {
+                [
+                    piece.start,
+                    piece.end,
+                    piece.first as f64,
+                    piece.count as f64,
+                    if piece.split { 1.0 } else { 0.0 },
+                    piece.word_start,
+                    piece.word_end,
+                    piece.letter_offset,
+                    piece.letter_count,
+                ]
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

@@ -44,6 +44,72 @@ export class Countdown {
 if (Symbol.dispose) Countdown.prototype[Symbol.dispose] = Countdown.prototype.free;
 
 /**
+ * A word group split into floating pieces.
+ */
+export class GravityPieces {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        GravityPiecesFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_gravitypieces_free(ptr, 0);
+    }
+    /**
+     * `timing` holds `start, end, estimated` per word.
+     * @param {string[]} texts
+     * @param {Float64Array} timing
+     */
+    constructor(texts, timing) {
+        const ptr0 = passArrayJsValueToWasm0(texts, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(timing, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.gravitypieces_new(ptr0, len0, ptr1, len1);
+        this.__wbg_ptr = ret;
+        GravityPiecesFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {string[]}
+     */
+    texts() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.gravitypieces_texts(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayJsValueFromWasm0(r0, r1);
+            wasm.__wbindgen_export3(r0, r1 * 4, 4);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Per piece: `start, end, first, count, split, word start, word end,
+     * letter offset, letter count` (letters negative when not held).
+     * @returns {Float64Array}
+     */
+    values() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.gravitypieces_values(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayF64FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export3(r0, r1 * 8, 8);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+}
+if (Symbol.dispose) GravityPieces.prototype[Symbol.dispose] = GravityPieces.prototype.free;
+
+/**
  * A song's lines, parsed once and kept in the engine for the view's
  * per-frame questions.
  */
@@ -470,6 +536,43 @@ export class Syllable {
 if (Symbol.dispose) Syllable.prototype[Symbol.dispose] = Syllable.prototype.free;
 
 /**
+ * @param {Float64Array} body
+ * @param {Float64Array} rect
+ * @returns {boolean}
+ */
+export function bodyIntersects(body, rect) {
+    const ptr0 = passArrayF64ToWasm0(body, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(rect, wasm.__wbindgen_export);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.bodyIntersects(ptr0, len0, ptr1, len1);
+    return ret !== 0;
+}
+
+/**
+ * @param {Float64Array} body
+ * @param {Float64Array} field
+ * @returns {Float64Array}
+ */
+export function constrainBody(body, field) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(body, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(field, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.constrainBody(retptr, ptr0, len0, ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v3 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v3;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * Three dots as `opacity, scale, glow, lift` fours.
  * @param {number} gap_start
  * @param {number} gap_end
@@ -514,6 +617,27 @@ export function countdownVisible(gap_start, gap_end, time) {
 }
 
 /**
+ * @param {number} seed
+ * @param {number} speed
+ * @param {number} line_start
+ * @param {number} order
+ * @returns {Float64Array}
+ */
+export function createBody(seed, speed, line_start, order) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        wasm.createBody(retptr, seed, speed, line_start, order);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v1 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v1;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * @param {boolean} playing
  * @param {number} position
  * @param {number} clicked_at
@@ -533,6 +657,26 @@ export function cueHolds(playing, position, clicked_at, line_start) {
  */
 export function glideScroll(from, to, elapsed) {
     const ret = wasm.glideScroll(from, to, elapsed);
+    return ret;
+}
+
+/**
+ * @param {string} text
+ * @returns {number}
+ */
+export function gravityHash(text) {
+    const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.gravityHash(ptr0, len0);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} seed
+ * @returns {number}
+ */
+export function gravityRandom(seed) {
+    const ret = wasm.gravityRandom(seed);
     return ret;
 }
 
@@ -609,6 +753,31 @@ export function lineBlur(distance) {
 }
 
 /**
+ * Sizes as `width, height` pairs; returns each word's centre pair, then the
+ * line height.
+ * @param {Float64Array} sizes
+ * @param {number} width
+ * @param {boolean} opposite
+ * @param {number} gap
+ * @returns {Float64Array}
+ */
+export function lineLayout(sizes, width, opposite, gap) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(sizes, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.lineLayout(retptr, ptr0, len0, width, opposite, gap);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v2 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * Fill position of a line without word timing, or NaN when it should rest.
  * @param {number} start
  * @param {number} end
@@ -619,6 +788,28 @@ export function lineBlur(distance) {
 export function lineWipe(start, end, time, simple) {
     const ret = wasm.lineWipe(start, end, time, simple);
     return ret;
+}
+
+/**
+ * @param {Float64Array} body
+ * @param {number} width
+ * @param {number} height
+ * @returns {Float64Array}
+ */
+export function measureBody(body, width, height) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(body, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.measureBody(retptr, ptr0, len0, width, height);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v2 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
 }
 
 /**
@@ -719,6 +910,118 @@ export function simpleGoal(start, end, time) {
 }
 
 /**
+ * @param {Float64Array} body
+ * @param {Float64Array} occupied
+ * @param {Float64Array} field
+ * @param {boolean} reduced
+ * @param {number} across
+ * @param {number} down
+ * @param {number} phase
+ * @returns {Float64Array}
+ */
+export function spawnBody(body, occupied, field, reduced, across, down, phase) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(body, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(occupied, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(field, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.spawnBody(retptr, ptr0, len0, ptr1, len1, ptr2, len2, reduced, across, down, phase);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v4 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v4;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * @param {Float64Array} body
+ * @param {Float64Array} other
+ * @returns {number}
+ */
+export function spawnOverlap(body, other) {
+    const ptr0 = passArrayF64ToWasm0(body, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(other, wasm.__wbindgen_export);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.spawnOverlap(ptr0, len0, ptr1, len1);
+    return ret;
+}
+
+/**
+ * @param {Float64Array} word_starts
+ * @returns {number}
+ */
+export function speedMultiplier(word_starts) {
+    const ptr0 = passArrayF64ToWasm0(word_starts, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.speedMultiplier(ptr0, len0);
+    return ret;
+}
+
+/**
+ * `sizes` holds each line's body count; bodies run line after line.
+ * @param {Float64Array} bodies
+ * @param {Uint32Array} sizes
+ * @param {Float64Array} field
+ * @returns {Float64Array}
+ */
+export function staticLayout(bodies, sizes, field) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(bodies, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(sizes, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(field, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.staticLayout(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v4 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v4;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * Steps shown bodies and fading ones together; returns both, shown first.
+ * @param {Float64Array} bodies
+ * @param {number} dt
+ * @param {Float64Array} field
+ * @param {number} window_vx
+ * @param {number} window_vy
+ * @param {Float64Array} exiting
+ * @returns {Float64Array}
+ */
+export function stepBodies(bodies, dt, field, window_vx, window_vy, exiting) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(bodies, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(field, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(exiting, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.stepBodies(retptr, ptr0, len0, dt, ptr1, len1, window_vx, window_vy, ptr2, len2);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v4 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v4;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * @param {number} position
  * @param {number} velocity
  * @param {number} target
@@ -752,6 +1055,30 @@ export function sungState(start, end, time) {
 }
 
 /**
+ * Window motion as `x, y, vx, vy`, with NaN x and y before the first sample.
+ * @param {Float64Array} motion
+ * @param {number} x
+ * @param {number} y
+ * @param {number} dt
+ * @returns {Float64Array}
+ */
+export function trackWindow(motion, x, y, dt) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayF64ToWasm0(motion, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.trackWindow(retptr, ptr0, len0, x, y, dt);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v2 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * @param {boolean} legacy
  * @param {number} idle_scale
  * @param {number} word_peak_scale
@@ -768,6 +1095,17 @@ export function sungState(start, end, time) {
  */
 export function tuneMotion(legacy, idle_scale, word_peak_scale, letter_peak_scale, vertical_strength, glow_strength, scale_frequency, scale_damping, vertical_frequency, vertical_damping, glow_frequency, glow_damping, blur_strength) {
     wasm.tuneMotion(legacy, idle_scale, word_peak_scale, letter_peak_scale, vertical_strength, glow_strength, scale_frequency, scale_damping, vertical_frequency, vertical_damping, glow_frequency, glow_damping, blur_strength);
+}
+
+/**
+ * @param {Float64Array} field
+ * @returns {number}
+ */
+export function visibleWordCount(field) {
+    const ptr0 = passArrayF64ToWasm0(field, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.visibleWordCount(ptr0, len0);
+    return ret;
 }
 
 /**
@@ -821,6 +1159,26 @@ export function wordGroupSizes(texts) {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
 }
+
+/**
+ * @param {number} anchor
+ * @param {number} total
+ * @param {number} count
+ * @returns {Float64Array}
+ */
+export function wordWindow(anchor, total, count) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        wasm.wordWindow(retptr, anchor, total, count);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v1 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        return v1;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -835,6 +1193,11 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_41e9ee4f547fc59a: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
+        __wbindgen_generic_0000000000000001: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
+            return addHeapObject(ret);
+        },
         __wbindgen_object_drop_ref: function(arg0) {
             takeObject(arg0);
         },
@@ -848,6 +1211,9 @@ function __wbg_get_imports() {
 const CountdownFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_countdown_free(ptr, 1));
+const GravityPiecesFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_gravitypieces_free(ptr, 1));
 const LyricLinesFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_lyriclines_free(ptr, 1));
@@ -882,6 +1248,16 @@ function dropObject(idx) {
 function getArrayF64FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
+}
+
+function getArrayJsValueFromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    const mem = getDataViewMemory0();
+    const result = [];
+    for (let i = ptr; i < ptr + 4 * len; i += 4) {
+        result.push(takeObject(mem.getUint32(i, true)));
+    }
+    return result;
 }
 
 function getArrayU32FromWasm0(ptr, len) {
@@ -934,6 +1310,13 @@ let heap_next = heap.length;
 
 function isLikeNone(x) {
     return x === undefined || x === null;
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passArrayF64ToWasm0(arg, malloc) {
