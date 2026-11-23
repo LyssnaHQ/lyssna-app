@@ -19934,8 +19934,61 @@ test("TTML Creator never starts from Spicy Lyrics or Apple Music lyrics", async 
     .getByRole("button", { name: /Current lyrics/ });
   await expect(current).toBeDisabled();
   await expect(current).toContainText(
-    "Spicy Lyrics and Apple Music lyrics can't be used as a starting point",
+    "Spicy Lyrics lyrics, and Apple Music lyrics that don't come through Lyssna, can't be used as a starting point",
   );
+});
+
+test("TTML Creator starts from Apple Music lyrics that came through Lyssna", async ({
+  page,
+}) => {
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await page.evaluate(() => {
+    const host = (window as any).__clientTest;
+    host.emit({
+      type: "lyrics",
+      uri: "spotify:track:0123456789abcdefghijkl",
+      lyrics: {
+        source: "apple_music",
+        source_credit: {
+          text: "Lyrics provided by Apple Music via Lyssna",
+          url: "https://lyssna.org",
+        },
+        synced: true,
+        instrumental: false,
+        lines: Array.from({ length: 30 }, (_, index) => {
+          const start = 10000 + index * 3000;
+          return {
+            text: `I lyric ${index + 1}`,
+            start_ms: start,
+            end_ms: start + 3000,
+            translation: "",
+            romanization: "",
+            background: false,
+            opposite: false,
+            words: ["I", " lyric", ` ${index + 1}`].map((text, word) => ({
+              text,
+              start_ms: start + word * 1000,
+              end_ms: start + word * 1000 + 900,
+            })),
+          };
+        }),
+      },
+    });
+  });
+  await openSettings(page, "Lyrics");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page
+    .locator(".player-extras")
+    .getByTitle("TTML Creator", { exact: true })
+    .click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  await expect(creator).toBeVisible();
+  await expect(creator.locator(".ttml-card")).toHaveCount(30);
 });
 
 test("TTML Creator saves drafts with a time and keeps versions", async ({

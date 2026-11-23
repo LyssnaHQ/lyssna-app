@@ -75,6 +75,7 @@ import {
   toggleJoin,
   sectionName,
   applySections,
+  canSeed,
 } from "./ttml-creator-model";
 import type { CreatorLine } from "./ttml-creator-model";
 import { romanizeLyrics } from "./romanization";
@@ -1097,5 +1098,34 @@ describe("voices in a section that names several singers", () => {
     expect(ttml).toContain(
       'xml:id="v2"><ttm:name type="full">Juice WRLD</ttm:name>',
     );
+  });
+});
+
+describe("canSeed", () => {
+  const lyrics = (source: string, credited = false) =>
+    ({
+      source,
+      synced: true,
+      instrumental: false,
+      lines: [],
+      ...(credited
+        ? {
+            source_credit: {
+              text: "Lyrics provided by Apple Music via Lyssna",
+              url: "https://lyssna.org",
+            },
+          }
+        : {}),
+    }) as unknown as Parameters<typeof canSeed>[0];
+
+  it("lets Apple Music through Lyssna start a draft", () => {
+    expect(canSeed(lyrics("apple_music", true))).toBe(true);
+  });
+
+  it("keeps other Apple Music and Spicy Lyrics out", () => {
+    expect(canSeed(lyrics("apple_music"))).toBe(false);
+    expect(canSeed(lyrics("aml"))).toBe(false);
+    expect(canSeed(lyrics("spicy_lyrics"))).toBe(false);
+    expect(canSeed(lyrics("spicy_lyrics", true))).toBe(false);
   });
 });

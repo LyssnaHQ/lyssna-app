@@ -1464,7 +1464,7 @@ export function TtmlCreator({
   };
   const seedBlocked =
     state.lyrics && !canSeed(state.lyrics)
-      ? "Spicy Lyrics and Apple Music lyrics can't be used as a starting point"
+      ? "Spicy Lyrics lyrics, and Apple Music lyrics that don't come through Lyssna, can't be used as a starting point"
       : undefined;
   const seedable = here && !!state.lyrics?.lines.length && !seedBlocked;
   const startFromLyrics = () => {

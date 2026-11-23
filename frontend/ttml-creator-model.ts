@@ -458,6 +458,9 @@ export function keepTimings(
 /** Spicy Lyrics and Apple Music lyrics never seed a draft, so the creator
  * is not a way to copy them out. */
 export function canSeed(lyrics: Lyrics) {
+  // Only Lyssna's API sends a source credit, so Apple Music with one came
+  // through Lyssna; Apple Music from any other provider stays blocked.
+  if (lyrics.source === "apple_music" && lyrics.source_credit) return true;
   return !["spicy_lyrics", "apple_music", "aml"].includes(lyrics.source);
 }
 
