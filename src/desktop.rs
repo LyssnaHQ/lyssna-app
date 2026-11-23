@@ -407,6 +407,18 @@ fn take_over(inner: &Inner, app: &tauri::AppHandle, id: &str) {
 
 /// DJ narration exists only in this computer's player; every other command,
 /// including playing an album or playlist page, follows the chosen device.
+/// Spotify keeps listing this computer's earlier Lyssna session for a while
+/// after a restart, under the same name and its old ID. A command sent there
+/// reaches no one, and Spotify refuses it as "Permission denied"; it is meant
+/// for this computer.
+fn earlier_session_of_this_computer(target: Option<&str>, devices: &[Device], name: &str) -> bool {
+    target.is_some_and(|target| {
+        devices
+            .iter()
+            .any(|device| device.id.as_deref() == Some(target) && device.name == name)
+    })
+}
+
 fn plays_locally(
     command: &str,
     target: Option<&str>,
@@ -2609,6 +2621,10 @@ fn player(
             target.as_deref(),
             lock(&state.0.native_id)?.as_deref(),
             &snapshot.playback.device,
+        ) || earlier_session_of_this_computer(
+            target.as_deref(),
+            &state.0.controls.devices().unwrap_or_default(),
+            &native::device_name(),
         );
         // With Soloist on, Soloist is this computer's player. Spotify can
         // show Soloist active, under another name, while Soloist itself
@@ -7209,6 +7225,38 @@ mod tests {
             Some("session-id"),
             &Device::default()
         ));
+    }
+    #[test]
+    fn an_earlier_session_of_this_computer_counts_as_this_computer() {
+        let name = native::device_name();
+        let devices = vec![
+            Device {
+                id: Some("old-session".into()),
+                name: name.clone(),
+                ..Device::default()
+            },
+            Device {
+                id: Some("phone".into()),
+                name: "Phone".into(),
+                ..Device::default()
+            },
+        ];
+        assert!(earlier_session_of_this_computer(
+            Some("old-session"),
+            &devices,
+            &name
+        ));
+        assert!(!earlier_session_of_this_computer(
+            Some("phone"),
+            &devices,
+            &name
+        ));
+        assert!(!earlier_session_of_this_computer(
+            Some("gone"),
+            &devices,
+            &name
+        ));
+        assert!(!earlier_session_of_this_computer(None, &devices, &name));
     }
     #[test]
     fn page_play_follows_the_selected_speaker_and_dj_stays_local() {
