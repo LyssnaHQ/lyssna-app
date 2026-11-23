@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, atomic::AtomicBool, mpsc},
+    sync::{Arc, Mutex, atomic::AtomicBool, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -253,6 +253,9 @@ pub enum LyricCommand {
     /// Fetch an upcoming song's lyrics into the cache without showing them.
     Prefetch(Track, String),
     Fetch(Track, String),
+    /// Ask again for the playing song's lyrics after Apple Music could not
+    /// be asked; shown only when Apple's lyrics win this time.
+    RetryApple(Track, String),
     Import(Track, PathBuf),
     /// Drop lyrics imported for a track; a following fetch uses the provider.
     Forget(Track),
@@ -491,7 +494,12 @@ impl Worker {
         });
         // Spotify's own lyrics come through the native session.
         let lyric_native = native_controls.clone();
+        let lyrics_again = lyrics.clone();
         thread::spawn(move || {
+            // The song lyrics were last asked for, and how often Apple Music
+            // has been asked again for it.
+            let current = Arc::new(Mutex::new(String::new()));
+            let mut apple_retries = 0u8;
             let Ok(client) = auth::http_client() else {
                 return;
             };
@@ -538,7 +546,22 @@ impl Worker {
                         {
                             continue;
                         }
+                        if let Ok(mut uri) = current.lock()
+                            && *uri != track.uri
+                        {
+                            uri.clone_from(&track.uri);
+                            apple_retries = 0;
+                        }
                         let result = lyrics::fetch(&client, &track, &token, &lyric_native);
+                        if !result
+                            .as_ref()
+                            .is_ok_and(|found| found.source == "apple_music")
+                            && crate::lyssna_lyrics::apple_was_unavailable(&track.uri)
+                            && apple_retries < APPLE_RETRIES
+                        {
+                            apple_retries += 1;
+                            retry_apple_later(&lyrics_again, &current, &track, &token);
+                        }
                         if result.is_err() && showing_cached.as_deref() == Some(&track.uri) {
                             continue;
                         }
@@ -551,6 +574,25 @@ impl Worker {
                                 crate::lyssna_lyrics::record_play(&client, &song);
                                 crate::lyssna_lyrics::record_view(&client, &song);
                             });
+                        }
+                        (track, result)
+                    }
+                    LyricCommand::RetryApple(track, token) => {
+                        if !current.lock().is_ok_and(|uri| *uri == track.uri) {
+                            continue;
+                        }
+                        let result = lyrics::fetch(&client, &track, &token, &lyric_native);
+                        if !result
+                            .as_ref()
+                            .is_ok_and(|found| found.source == "apple_music")
+                        {
+                            if crate::lyssna_lyrics::apple_was_unavailable(&track.uri)
+                                && apple_retries < APPLE_RETRIES
+                            {
+                                apple_retries += 1;
+                                retry_apple_later(&lyrics_again, &current, &track, &token);
+                            }
+                            continue;
                         }
                         (track, result)
                     }
@@ -610,6 +652,32 @@ impl Worker {
             lyric_events,
         }
     }
+}
+
+/// How often Apple Music is asked again for one song while it can't be asked.
+const APPLE_RETRIES: u8 = 2;
+
+/// Asks again for the song's lyrics in a while, if it is still the one
+/// whose lyrics were last asked for.
+fn retry_apple_later(
+    sender: &mpsc::Sender<LyricCommand>,
+    current: &Arc<Mutex<String>>,
+    track: &Track,
+    token: &str,
+) {
+    const WAIT: Duration = Duration::from_secs(45);
+    let (sender, current, track, token) = (
+        sender.clone(),
+        current.clone(),
+        track.clone(),
+        token.to_owned(),
+    );
+    thread::spawn(move || {
+        thread::sleep(WAIT);
+        if current.lock().is_ok_and(|uri| *uri == track.uri) {
+            let _ = sender.send(LyricCommand::RetryApple(track, token));
+        }
+    });
 }
 
 impl Drop for Worker {

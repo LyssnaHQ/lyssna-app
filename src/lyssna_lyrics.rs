@@ -60,6 +60,39 @@ struct AppleView {
     credit: Option<SourceCredit>,
 }
 
+/// A lookup Lyssna answered with an error status.
+#[derive(Debug)]
+struct Refused(u16);
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Lyssna lyrics failed: HTTP {}", self.0)
+    }
+}
+impl std::error::Error for Refused {}
+
+/// The song whose Apple Music lookup last failed for a while only (Apple
+/// unavailable, Lyssna unreachable), so its lyrics can be asked again.
+static APPLE_UNAVAILABLE: Mutex<Option<String>> = Mutex::new(None);
+
+fn passing(error: &anyhow::Error) -> bool {
+    crate::lyric_sources::unreachable(error)
+        || error
+            .downcast_ref::<Refused>()
+            .is_some_and(|refused| matches!(refused.0, 502..=504))
+}
+
+/// Whether the song's Apple Music lookup just failed for a while only.
+/// Asking clears it.
+pub fn apple_was_unavailable(uri: &str) -> bool {
+    APPLE_UNAVAILABLE.lock().is_ok_and(|mut last| {
+        let was = last.as_deref() == Some(uri);
+        if was {
+            *last = None;
+        }
+        was
+    })
+}
+
 pub(crate) fn spotify_id(track: &Track) -> Option<&str> {
     track.id.as_deref().filter(|id| {
         !track.is_local && id.len() == 22 && id.bytes().all(|b| b.is_ascii_alphanumeric())
@@ -142,7 +175,7 @@ fn view<T: DeserializeOwned>(client: &Client, url: &str) -> Result<Option<T>> {
         return Ok(None);
     }
     if !response.status().is_success() {
-        bail!("Lyssna lyrics failed: HTTP {}", response.status().as_u16());
+        return Err(Refused(response.status().as_u16()).into());
     }
     Ok(Some(response.json().context("Unreadable Lyssna lyrics")?))
 }
@@ -294,6 +327,11 @@ pub fn fetch_apple(
             Ok(None) => {}
             Err(error) => {
                 missed(&format!("{error:#}"));
+                if passing(&error)
+                    && let Ok(mut last) = APPLE_UNAVAILABLE.lock()
+                {
+                    *last = Some(track.uri.clone());
+                }
                 return Err(error);
             }
         }
@@ -311,6 +349,11 @@ pub fn fetch_apple(
         );
         found = view::<AppleView>(client, &url).inspect_err(|error| {
             missed(&format!("{error:#}"));
+            if passing(error)
+                && let Ok(mut last) = APPLE_UNAVAILABLE.lock()
+            {
+                *last = Some(track.uri.clone());
+            }
         })?;
     }
     let Some(view) = found else {
@@ -508,6 +551,20 @@ mod tests {
             r#"<tt xmlns="http://www.w3.org/ns/ttml"><body/></tt>"#,
             267_973
         ));
+    }
+
+    #[test]
+    fn only_a_passing_failure_asks_apple_again() {
+        assert!(passing(&Refused(503).into()));
+        assert!(!passing(&Refused(404).into()));
+        assert!(!passing(&Refused(429).into()));
+        assert!(!passing(&anyhow::anyhow!(
+            "No Apple Music lyrics for this song"
+        )));
+        *APPLE_UNAVAILABLE.lock().unwrap() = Some("spotify:track:a".into());
+        assert!(!apple_was_unavailable("spotify:track:b"));
+        assert!(apple_was_unavailable("spotify:track:a"));
+        assert!(!apple_was_unavailable("spotify:track:a"));
     }
 
     #[test]
