@@ -8432,3 +8432,14 @@ button.contributor-avatar {
   font-style: normal;
   font-weight: 700;
 }
+
+/* An instrumental song has no lyrics to show, so the artwork stands alone in the middle. */
+.lyrics-page.instrumental:not(.narrow, .canvas-lyrics) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.lyrics-page.instrumental:not(.narrow, .canvas-lyrics) > .lyrics-body {
+  display: none;
+}
+.lyrics-page.instrumental.no-artwork:not(.narrow) .lyrics-album {
+  display: block;
+}

@@ -1020,18 +1020,7 @@ export function LyricsDisplay({
       setFollowing(true);
   }, [positionMs, following, primary, lyrics.synced]);
   const highlighter = !!settings.lyrics_highlighter && lyrics.synced;
-  if (lyrics.instrumental)
-    return (
-      <div className="lyrics-message">
-        <Music2 />
-        <h2>Instrumental</h2>
-        <p>Enjoy the music</p>
-        <LyricCredits
-          lyrics={lyrics}
-          discord={settings.lyrics_discord_usernames !== false}
-        />
-      </div>
-    );
+  if (lyrics.instrumental) return null;
   return (
     <div
       className={`lyrics-display ${compact ? "compact" : ""} ${footerMode !== "off" ? "has-pinned-footer" : ""} ${!lyrics.synced ? "static-lyrics" : ""} ${settings.reduce_motion ? "reduce-motion" : ""} ${settings.lyrics_simple ? "simple-lyrics" : ""} ${settings.lyrics_right_align ? "lyrics-right" : ""} ${settings.lyrics_flip_duet ? "lyrics-flip-duet" : ""} ${settings.lyrics_wide_duet === false ? "" : "lyrics-wide-duet"} ${settings.lyrics_line_hover ? "lyrics-line-hover" : ""} ${lyrics.lines.some((line) => line.opposite) ? "has-duet" : ""} ${settings.lyrics_minimal && !compact ? "minimal" : ""} ${highlighter ? "highlighter" : ""} ${settings.lyrics_keep_overlaps !== false ? "keep-overlaps" : ""} ${lyrics.synced && song.allSung(lyricTime) ? "all-sung" : ""} ${settings.lyrics_credits_follow && song.endsOnRight(!!(settings.lyrics_flip_duet || settings.lyrics_right_align)) ? "credits-right" : ""}`}
@@ -1362,11 +1351,7 @@ const LyricCredits = memo(function LyricCredits({
       <div
         className={`lyric-source community-credits lyssna-credits ${expanded ? "expanded" : ""}`}
       >
-        <span className="community-lead">
-          {lyrics.instrumental
-            ? "Provided by: Lyssna"
-            : "Lyrics provided by: Lyssna"}
-        </span>
+        <span className="community-lead">Lyrics provided by: Lyssna</span>
         <LyssnaContributors credits={lyrics.credits} song={lyrics.song_id} />
       </div>
     );
@@ -1436,12 +1421,8 @@ const LyricCredits = memo(function LyricCredits({
           }
           disabled={!lyrics.source_credit.url.startsWith("https://")}
         >
-          {lyrics.instrumental && lyrics.source === "lyssna"
-            ? "Provided by: Lyssna"
-            : lyrics.source_credit.text}
+          {lyrics.source_credit.text}
         </button>
-      ) : lyrics.instrumental ? (
-        "Provided by: "
       ) : (
         "Lyrics provided by: "
       )}
@@ -2124,11 +2105,14 @@ function SongLyricsPage({
   const motionAllowed =
     !state.settings.reduce_motion &&
     !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // An instrumental song shows its artwork here, so the Canvas plays in Now
+  // playing instead.
   const canvas = !!(
     track &&
     state.canvas_url &&
     state.settings.canvas_lyrics &&
-    motionAllowed
+    motionAllowed &&
+    !state.lyrics?.instrumental
   );
   const visibleCanvas =
     canvas && canvasShown && !state.settings.lyrics_hide_artwork;
@@ -2315,7 +2299,7 @@ function SongLyricsPage({
   return (
     <section
       ref={page}
-      className={`lyrics-page ${canvas ? "canvas-lyrics" : ""} ${narrow ? "narrow" : ""} ${state.settings.reduce_motion ? "reduce-motion" : ""} ${gravity ? "space-gravity" : ""} ${state.settings.lyrics_hide_artwork ? "no-artwork" : ""} ${state.settings.lyrics_artwork_right ? "artwork-right" : ""} ${state.settings.lyrics_background === "color" ? "colour-background" : ""} ${state.settings.lyrics_toolbar_bottom ? "toolbar-bottom" : ""} ${state.settings.glass_seek === false ? "flat-seek" : ""} ${coverLayout && noLyrics ? "no-lyrics" : ""}`}
+      className={`lyrics-page ${canvas ? "canvas-lyrics" : ""} ${narrow ? "narrow" : ""} ${state.settings.reduce_motion ? "reduce-motion" : ""} ${gravity ? "space-gravity" : ""} ${state.settings.lyrics_hide_artwork ? "no-artwork" : ""} ${state.settings.lyrics_artwork_right ? "artwork-right" : ""} ${state.settings.lyrics_background === "color" ? "colour-background" : ""} ${state.settings.lyrics_toolbar_bottom ? "toolbar-bottom" : ""} ${state.settings.glass_seek === false ? "flat-seek" : ""} ${coverLayout && noLyrics ? "no-lyrics" : ""} ${lyrics?.instrumental ? "instrumental" : ""}`}
       style={
         {
           // Shared by the lyric lines and, in Space Gravity, its countdown.

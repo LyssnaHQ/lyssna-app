@@ -2887,6 +2887,27 @@ test("album cover opens large over a grey app and closes", async ({ page }) => {
   await expect(viewer).toHaveCount(0);
 });
 
+test("an instrumental song keeps its Canvas in Now playing and its artwork on the lyrics page", async ({
+  page,
+}) => {
+  await startClient(page);
+  await emitCanvas(page);
+  await showLyrics(page);
+  await page.evaluate((uri) => {
+    (window as any).__clientTest.emit({
+      type: "lyrics",
+      uri,
+      lyrics: { source: "lyssna", synced: true, instrumental: true, lines: [] },
+    });
+  }, track.uri);
+  await expect(page.locator(".lyrics-page")).toHaveClass(/\binstrumental\b/);
+  await expect(page.locator(".lyrics-canvas-cover")).toHaveCount(0);
+  await expect(page.locator(".lyrics-page .lyrics-album .cover")).toBeVisible();
+  await expect(
+    page.locator(".now-playing video[data-canvas-video]"),
+  ).toHaveCount(1);
+});
+
 test("Now playing ambience follows its own Canvas, not the lyrics page's", async ({
   page,
 }) => {
@@ -3397,7 +3418,7 @@ test("playlist toolbar stays above the track table", async ({ page }) => {
   expect(toolbar!.y + toolbar!.height).toBeLessThanOrEqual(rows!.y);
 });
 
-test("instrumental songs from Lyssna credit it without saying lyrics", async ({
+test("instrumental songs show only the artwork, with no message or credit", async ({
   page,
 }) => {
   await startClient(page);
@@ -3418,8 +3439,11 @@ test("instrumental songs from Lyssna credit it without saying lyrics", async ({
       },
     });
   }, track.uri);
-  const credit = page.locator(".lyrics-page .lyric-source");
-  await expect(credit).toHaveText("Provided by: Lyssna");
+  const lyricsPage = page.locator(".lyrics-page");
+  await expect(lyricsPage).toHaveClass(/\binstrumental\b/);
+  await expect(lyricsPage.locator(".lyrics-album .cover")).toBeVisible();
+  await expect(lyricsPage.getByText("Instrumental")).toHaveCount(0);
+  await expect(lyricsPage.locator(".lyric-source")).toHaveCount(0);
 });
 
 test("Lyssna lyrics list their contributors with stacked avatars", async ({
