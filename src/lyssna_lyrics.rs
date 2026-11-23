@@ -298,8 +298,23 @@ pub fn fetch_apple(
             }
         }
     }
+    if found.is_none()
+        && let Some(apple_id) = apple_song_by_search(client, track)
+    {
+        let url = lyrics_url(
+            "apple_music",
+            &apple_id.to_string(),
+            "apple_music",
+            None,
+            track.duration_ms,
+            false,
+        );
+        found = view::<AppleView>(client, &url).inspect_err(|error| {
+            missed(&format!("{error:#}"));
+        })?;
+    }
     let Some(view) = found else {
-        missed("none found");
+        missed("none found, by ISRC or by title");
         bail!("No Apple Music lyrics for this song");
     };
     if !same_recording(&view.ttml, track.duration_ms) {
@@ -312,6 +327,78 @@ pub fn fetch_apple(
     lyrics.source_credit = view.credit.filter(|credit| !credit.text.trim().is_empty());
     lyrics.apple_original = apple_original(view.apple_id, &view.ttml);
     Ok(lyrics)
+}
+
+/// Apple can file a recording under an ISRC Spotify doesn't give it. Its
+/// public catalogue search finds the song by title and artist instead; only
+/// an exact match within two seconds of the track's length is taken, and
+/// its lyrics still pass the same-recording check.
+fn apple_song_by_search(client: &Client, track: &Track) -> Option<u64> {
+    let artist = track.artists.first()?.name.as_str();
+    if track.name.trim().is_empty() || artist.trim().is_empty() || track.duration_ms == 0 {
+        return None;
+    }
+    let term = format!("{} {artist}", track.name);
+    let found: SearchAnswer = client
+        .get("https://itunes.apple.com/search")
+        .query(&[
+            ("term", term.as_str()),
+            ("media", "music"),
+            ("entity", "song"),
+            ("limit", "10"),
+        ])
+        .send()
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .json()
+        .ok()?;
+    matching_apple_song(&found.results, track)
+}
+
+#[derive(Deserialize)]
+struct SearchAnswer {
+    #[serde(default)]
+    results: Vec<SearchSong>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchSong {
+    #[serde(default)]
+    track_id: u64,
+    #[serde(default)]
+    track_name: String,
+    #[serde(default)]
+    artist_name: String,
+    #[serde(default)]
+    track_time_millis: u64,
+}
+
+fn matching_apple_song(songs: &[SearchSong], track: &Track) -> Option<u64> {
+    const TOLERANCE_MS: u64 = 2_000;
+    let plain = |text: &str| {
+        text.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let title = plain(&track.name);
+    let artist = plain(&track.artists.first()?.name);
+    if title.is_empty() || artist.is_empty() {
+        return None;
+    }
+    songs
+        .iter()
+        .filter(|song| {
+            song.track_id > 0
+                && plain(&song.track_name) == title
+                && plain(&song.artist_name).contains(&artist)
+                && song.track_time_millis.abs_diff(track.duration_ms) <= TOLERANCE_MS
+        })
+        .min_by_key(|song| song.track_time_millis.abs_diff(track.duration_ms))
+        .map(|song| song.track_id)
 }
 
 /// Apple can file several recordings under one ISRC, and Lyssna may answer
@@ -421,6 +508,59 @@ mod tests {
             r#"<tt xmlns="http://www.w3.org/ns/ttml"><body/></tt>"#,
             267_973
         ));
+    }
+
+    #[test]
+    fn apple_search_takes_only_the_same_song_by_length() {
+        let track = Track {
+            name: "The Greatest Show".into(),
+            artists: vec![crate::model::Artist {
+                name: "Panic! At The Disco".into(),
+                ..Default::default()
+            }],
+            duration_ms: 174_306,
+            ..Track::default()
+        };
+        let song = |id: u64, title: &str, artist: &str, length: u64| SearchSong {
+            track_id: id,
+            track_name: title.into(),
+            artist_name: artist.into(),
+            track_time_millis: length,
+        };
+        let songs = [
+            song(
+                1,
+                "The Greatest Show",
+                "Hugh Jackman & The Greatest Showman Ensemble",
+                302_147,
+            ),
+            song(
+                2,
+                "The Greatest Show (Instrumental)",
+                "Panic! At the Disco",
+                174_306,
+            ),
+            song(3, "The Greatest Show", "Panic! At the Disco", 177_000),
+            song(
+                1439343343,
+                "The Greatest Show",
+                "Panic! At the Disco",
+                174_307,
+            ),
+            song(
+                1441469818,
+                "The Greatest Show",
+                "Panic! At the Disco",
+                174_900,
+            ),
+        ];
+        assert_eq!(matching_apple_song(&songs, &track), Some(1439343343));
+        assert_eq!(matching_apple_song(&songs[..3], &track), None);
+        let unnamed = Track {
+            name: String::new(),
+            ..track.clone()
+        };
+        assert_eq!(matching_apple_song(&songs, &unnamed), None);
     }
 
     #[test]
