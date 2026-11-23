@@ -10401,7 +10401,7 @@ test("lyrics toolbar icons animate their parts on hover", async ({ page }) => {
   await translate.click();
   await page.mouse.move(5, 5);
   await expect.poll(front).toBe("latin");
-  // The other icons run their own animation while hovered.
+  // The other icons ease into a pose of their own and hold it while hovered.
   for (const [icon, part] of [
     ["upload", ".part-arrow"],
     ["retry", ".part-spinner"],
@@ -10409,18 +10409,21 @@ test("lyrics toolbar icons animate their parts on hover", async ({ page }) => {
     ["lyrics_artwork_right", ".part-left"],
     ["experimental_word_sync", ".part-bar"],
   ]) {
+    const pose = () =>
+      page.evaluate(
+        ({ icon, part }) => {
+          const style = getComputedStyle(
+            document.querySelector(`[data-icon="${icon}"] ${part}`)!,
+          );
+          return [style.translate, style.rotate, style.scale].join(" ");
+        },
+        { icon, part },
+      );
+    const rest = await pose();
     await toolbar.locator(`[data-icon="${icon}"]`).hover();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          ({ icon, part }) =>
-            document
-              .querySelector(`[data-icon="${icon}"] ${part}`)!
-              .getAnimations().length,
-          { icon, part },
-        ),
-      )
-      .toBeGreaterThan(0);
+    await page.waitForTimeout(400);
+    expect(await pose()).not.toBe(rest);
+    expect(await pose()).toBe(await pose());
   }
 });
 

@@ -4,7 +4,15 @@
  */
 import type { ReactNode } from "react";
 
-function Icon({ name, children }: { name: string; children: ReactNode }) {
+function Icon({
+  name,
+  children,
+  strokeWidth = 2,
+}: {
+  name: string;
+  children: ReactNode;
+  strokeWidth?: number;
+}) {
   return (
     <svg
       className={`toolbar-icon toolbar-icon-${name}`}
@@ -13,7 +21,7 @@ function Icon({ name, children }: { name: string; children: ReactNode }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -39,7 +47,7 @@ export const TranslateIcon = () => (
   </Icon>
 );
 
-/** Bars that bounce like a level meter. */
+/** A level meter: the inner bars dip and the outer ones rise on hover. */
 export const WordSyncIcon = () => (
   <Icon name="word-sync">
     {["M2 10v3", "M6 6v11", "M10 3v18", "M14 8v7", "M18 5v13", "M22 10v3"].map(
@@ -50,9 +58,9 @@ export const WordSyncIcon = () => (
   </Icon>
 );
 
-/** A moon on its orbit; the orbit turns on hover. */
+/** A moon on its orbit; the orbit tilts on hover. */
 export const GravityIcon = () => (
-  <Icon name="gravity">
+  <Icon name="gravity" strokeWidth={1.8}>
     <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
     <g className="part-orbit">
       <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-36 12 12)" />
@@ -63,7 +71,7 @@ export const GravityIcon = () => (
 
 /** A marker pen over the line it draws. */
 export const HighlighterIcon = () => (
-  <Icon name="highlighter">
+  <Icon name="highlighter" strokeWidth={1.8}>
     <g className="part-pen">
       <path d="m8 13 8.7-8.7a1.8 1.8 0 0 1 2.6 0l.4.4a1.8 1.8 0 0 1 0 2.6L11 16l-3-3Z" />
       <path d="m8 13-2 2 3 3 2-2m-5-1-2 3 2 1 3-1" />
@@ -72,9 +80,9 @@ export const HighlighterIcon = () => (
   </Icon>
 );
 
-/** Three bars that dip in turn, like the music under them. */
+/** Three level bars; the short one rises and the others dip on hover. */
 export const VisualiserIcon = () => (
-  <Icon name="visualiser">
+  <Icon name="visualiser" strokeWidth={1.8}>
     <path className="part-level" d="M5 21v-6" />
     <path className="part-level" d="M12 21V3" />
     <path className="part-level" d="M19 21V9" />
@@ -97,7 +105,7 @@ export const CompactIcon = () => (
   </Icon>
 );
 
-/** A panel that slides shut, its chevron pushing left. */
+/** A panel whose chevron and divider shift left on hover. */
 export const HideArtworkIcon = () => (
   <Icon name="hide-artwork">
     <rect width="18" height="18" x="3" y="3" rx="2" />
@@ -106,7 +114,7 @@ export const HideArtworkIcon = () => (
   </Icon>
 );
 
-/** Two arrows that pulse left and right. */
+/** Two arrows that part on hover. */
 export const SwapSidesIcon = () => (
   <Icon name="swap">
     <g className="part-left">
@@ -120,7 +128,7 @@ export const SwapSidesIcon = () => (
   </Icon>
 );
 
-/** An arrow that shoots up while the next one rises into place. */
+/** An arrow that lifts out of its tray on hover. */
 export const UploadIcon = () => (
   <Icon name="upload">
     <g className="part-arrow">
@@ -131,7 +139,7 @@ export const UploadIcon = () => (
   </Icon>
 );
 
-/** Arrows that spin like a refresh. */
+/** Arrows that turn part way on hover. */
 export const RetryIcon = () => (
   <Icon name="retry">
     <g className="part-spinner">
@@ -143,7 +151,7 @@ export const RetryIcon = () => (
   </Icon>
 );
 
-/** Corners that push out and draw back in. */
+/** Corners that push outward on hover. */
 export const FullScreenIcon = () => (
   <Icon name="fullscreen">
     <g className="part-corner-out">
