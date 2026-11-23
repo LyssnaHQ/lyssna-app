@@ -354,6 +354,22 @@ mod tests {
     }
 
     #[test]
+    fn a_song_flagged_instrumental_with_lyrics_shows_its_lyrics() {
+        let answer: LyssnaAnswer = serde_json::from_value(serde_json::json!({
+            "song": {"id": "0194", "title": "T", "artists": ["A"], "instrumental": true},
+            "offset_ms": 0, "contributors": [],
+            "ttml": "<tt><body><div><p begin=\"1s\" end=\"2s\">Hi</p></div></body></tt>"
+        }))
+        .unwrap();
+        let LyssnaAnswer::Lyrics(view) = answer else {
+            panic!("a song's answer reads as lyrics");
+        };
+        let lyrics = read_view(view, 3000).unwrap();
+        assert!(!lyrics.instrumental);
+        assert_eq!(lyrics.lines.len(), 1);
+    }
+
+    #[test]
     fn apple_music_is_asked_by_isrc_alone() {
         assert!(
             lyrics_url("isrc", "USUM71900001", "apple_music", None, false)
