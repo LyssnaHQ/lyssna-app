@@ -1303,7 +1303,7 @@ fn fetch_from(
             "apple" => cache.get("apple-lyssna-2", &|| {
                 crate::lyssna_lyrics::fetch_apple(
                     &client,
-                    || native.isrc(&track.uri).ok().flatten(),
+                    || native.isrcs(&track.uri).unwrap_or_default(),
                     &track,
                 )
             }),

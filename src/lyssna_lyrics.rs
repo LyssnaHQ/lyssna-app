@@ -248,25 +248,62 @@ fn read_view(view: LyricsView, duration_ms: u64) -> Result<Lyrics> {
 
 /// Apple Music's lyrics for the recording, found by its ISRC. A 404, or a
 /// 503 while Apple cannot be asked, leaves the song to the other sources.
+/// Spotify can give a recording several ISRCs (the track's own, then its
+/// regional alternatives), and Apple may file the song under any of them,
+/// so each is asked in turn until one has lyrics.
 pub fn fetch_apple(
     client: &Client,
-    isrc: impl FnOnce() -> Option<String>,
+    isrcs: impl FnOnce() -> Vec<String>,
     track: &Track,
 ) -> Result<Lyrics> {
+    const MOST_ASKED: usize = 4;
     if spotify_id(track).is_none() {
         bail!("Apple Music lyrics need a Spotify song");
     }
-    let Some(isrc) = isrc().map(|isrc| isrc.trim().to_ascii_uppercase()) else {
-        bail!("No ISRC to find Apple Music lyrics with");
+    let isrcs: Vec<String> = isrcs()
+        .into_iter()
+        .map(|isrc| isrc.trim().to_ascii_uppercase())
+        .filter(|isrc| isrc.len() == 12 && isrc.bytes().all(|b| b.is_ascii_alphanumeric()))
+        .take(MOST_ASKED)
+        .collect();
+    // Why a song got no Apple Music lyrics, with the ISRCs asked, so a miss
+    // can be told apart from an ISRC Apple files under another code.
+    let missed = |why: &str| {
+        crate::native::diagnostic(&format!(
+            "apple lyrics {}: {why} (ISRCs: {})",
+            track.uri,
+            if isrcs.is_empty() {
+                "none".to_owned()
+            } else {
+                isrcs.join(", ")
+            }
+        ));
     };
-    if isrc.len() != 12 || !isrc.bytes().all(|b| b.is_ascii_alphanumeric()) {
+    if isrcs.is_empty() {
+        missed("no ISRC");
         bail!("No ISRC to find Apple Music lyrics with");
     }
-    let url = lyrics_url("isrc", &isrc, "apple_music", None, track.duration_ms, false);
-    let Some(view) = view::<AppleView>(client, &url)? else {
+    let mut found = None;
+    for isrc in &isrcs {
+        let url = lyrics_url("isrc", isrc, "apple_music", None, track.duration_ms, false);
+        match view::<AppleView>(client, &url) {
+            Ok(Some(view)) => {
+                found = Some(view);
+                break;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                missed(&format!("{error:#}"));
+                return Err(error);
+            }
+        }
+    }
+    let Some(view) = found else {
+        missed("none found");
         bail!("No Apple Music lyrics for this song");
     };
     if !same_recording(&view.ttml, track.duration_ms) {
+        missed("timed to another recording");
         bail!("Apple Music's lyrics are for another version of this song");
     }
     let mut lyrics = parse_ttml(&view.ttml, track.duration_ms)?;
