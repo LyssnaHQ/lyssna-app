@@ -13,8 +13,8 @@ import {
   FlaskConical,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
-  ChevronDown,
+  ArrowUp,
+  ArrowDown,
   ExternalLink,
   LibraryBig,
   LogOut,
@@ -1648,6 +1648,9 @@ export function SettingsWindow({
               const on = !disabled.has(id);
               return (
                 <li key={id} className={on ? "" : "off"}>
+                  <span className="lyric-source-rank" aria-hidden="true">
+                    {index + 1}
+                  </span>
                   <span className="lyric-source-name">
                     <strong>{source.name}</strong>
                     <small>{source.help}</small>
@@ -1658,7 +1661,7 @@ export function SettingsWindow({
                     disabled={index === 0}
                     onClick={() => move(id, -1)}
                   >
-                    <ChevronUp size={16} />
+                    <ArrowUp size={16} />
                   </button>
                   <button
                     className="icon-button"
@@ -1666,7 +1669,7 @@ export function SettingsWindow({
                     disabled={index === order.length - 1}
                     onClick={() => move(id, 1)}
                   >
-                    <ChevronDown size={16} />
+                    <ArrowDown size={16} />
                   </button>
                   <Toggle
                     label={source.name}
@@ -1682,17 +1685,26 @@ export function SettingsWindow({
               );
             })}
           </ol>
-          <button
-            className="text-link lyric-sources-reset"
-            onClick={() =>
-              onSettings({
-                lyrics_source_order: DEFAULT_SOURCES,
-                lyrics_sources_disabled: DEFAULT_SOURCES_OFF,
-              })
-            }
-          >
-            Reset sources
-          </button>
+          <footer className="lyric-sources-footer">
+            <span className="lyric-source-name">
+              <strong>Source priority</strong>
+              <small>
+                Lyssna uses the first available source. Disabled sources are
+                skipped.
+              </small>
+            </span>
+            <button
+              className="pill outline"
+              onClick={() =>
+                onSettings({
+                  lyrics_source_order: DEFAULT_SOURCES,
+                  lyrics_sources_disabled: DEFAULT_SOURCES_OFF,
+                })
+              }
+            >
+              Reset sources
+            </button>
+          </footer>
         </SettingRow>,
       ],
     ],

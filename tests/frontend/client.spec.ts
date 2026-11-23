@@ -10550,6 +10550,13 @@ test("Lyssna settings combines app and lyrics options with ordered sources", asy
     /LRCLIB/,
     /Netease/,
   ]);
+  await expect(page.locator(".lyric-source-rank")).toHaveText([
+    "1", "2", "3", "4", "5", "6", "7", "8",
+  ]);
+  await page.locator(".lyric-sources").screenshot({
+    path: "target/diagnostics/lyssna-lyric-sources.png",
+    animations: "disabled",
+  });
   await expect(
     page.getByRole("switch", { name: "Musixmatch", exact: true }),
   ).toBeChecked();

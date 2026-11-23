@@ -939,31 +939,67 @@
   color: light-dark(#00000080, #ffffff80);
 }
 
-/* Lyrics settings → Sources: ordered source list. */
+/* Lyrics settings → Sources: ranked source cards. */
 .lyric-sources {
   list-style: none;
   margin: 4px 0 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
-.lyric-sources li {
+.lyric-sources li,
+.lyric-sources-footer {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  gap: 12px;
+  min-height: 60px;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border: 1px solid light-dark(#0002, #fff2);
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    light-dark(#0000000d, #ffffff0d),
+    light-dark(#00000004, #ffffff04)
+  );
+}
+.lyric-sources-footer {
+  margin-top: 8px;
+}
+.lyric-source-rank {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: light-dark(#0000000d, #ffffff0d);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.lyric-sources li.off :is(.lyric-source-name, .lyric-source-rank) {
+  opacity: 0.55;
+}
+.lyric-sources li > .icon-button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   background: light-dark(#0000000d, #ffffff0d);
 }
-.lyric-sources li.off .lyric-source-name {
-  opacity: 0.5;
+.lyric-sources li > .icon-button:hover:not(:disabled) {
+  background: light-dark(#0002, #fff2);
+}
+.lyric-sources li > .icon-button + .toggle,
+.lyric-sources li > .icon-button + :not(.icon-button) {
+  margin-inline-start: 6px;
 }
 .lyric-source-name {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .lyric-source-name strong {
   font-size: 14px;
@@ -971,12 +1007,10 @@
 }
 .lyric-source-name small {
   font-size: 12px;
-  color: light-dark(#0009, #ffffff99);
+  color: light-dark(#000a, #fffa);
 }
-.lyric-sources-reset {
-  margin-top: 8px;
-  font-size: 13px;
-  color: light-dark(#000000b3, #ffffffb3);
+.lyric-sources-footer > .pill {
+  flex: none;
 }
 
 /* Help → About Lyssna: brand header, a details card, then the legal
