@@ -17,7 +17,7 @@ name = "lyssna-release"
 path = "src/bin/lyssna-release.rs"
 
 [workspace]
-members = ["vendor/librespot-core", "vendor/librespot-playback", "vendor/librespot-connect", "crates/lyric-engine"]
+members = ["vendor/librespot-core", "vendor/librespot-playback", "vendor/librespot-connect", "crates/lyric-engine", "crates/lyric-romanize"]
 default-members = ["."]
 
 [features]
@@ -28,6 +28,7 @@ legacy-ui = ["dep:eframe", "dep:egui_extras", "dep:ttf-parser", "dep:tiny-skia"]
 
 [dependencies]
 log = "0.4"
+lyric-romanize = { path = "crates/lyric-romanize" }
 anyhow = "1"
 base64 = "0.22"
 directories = "6"

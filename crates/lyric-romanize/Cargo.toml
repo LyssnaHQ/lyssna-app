@@ -1,0 +1,15 @@
+[package]
+name = "lyric-romanize"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Lyssna's lyric romanization: Japanese, Chinese, Korean, Cyrillic, Greek and a general fallback."
+
+[dependencies]
+deunicode = "1.6.2"
+lindera = { version = "7.0.0", features = ["embed-ipadic"] }
+lyric-engine = { path = "../lyric-engine" }
+pinyin-converter = "0.1.0"
+serde = { version = "1", features = ["derive"] }
+unicode-normalization = "0.1"
+unicode-script = "0.5"

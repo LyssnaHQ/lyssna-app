@@ -1,11 +1,9 @@
-import { expect, it, vi } from "vitest";
-import {
-  romanizeGreek,
-  romanizeKorean,
-  romanizeLyrics,
-  songScripts,
-  withReadings,
-} from "./romanization";
+import { beforeEach, expect, it, vi } from "vitest";
+
+const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
+vi.mock("./bridge", () => ({ rpc }));
+
+import { romanizeLyrics, withReadings } from "./romanization";
 import { displayLyrics } from "./word-sync";
 import type { Lyrics } from "./types";
 
@@ -21,7 +19,7 @@ function sample(text: string, romanization = ""): Lyrics {
         translation: "Translation",
         start_ms: 1000,
         end_ms: 3000,
-        words: [{ text, start_ms: 1000, end_ms: 3000 }],
+        words: [{ text, start_ms: 1000, end_ms: 3000, sung_by: "second" }],
         background: false,
         opposite: true,
       },
@@ -29,10 +27,24 @@ function sample(text: string, romanization = ""): Lyrics {
   };
 }
 
+const reading = (text: string, words = [text], estimated = false) => [
+  {
+    text,
+    words: words.map((word, index) => ({
+      text: word,
+      start_ms: 1000 + index * 1000,
+      end_ms: 2000 + index * 1000,
+      from: estimated ? null : index,
+      estimated,
+    })),
+  },
+];
+
+beforeEach(() => rpc.mockReset());
+
 /** Lyrics as shown once romanization has converted them. */
 async function shown(source: Lyrics, wordSync = false) {
   displayLyrics(source, wordSync, true);
-  await romanizeLyrics(source);
   await vi.waitFor(() => {
     const display = displayLyrics(source, wordSync, true);
     if (display === displayLyrics(source, wordSync, false))
@@ -41,104 +53,53 @@ async function shown(source: Lyrics, wordSync = false) {
   return displayLyrics(source, wordSync, true);
 }
 
-it("replaces main lyric text with supplied readings without mutating the original", async () => {
+it("sends each line's text, reading and word timing to the app", async () => {
+  rpc.mockResolvedValue([null]);
+  const source = sample("Hello");
+  expect(await romanizeLyrics(source, { romajiAsWritten: false })).toBe(source);
+  expect(rpc).toHaveBeenCalledWith("romanize_lyrics", {
+    lines: [
+      {
+        text: "Hello",
+        romanization: "",
+        words: [{ text: "Hello", start_ms: 1000, end_ms: 3000 }],
+      },
+    ],
+    options: { romaji_as_written: false },
+  });
+});
+
+it("replaces lyric text without mutating the original, keeping word details", async () => {
+  rpc.mockResolvedValue(reading("Tokyo"));
   const source = sample("東京", "Tokyo");
   const original = structuredClone(source);
   const display = await shown(source);
-  expect(display.lines[0].text).toBe("Tokyo");
-  expect(display.lines[0].words.map((word) => word.text).join("")).toBe(
-    "Tokyo",
-  );
-  expect(display.lines[0].translation).toBe("Translation");
-  expect(display.lines[0].opposite).toBe(true);
+  const line = display.lines[0];
+  expect(line.text).toBe("Tokyo");
+  expect(line.romanization).toBe("");
+  expect(line.words[0]).toEqual({
+    text: "Tokyo",
+    start_ms: 1000,
+    end_ms: 2000,
+    sung_by: "second",
+  });
+  expect(line.translation).toBe("Translation");
+  expect(line.opposite).toBe(true);
   expect(source).toEqual(original);
   expect(displayLyrics(source, false, false)).toBe(source);
   expect(displayLyrics(source, false, true)).toBe(display);
 });
 
-it.each([
-  "안녕하세요",
-  "你好",
-  "Привет",
-  "Γεια",
-  "مرحبا",
-  "שלום",
-  "नमस्ते",
-  "বাংলা",
-  "สวัสดี",
-  "ქართული",
-  "Հայերեն",
-])("romanizes %s without supplied readings", async (text) => {
-  const display = await romanizeLyrics(sample(text));
-  expect(display.lines[0].text).not.toBe(text);
-  expect(display.lines[0].text).toMatch(/[a-z]/i);
-  expect(display.lines[0].text).toMatch(
-    /^[\p{Script=Latin}\p{Script=Common}]+$/u,
-  );
-  expect(display.lines[0].words[0].start_ms).toBe(1000);
-  expect(display.lines[0].words[0].end_ms).toBe(3000);
-});
-
-it("keeps Latin text, punctuation and unsupported symbols intact", async () => {
-  expect(
-    (await romanizeLyrics(sample("Café, déjà vu! 🎵"))).lines[0].text,
-  ).toBe("Café, déjà vu! 🎵");
-});
-
-it("reads each script the way Spicy Lyrics does", async () => {
-  expect(romanizeKorean("안녕하세요")).toBe("annyeonghaseyo");
-  expect(romanizeGreek("Γεια σου")).toBe("Geia sou");
-  expect((await romanizeLyrics(sample("你好"))).lines[0].text).toBe("Nǐ hǎo");
-  expect((await romanizeLyrics(sample("Привет"))).lines[0].text).toBe("Privet");
-});
-
-it("reads kanji as Japanese in a song with kana, as Chinese otherwise", () => {
-  expect(songScripts(["東京", "へ行く"])).toEqual(["japanese"]);
-  expect(songScripts(["東京"])).toEqual(["chinese"]);
-  expect(songScripts(["Д", "안녕"])).toEqual(["korean"]);
-  expect(songScripts(["Привет"])).toEqual(["cyrillic"]);
-});
-
-it("retains authored group timing for matching supplied words", async () => {
-  const source = sample("東京 です", "Tokyo desu");
-  source.lines[0].words = [
-    { text: "東京", start_ms: 1000, end_ms: 1600 },
-    { text: " です", start_ms: 1800, end_ms: 3000 },
-  ];
-  const words = (await shown(source)).lines[0].words;
-  expect(words.map((word) => [word.text, word.start_ms, word.end_ms])).toEqual([
-    ["Tokyo", 1000, 1600],
-    [" desu", 1800, 3000],
-  ]);
-});
-
-it("keeps each syllable's timing for per-syllable provider readings", async () => {
-  // As the provider sends them: one reading per syllable, joined by single
-  // spaces, empty where it gave none.
-  const source = sample("誰も読めない", "dare mo  karute");
-  source.lines[0].words = [
-    { text: "誰", start_ms: 1000, end_ms: 1200 },
-    { text: "も", start_ms: 1200, end_ms: 1500 },
-    { text: "読", start_ms: 1500, end_ms: 1700 },
-    { text: "カルテ", start_ms: 2000, end_ms: 3000 },
-  ];
-  const display = await shown(source);
-  const words = display.lines[0].words;
-  expect(display.estimated_words).toBeFalsy();
-  expect(words.map((word) => [word.start_ms, word.end_ms])).toEqual([
-    [1000, 1200],
-    [1200, 1500],
-    [1500, 1700],
-    [2000, 3000],
-  ]);
-  expect(words[0].text).toBe("dare");
-  expect(words[1].text).toBe(" mo");
-  expect(words[3].text).toBe(" karute");
-  expect(words[2].text.trim()).not.toBe("");
-  expect(display.lines[0].text).toBe(words.map((word) => word.text).join(""));
+it("marks estimated word timing", async () => {
+  rpc.mockResolvedValue(reading("hello friend", ["hello", " friend"], true));
+  const display = await romanizeLyrics(sample("안녕하세요", "hello friend"));
+  expect(display.estimated_words).toBe(true);
+  expect(display.lines[0].words.every((word) => word.estimated)).toBe(true);
+  expect(display.lines[0].words[0].sung_by).toBeUndefined();
 });
 
 it("romanizes line-synced text before estimating words for Space Gravity", async () => {
+  rpc.mockResolvedValue([{ text: "annyeonghaseyo", words: [] }]);
   const source = sample("안녕하세요", "annyeonghaseyo");
   source.lines[0].words = [];
   const display = await shown(source, true);
@@ -147,27 +108,9 @@ it("romanizes line-synced text before estimating words for Space Gravity", async
   expect(display.estimated_words).toBe(true);
 });
 
-it("marks unmatched romanized word timing estimated while retaining the source interval", async () => {
-  const source = sample("안녕하세요", "hello friend");
-  const display = await shown(source);
-  const words = display.lines[0].words;
-  expect(display.estimated_words).toBe(true);
-  expect(words.every((word) => word.estimated)).toBe(true);
-  expect(words[0].start_ms).toBe(1000);
-  expect(words.at(-1)!.end_ms).toBe(3000);
-  expect(words[0].end_ms).toBe(words[1].start_ms);
-});
-
-it("keeps an unconvertible run visible instead of dropping the lyric", async () => {
-  const source = sample("𒀀");
-  expect((await romanizeLyrics(source)).lines[0].text).toBe(
-    source.lines[0].text,
-  );
-});
-
 it("adds no reading that only repeats a Latin line", () => {
-  const lyrics = sample("No matter the pain, he set his soul on fire");
-  const same = sample("no matter the pain he set his soul on fire ");
+  const lyrics = sample("Walking home along the river, late at night");
+  const same = sample("walking home along the river late at night ");
   expect(withReadings(lyrics, same).lines[0].reading).toBeUndefined();
   const accented = sample("Café");
   expect(

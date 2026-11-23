@@ -1027,6 +1027,43 @@ async function startClient(
           const answers = host.__clientTest?.answers;
           if (answers && command in answers) return answers[command];
           if (command === "playback_speed") return args.percent;
+          if (command === "romanize_lyrics") {
+            // What the app's Rust romanizer gives for these lines; its own
+            // tests in crates/lyric-romanize check the same readings.
+            const long = args.options?.romaji_as_written === false;
+            const readings: Record<string, string[]> = {
+              "안녕하세요": ["Annyeonghaseyo"],
+              "안녕|하세요": ["Annyeong", "haseyo"],
+              "Привет": ["Privet"],
+              "مرحبا": ["mrHb"],
+              "你好": ["Nǐ hǎo"],
+              "東京へ行く": [long ? "Tōkyō e iku" : "Toukyou e iku"],
+              "사랑해요 보고싶어요 안녕하세요": [
+                "Saranghaeyo bogosipeoyo annyeonghaseyo",
+              ],
+            };
+            return args.lines.map((line: any) => {
+              const supplied = line.romanization.trim();
+              const timed = (read: string[]) =>
+                line.words.map((word: any, from: number) => ({
+                  text: read[from],
+                  start_ms: word.start_ms,
+                  end_ms: word.end_ms,
+                  from,
+                  estimated: false,
+                }));
+              if (supplied)
+                return {
+                  text: supplied,
+                  words: line.words.length === 1 ? timed([supplied]) : [],
+                };
+              const pieces = line.words.length
+                ? line.words.map((word: any) => word.text)
+                : [line.text];
+              const read = readings[pieces.join("|")];
+              return read ? { text: read.join(""), words: timed(read) } : null;
+            });
+          }
           if (command === "offline_location")
             return "C:\Users\listener\AppData\Local\Lyssna\data\offline";
           if (command === "offline_move") return "E:\Music\Lyssna Downloads";

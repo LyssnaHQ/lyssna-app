@@ -1,4 +1,32 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The app's Rust core romanizes; here each non-ASCII word reads as a
+// placeholder so the creator's handling of readings is what gets tested.
+vi.mock("./bridge", () => ({
+  rpc: async (
+    _command: string,
+    { lines }: { lines: { words: { text: string }[] }[] },
+  ) =>
+    lines.map(({ words }) => {
+      const read = words.map((word, index) =>
+        /^[ -~]*$/.test(word.text)
+          ? word.text
+          : `${index ? " " : ""}roman${index}`,
+      );
+      return read.every((text, index) => text === words[index].text)
+        ? null
+        : {
+            text: read.join(""),
+            words: read.map((text, from) => ({
+              text,
+              start_ms: 0,
+              end_ms: 0,
+              from,
+              estimated: false,
+            })),
+          };
+    }),
+}));
 import {
   geniusBackgrounds,
   breakLine,
@@ -1054,15 +1082,20 @@ describe("voices in a section that names several singers", () => {
   ];
 
   it("writes a voice per artist on lines, words and backing vocals", async () => {
-    const { setLineVoice, setUnitVoice, toTtml } = await import(
-      "./ttml-creator-model"
-    );
+    const { setLineVoice, setUnitVoice, toTtml } =
+      await import("./ttml-creator-model");
     let next = setLineVoice(lines, [1], "Juice WRLD");
     next = setUnitVoice(next, [{ line: 0, unit: 1 }], "Juice WRLD");
     const ttml = toTtml(next, { name: "GO", artists: [], album: "" } as never);
-    expect(ttml).toContain('<p begin="00:00.000" end="00:01.500" ttm:agent="v1"');
+    expect(ttml).toContain(
+      '<p begin="00:00.000" end="00:01.500" ttm:agent="v1"',
+    );
     expect(ttml).toContain('ttm:agent="v2">go</span>');
-    expect(ttml).toContain('<span ttm:role="x-bg" begin="00:01.000" end="00:01.500" ttm:agent="v2">');
-    expect(ttml).toContain('xml:id="v2"><ttm:name type="full">Juice WRLD</ttm:name>');
+    expect(ttml).toContain(
+      '<span ttm:role="x-bg" begin="00:01.000" end="00:01.500" ttm:agent="v2">',
+    );
+    expect(ttml).toContain(
+      'xml:id="v2"><ttm:name type="full">Juice WRLD</ttm:name>',
+    );
   });
 });

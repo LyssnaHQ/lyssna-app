@@ -547,7 +547,7 @@ impl SyllableSprings {
 }
 
 /// Same set as JavaScript's `\s` with the `u` flag.
-fn js_space(c: char) -> bool {
+pub fn js_space(c: char) -> bool {
     c.is_whitespace() || c == '\u{FEFF}'
 }
 

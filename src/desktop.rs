@@ -1876,6 +1876,16 @@ fn dj_prepare(account: String, state: State<'_, Desktop>) -> std::result::Result
     state.0.controls.prewarm_dj_request(&account).map_err(error)
 }
 #[tauri::command]
+async fn romanize_lyrics(
+    lines: Vec<lyric_romanize::Line>,
+    options: lyric_romanize::Options,
+) -> std::result::Result<Vec<Option<lyric_romanize::RomanizedLine>>, String> {
+    tauri::async_runtime::spawn_blocking(move || lyric_romanize::romanize_lines(&lines, options))
+        .await
+        .map_err(|_| "romanization unavailable".to_owned())
+}
+
+#[tauri::command]
 async fn dj_request(
     account: String,
     id: String,
@@ -6687,6 +6697,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            romanize_lyrics,
             soloist_key,
             soloist_has_key,
             soloist_supported,

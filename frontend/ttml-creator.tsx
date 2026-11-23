@@ -124,7 +124,7 @@ import {
   setLineVoice,
   setUnitVoice,
 } from "./ttml-creator-model";
-import { romanizeAway } from "./romanization";
+import { romanizeLyrics } from "./romanization";
 import { MetadataDialog } from "./ttml-metadata";
 import { CreatorSpeed, TtmlBar, TtmlWave } from "./ttml-bar";
 import { PauseIcon, PlayIcon } from "./player-icons";
@@ -1135,7 +1135,7 @@ export function TtmlCreator({
     const job = ++romanJob.current;
     setRomanNote("Romanizing…");
     const request = romanizeRequest(lines);
-    const result = await romanizeAway(request).catch(() => null);
+    const result = await romanizeLyrics(request).catch(() => null);
     if (job !== romanJob.current) return;
     if (!result) {
       setRomanNote("Romanization failed.");
