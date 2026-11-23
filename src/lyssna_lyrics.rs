@@ -15,7 +15,11 @@ use crate::model::Track;
 
 #[derive(Deserialize)]
 struct LyricsView {
-    song: Song,
+    /// Absent for a recording a reviewer marked instrumental: it has our sync but no lyrics to show.
+    #[serde(default)]
+    song: Option<Song>,
+    #[serde(default)]
+    instrumental: bool,
     #[serde(default)]
     offset_ms: i64,
     #[serde(default)]
@@ -61,10 +65,12 @@ fn recently_changed(id: &str) -> bool {
     })
 }
 
-/// The ISRC rides along, so the server can fall back to it in the same request.
+/// The ISRC rides along, so the server can fall back to it in the same request. Only Lyssna's own
+/// lyrics are asked for: without `source` the server would also try Apple Music, which this
+/// provider cannot read and which spends a shared budget.
 fn lyrics_url(platform: &str, id: &str, isrc: Option<&str>, fresh: bool) -> String {
-    let mut url = format!("{}/v1/lyrics/{platform}/{id}", crate::lyssna_account::API);
-    let mut separator = '?';
+    let mut url = format!("{}/v1/lyrics/{platform}/{id}?source=lyssna", crate::lyssna_account::API);
+    let mut separator = '&';
     if let Some(isrc) = isrc {
         url.push_str(&format!("{separator}isrc={isrc}"));
         separator = '&';
@@ -117,11 +123,15 @@ pub fn fetch(
     let Some(view) = found else {
         bail!("No Lyssna lyrics for this song");
     };
+    let Some(song) = view.song else {
+        // marked instrumental: nothing to show, and nothing to look for elsewhere
+        bail!("Lyssna marks this recording instrumental");
+    };
     let mut lyrics = parse_ttml(&view.ttml, track.duration_ms)?;
     shift(&mut lyrics, view.offset_ms);
     lyrics.source = "lyssna".into();
     lyrics.credits = view.contributors;
-    lyrics.song_id = Some(view.song.id);
+    lyrics.song_id = Some(song.id);
     Ok(lyrics)
 }
 
@@ -205,18 +215,18 @@ mod tests {
             ..Track::default()
         };
         assert!(!recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
-        assert!(!lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, false).contains('?'));
+        assert!(lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, false).ends_with("?source=lyssna"));
         mark_changed(&track);
         assert!(recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
-        assert!(lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, true).contains("?fresh="));
+        assert!(lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, true).contains("&fresh="));
     }
 
     #[test]
     fn the_isrc_travels_in_the_same_request() {
         let url = lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", Some("USUM71900001"), false);
-        assert!(url.ends_with("/v1/lyrics/spotify/0VjIjW4GlUZAMYd2vXMi3b?isrc=USUM71900001"));
+        assert!(url.ends_with("/v1/lyrics/spotify/0VjIjW4GlUZAMYd2vXMi3b?source=lyssna&isrc=USUM71900001"));
         let url = lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", Some("USUM71900001"), true);
-        assert!(url.contains("?isrc=USUM71900001&fresh="));
+        assert!(url.contains("?source=lyssna&isrc=USUM71900001&fresh="));
     }
 
     #[test]
