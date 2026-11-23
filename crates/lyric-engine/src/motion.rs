@@ -21,6 +21,7 @@ pub struct Line {
     pub start: f64,
     pub end: f64,
     pub opposite: f64,
+    pub background: bool,
     pub word_ends: Vec<f64>,
 }
 
@@ -34,21 +35,27 @@ impl Line {
     }
 }
 
-/// Lines flattened as `start, end, opposite, word count, word ends…` so the
-/// web view can hand them over in one typed array.
+/// Header numbers per flattened line, before its word ends.
+pub const LINE_HEADER: usize = 5;
+
+/// Lines flattened as `start, end, opposite, background, word count, word
+/// ends…` so the web view can hand them over in one typed array.
 pub fn lines_from_flat(flat: &[f64]) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut at = 0;
-    while at + 4 <= flat.len() {
-        let count = flat[at + 3].max(0.0) as usize;
-        let ends = flat.get(at + 4..at + 4 + count).unwrap_or_default();
+    while at + LINE_HEADER <= flat.len() {
+        let count = flat[at + 4].max(0.0) as usize;
+        let ends = flat
+            .get(at + LINE_HEADER..at + LINE_HEADER + count)
+            .unwrap_or_default();
         lines.push(Line {
             start: flat[at],
             end: flat[at + 1],
             opposite: flat[at + 2],
+            background: flat[at + 3] != 0.0,
             word_ends: ends.to_vec(),
         });
-        at += 4 + count;
+        at += LINE_HEADER + count;
     }
     lines
 }

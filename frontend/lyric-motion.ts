@@ -76,11 +76,12 @@ export class CountdownSprings {
   }
 }
 
-// Views ask for the gap every frame; flattening a song's lines once is enough.
-const flattened = new WeakMap<Line[], Float64Array>();
-function flat(lines: Line[]) {
-  let values = flattened.get(lines);
-  if (!values) {
+// Views ask about a song's lines every frame; the engine parses them once.
+const parsed = new WeakMap<Line[], engine.LyricLines>();
+/** The engine's copy of a song's lines, for per-frame view questions. */
+export function linesOf(lines: Line[]) {
+  let song = parsed.get(lines);
+  if (!song) {
     const numbers: number[] = [];
     for (const line of lines) {
       const words = line.words ?? [];
@@ -88,14 +89,15 @@ function flat(lines: Line[]) {
         line.start_ms,
         line.end_ms,
         line.opposite === undefined ? -1 : line.opposite ? 1 : 0,
+        line.background ? 1 : 0,
         words.length,
         ...words.map((word) => word.end_ms),
       );
     }
-    values = Float64Array.from(numbers);
-    flattened.set(lines, values);
+    song = new engine.LyricLines(Float64Array.from(numbers));
+    parsed.set(lines, song);
   }
-  return values;
+  return song;
 }
 
 const gapOf = (values: ArrayLike<number>, at: number): VocalGap => ({
@@ -106,14 +108,14 @@ const gapOf = (values: ArrayLike<number>, at: number): VocalGap => ({
 });
 
 export function vocalGaps(lines: Line[]): VocalGap[] {
-  const values = engine.vocalGaps(flat(lines));
+  const values = linesOf(lines).vocalGaps();
   return Array.from({ length: values.length / 4 }, (_, index) =>
     gapOf(values, index * 4),
   );
 }
 
 export function vocalGap(lines: Line[], time: number) {
-  const values = engine.vocalGap(flat(lines), time);
+  const values = linesOf(lines).vocalGap(time);
   return values.length ? gapOf(values, 0) : undefined;
 }
 

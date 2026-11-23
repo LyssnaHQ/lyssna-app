@@ -43,6 +43,242 @@ export class Countdown {
 }
 if (Symbol.dispose) Countdown.prototype[Symbol.dispose] = Countdown.prototype.free;
 
+/**
+ * A song's lines, parsed once and kept in the engine for the view's
+ * per-frame questions.
+ */
+export class LyricLines {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        LyricLinesFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_lyriclines_free(ptr, 0);
+    }
+    /**
+     * @param {number} time
+     * @returns {Uint32Array}
+     */
+    activeLines(time) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.lyriclines_activeLines(retptr, this.__wbg_ptr, time);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayU32FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export3(r0, r1 * 4, 4);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * @param {number} time
+     * @returns {boolean}
+     */
+    allSung(time) {
+        const ret = wasm.lyriclines_allSung(this.__wbg_ptr, time);
+        return ret !== 0;
+    }
+    /**
+     * @param {boolean} mirrored
+     * @returns {boolean}
+     */
+    endsOnRight(mirrored) {
+        const ret = wasm.lyriclines_endsOnRight(this.__wbg_ptr, mirrored);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} index
+     * @param {boolean} highlighter
+     * @param {boolean} playing
+     * @param {number} time
+     * @returns {number}
+     */
+    highlighterTime(index, highlighter, playing, time) {
+        const ret = wasm.lyriclines_highlighterTime(this.__wbg_ptr, index, highlighter, playing, time);
+        return ret;
+    }
+    /**
+     * Lines as `start, end, opposite, background, word count, word ends…`.
+     * @param {Float64Array} flat
+     */
+    constructor(flat) {
+        const ptr0 = passArrayF64ToWasm0(flat, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.lyriclines_new(ptr0, len0);
+        this.__wbg_ptr = ret;
+        LyricLinesFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * `cued` is the line clicked while paused, or -1.
+     * @param {number} time
+     * @param {number} cued
+     * @returns {number}
+     */
+    primaryLine(time, cued) {
+        const ret = wasm.lyriclines_primaryLine(this.__wbg_ptr, time, cued);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} index
+     * @returns {number}
+     */
+    vocalEnd(index) {
+        const ret = wasm.lyriclines_vocalEnd(this.__wbg_ptr, index);
+        return ret;
+    }
+    /**
+     * @param {number} time
+     * @returns {Float64Array}
+     */
+    vocalGap(time) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.lyriclines_vocalGap(retptr, this.__wbg_ptr, time);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayF64FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export3(r0, r1 * 8, 8);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Gaps as `start, end, after, opposite` fours.
+     * @returns {Float64Array}
+     */
+    vocalGaps() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.lyriclines_vocalGaps(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayF64FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export3(r0, r1 * 8, 8);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+}
+if (Symbol.dispose) LyricLines.prototype[Symbol.dispose] = LyricLines.prototype.free;
+
+/**
+ * The lyrics scroll position: a spring between lines and a glide after
+ * seeks.
+ */
+export class Scroller {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        ScrollerFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_scroller_free(ptr, 0);
+    }
+    /**
+     * @returns {boolean}
+     */
+    get gliding() {
+        const ret = wasm.scroller_gliding(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    constructor() {
+        const ret = wasm.scroller_new();
+        this.__wbg_ptr = ret;
+        ScrollerFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    place() {
+        wasm.scroller_place(this.__wbg_ptr);
+    }
+    /**
+     * @returns {number}
+     */
+    get position() {
+        const ret = wasm.scroller_position(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {boolean}
+     */
+    get running() {
+        const ret = wasm.scroller_running(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} value
+     */
+    set position(value) {
+        wasm.scroller_set_position(this.__wbg_ptr, value);
+    }
+    /**
+     * @param {number} value
+     */
+    set target(value) {
+        wasm.scroller_set_target(this.__wbg_ptr, value);
+    }
+    /**
+     * @param {number} value
+     */
+    set velocity(value) {
+        wasm.scroller_set_velocity(this.__wbg_ptr, value);
+    }
+    /**
+     * @param {number} by
+     */
+    shiftGlide(by) {
+        wasm.scroller_shiftGlide(this.__wbg_ptr, by);
+    }
+    /**
+     * @param {number} from
+     * @param {number} now
+     */
+    startGlide(from, now) {
+        wasm.scroller_startGlide(this.__wbg_ptr, from, now);
+    }
+    /**
+     * @param {number} now
+     */
+    start(now) {
+        wasm.scroller_start(this.__wbg_ptr, now);
+    }
+    stopGlide() {
+        wasm.scroller_stopGlide(this.__wbg_ptr);
+    }
+    /**
+     * @returns {number}
+     */
+    get target() {
+        const ret = wasm.scroller_target(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} now
+     * @returns {number}
+     */
+    tick(now) {
+        const ret = wasm.scroller_tick(this.__wbg_ptr, now);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    get velocity() {
+        const ret = wasm.scroller_velocity(this.__wbg_ptr);
+        return ret;
+    }
+}
+if (Symbol.dispose) Scroller.prototype[Symbol.dispose] = Scroller.prototype.free;
+
 export class Spline {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -258,11 +494,34 @@ export function countdownDots(gap_start, gap_end, time, reduce_motion) {
 /**
  * @param {number} gap_start
  * @param {number} gap_end
+ * @param {number} position
+ * @returns {number}
+ */
+export function countdownTime(gap_start, gap_end, position) {
+    const ret = wasm.countdownTime(gap_start, gap_end, position);
+    return ret;
+}
+
+/**
+ * @param {number} gap_start
+ * @param {number} gap_end
  * @param {number} time
  * @returns {boolean}
  */
 export function countdownVisible(gap_start, gap_end, time) {
     const ret = wasm.countdownVisible(gap_start, gap_end, time);
+    return ret !== 0;
+}
+
+/**
+ * @param {boolean} playing
+ * @param {number} position
+ * @param {number} clicked_at
+ * @param {number} line_start
+ * @returns {boolean}
+ */
+export function cueHolds(playing, position, clicked_at, line_start) {
+    const ret = wasm.cueHolds(playing, position, clicked_at, line_start);
     return ret !== 0;
 }
 
@@ -278,6 +537,19 @@ export function glideScroll(from, to, elapsed) {
 }
 
 /**
+ * @param {number} target
+ * @param {number} line_top
+ * @param {boolean} card
+ * @param {number} focus
+ * @param {number} end
+ * @returns {number}
+ */
+export function heldTarget(target, line_top, card, focus, end) {
+    const ret = wasm.heldTarget(target, line_top, card, focus, end);
+    return ret;
+}
+
+/**
  * @param {number} start
  * @param {number} end
  * @param {string} text
@@ -289,6 +561,21 @@ export function isEmphasis(start, end, text, estimated) {
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.isEmphasis(start, end, ptr0, len0, estimated);
     return ret !== 0;
+}
+
+/**
+ * @param {boolean} card
+ * @param {boolean} compact
+ * @param {boolean} stacked
+ * @param {number} client_height
+ * @param {number} opening
+ * @param {number} focus
+ * @param {number} first_line_height
+ * @returns {number}
+ */
+export function leadTop(card, compact, stacked, client_height, opening, focus, first_line_height) {
+    const ret = wasm.leadTop(card, compact, stacked, client_height, opening, focus, first_line_height);
+    return ret;
 }
 
 /**
@@ -361,6 +648,54 @@ export function motionSettings() {
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
+}
+
+/**
+ * @param {number} last
+ * @param {number} now
+ * @returns {boolean}
+ */
+export function positionJumped(last, now) {
+    const ret = wasm.positionJumped(last, now);
+    return ret !== 0;
+}
+
+/**
+ * @param {number} now
+ * @param {number} browsed_at
+ * @param {number} line_top
+ * @param {number} line_bottom
+ * @param {number} view_top
+ * @param {number} view_bottom
+ * @returns {boolean}
+ */
+export function resumeFollowing(now, browsed_at, line_top, line_bottom, view_top, view_bottom) {
+    const ret = wasm.resumeFollowing(now, browsed_at, line_top, line_bottom, view_top, view_bottom);
+    return ret !== 0;
+}
+
+/**
+ * @param {boolean} card
+ * @param {number} client_height
+ * @returns {number}
+ */
+export function scrollFocus(card, client_height) {
+    const ret = wasm.scrollFocus(card, client_height);
+    return ret;
+}
+
+/**
+ * @param {number} line_top
+ * @param {number} line_height
+ * @param {boolean} centred
+ * @param {number} focus
+ * @param {number} client_height
+ * @param {number} scroll_height
+ * @returns {number}
+ */
+export function scrollTarget(line_top, line_height, centred, focus, client_height, scroll_height) {
+    const ret = wasm.scrollTarget(line_top, line_height, centred, focus, client_height, scroll_height);
+    return ret;
 }
 
 /**
@@ -448,49 +783,6 @@ export function vocalEnd(end, word_ends) {
 }
 
 /**
- * @param {Float64Array} lines
- * @param {number} time
- * @returns {Float64Array}
- */
-export function vocalGap(lines, time) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArrayF64ToWasm0(lines, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.vocalGap(retptr, ptr0, len0, time);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var v2 = getArrayF64FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 8, 8);
-        return v2;
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-}
-
-/**
- * Lines as `start, end, opposite, word count, word ends…`; gaps come back as
- * `start, end, after, opposite` fours.
- * @param {Float64Array} lines
- * @returns {Float64Array}
- */
-export function vocalGaps(lines) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArrayF64ToWasm0(lines, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.vocalGaps(retptr, ptr0, len0);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var v2 = getArrayF64FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 8, 8);
-        return v2;
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-}
-
-/**
  * @param {number} start
  * @param {number} end
  * @param {number} time
@@ -556,6 +848,12 @@ function __wbg_get_imports() {
 const CountdownFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_countdown_free(ptr, 1));
+const LyricLinesFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_lyriclines_free(ptr, 1));
+const ScrollerFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_scroller_free(ptr, 1));
 const SplineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_spline_free(ptr, 1));

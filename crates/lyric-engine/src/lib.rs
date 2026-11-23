@@ -2,6 +2,7 @@
 //! and keeps only DOM work in TypeScript.
 
 pub mod motion;
+pub mod view;
 
 use std::cell::RefCell;
 
@@ -142,23 +143,6 @@ pub fn vocal_end(end: f64, word_ends: &[f64]) -> f64 {
 
 fn gap_values(gap: &motion::VocalGap) -> [f64; 4] {
     [gap.start, gap.end, gap.after as f64, gap.opposite]
-}
-
-/// Lines as `start, end, opposite, word count, word ends…`; gaps come back as
-/// `start, end, after, opposite` fours.
-#[wasm_bindgen(js_name = vocalGaps)]
-pub fn vocal_gaps(lines: &[f64]) -> Vec<f64> {
-    motion::vocal_gaps(&motion::lines_from_flat(lines))
-        .iter()
-        .flat_map(gap_values)
-        .collect()
-}
-
-#[wasm_bindgen(js_name = vocalGap)]
-pub fn vocal_gap(lines: &[f64], time: f64) -> Vec<f64> {
-    motion::vocal_gap(&motion::lines_from_flat(lines), time)
-        .map(|gap| gap_values(&gap).to_vec())
-        .unwrap_or_default()
 }
 
 #[wasm_bindgen(js_name = isEmphasis)]
@@ -472,6 +456,244 @@ impl Syllable {
     }
 }
 
+/// A song's lines, parsed once and kept in the engine for the view's
+/// per-frame questions.
+#[wasm_bindgen]
+pub struct LyricLines(Vec<motion::Line>);
+
+#[wasm_bindgen]
+impl LyricLines {
+    /// Lines as `start, end, opposite, background, word count, word ends…`.
+    #[wasm_bindgen(constructor)]
+    pub fn new(flat: &[f64]) -> Self {
+        Self(motion::lines_from_flat(flat))
+    }
+
+    #[wasm_bindgen(js_name = vocalEnd)]
+    pub fn vocal_end(&self, index: usize) -> f64 {
+        self.0.get(index).map_or(0.0, motion::Line::vocal_end)
+    }
+
+    /// Gaps as `start, end, after, opposite` fours.
+    #[wasm_bindgen(js_name = vocalGaps)]
+    pub fn vocal_gaps(&self) -> Vec<f64> {
+        motion::vocal_gaps(&self.0)
+            .iter()
+            .flat_map(gap_values)
+            .collect()
+    }
+
+    #[wasm_bindgen(js_name = vocalGap)]
+    pub fn vocal_gap(&self, time: f64) -> Vec<f64> {
+        motion::vocal_gap(&self.0, time)
+            .map(|gap| gap_values(&gap).to_vec())
+            .unwrap_or_default()
+    }
+
+    #[wasm_bindgen(js_name = activeLines)]
+    pub fn active_lines(&self, time: f64) -> Vec<u32> {
+        view::active_lines(&self.0, time)
+            .into_iter()
+            .map(|index| index as u32)
+            .collect()
+    }
+
+    /// `cued` is the line clicked while paused, or -1.
+    #[wasm_bindgen(js_name = primaryLine)]
+    pub fn primary_line(&self, time: f64, cued: i32) -> u32 {
+        view::primary_line(&self.0, time, usize::try_from(cued).ok()) as u32
+    }
+
+    #[wasm_bindgen(js_name = highlighterTime)]
+    pub fn highlighter_time(
+        &self,
+        index: usize,
+        highlighter: bool,
+        playing: bool,
+        time: f64,
+    ) -> f64 {
+        self.0.get(index).map_or(0.0, |line| {
+            view::highlighter_time(highlighter, playing, time, line)
+        })
+    }
+
+    #[wasm_bindgen(js_name = allSung)]
+    pub fn all_sung(&self, time: f64) -> bool {
+        view::all_sung(&self.0, time)
+    }
+
+    #[wasm_bindgen(js_name = endsOnRight)]
+    pub fn ends_on_right(&self, mirrored: bool) -> bool {
+        view::ends_on_right(&self.0, mirrored)
+    }
+}
+
+#[wasm_bindgen(js_name = positionJumped)]
+pub fn position_jumped(last: f64, now: f64) -> bool {
+    view::jumped(last, now)
+}
+
+#[wasm_bindgen(js_name = cueHolds)]
+pub fn cue_holds(playing: bool, position: f64, clicked_at: f64, line_start: f64) -> bool {
+    view::cue_holds(playing, position, clicked_at, line_start)
+}
+
+#[wasm_bindgen(js_name = countdownTime)]
+pub fn countdown_time(gap_start: f64, gap_end: f64, position: f64) -> f64 {
+    view::countdown_time(gap_start, gap_end, position)
+}
+
+#[wasm_bindgen(js_name = scrollFocus)]
+pub fn scroll_focus(card: bool, client_height: f64) -> f64 {
+    view::focus(card, client_height)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen(js_name = leadTop)]
+pub fn lead_top(
+    card: bool,
+    compact: bool,
+    stacked: bool,
+    client_height: f64,
+    opening: f64,
+    focus: f64,
+    first_line_height: f64,
+) -> f64 {
+    view::lead_top(
+        card,
+        compact,
+        stacked,
+        client_height,
+        opening,
+        focus,
+        first_line_height,
+    )
+}
+
+#[wasm_bindgen(js_name = scrollTarget)]
+pub fn scroll_target(
+    line_top: f64,
+    line_height: f64,
+    centred: bool,
+    focus: f64,
+    client_height: f64,
+    scroll_height: f64,
+) -> f64 {
+    view::scroll_target(
+        line_top,
+        line_height,
+        centred,
+        focus,
+        client_height,
+        scroll_height,
+    )
+}
+
+#[wasm_bindgen(js_name = heldTarget)]
+pub fn held_target(target: f64, line_top: f64, card: bool, focus: f64, end: f64) -> f64 {
+    view::held_target(target, line_top, card, focus, end)
+}
+
+#[wasm_bindgen(js_name = resumeFollowing)]
+pub fn resume_following(
+    now: f64,
+    browsed_at: f64,
+    line_top: f64,
+    line_bottom: f64,
+    view_top: f64,
+    view_bottom: f64,
+) -> bool {
+    view::resume_following(
+        now,
+        browsed_at,
+        line_top,
+        line_bottom,
+        view_top,
+        view_bottom,
+    )
+}
+
+/// The lyrics scroll position: a spring between lines and a glide after
+/// seeks.
+#[wasm_bindgen]
+#[derive(Default)]
+pub struct Scroller(view::Scroller);
+
+#[wasm_bindgen]
+impl Scroller {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn position(&self) -> f64 {
+        self.0.position
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_position(&mut self, value: f64) {
+        self.0.position = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn velocity(&self) -> f64 {
+        self.0.velocity
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_velocity(&mut self, value: f64) {
+        self.0.velocity = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn target(&self) -> f64 {
+        self.0.target
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_target(&mut self, value: f64) {
+        self.0.target = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn gliding(&self) -> bool {
+        self.0.gliding()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn running(&self) -> bool {
+        self.0.running()
+    }
+
+    #[wasm_bindgen(js_name = startGlide)]
+    pub fn start_glide(&mut self, from: f64, now: f64) {
+        self.0.start_glide(from, now);
+    }
+
+    #[wasm_bindgen(js_name = shiftGlide)]
+    pub fn shift_glide(&mut self, by: f64) {
+        self.0.shift_glide(by);
+    }
+
+    #[wasm_bindgen(js_name = stopGlide)]
+    pub fn stop_glide(&mut self) {
+        self.0.stop_glide();
+    }
+
+    pub fn start(&mut self, now: f64) {
+        self.0.start(now);
+    }
+
+    pub fn place(&mut self) {
+        self.0.place();
+    }
+
+    pub fn tick(&mut self, now: f64) -> f64 {
+        self.0.tick(now)
+    }
+}
+
 /// Fill position of a line without word timing, or NaN when it should rest.
 #[wasm_bindgen(js_name = lineWipe)]
 pub fn line_wipe(start: f64, end: f64, time: f64, simple: bool) -> f64 {
@@ -600,11 +822,12 @@ mod tests {
     #[test]
     fn flat_lines_round_trip() {
         let lines = lines_from_flat(&[
-            0.0, 1000.0, 1.0, 2.0, 400.0, 900.0, 2000.0, 3000.0, 0.0, 0.0,
+            0.0, 1000.0, 1.0, 0.0, 2.0, 400.0, 900.0, 2000.0, 3000.0, 0.0, 1.0, 0.0,
         ]);
         assert_eq!(lines.len(), 2);
         assert!(
             lines[0].opposite == 1.0
+                && lines[1].background
                 && lines[0].vocal_end() == 900.0
                 && lines[1].vocal_end() == 3000.0
         );

@@ -11,6 +11,54 @@ export class Countdown {
     constructor();
 }
 
+/**
+ * A song's lines, parsed once and kept in the engine for the view's
+ * per-frame questions.
+ */
+export class LyricLines {
+    free(): void;
+    [Symbol.dispose](): void;
+    activeLines(time: number): Uint32Array;
+    allSung(time: number): boolean;
+    endsOnRight(mirrored: boolean): boolean;
+    highlighterTime(index: number, highlighter: boolean, playing: boolean, time: number): number;
+    /**
+     * Lines as `start, end, opposite, background, word count, word ends…`.
+     */
+    constructor(flat: Float64Array);
+    /**
+     * `cued` is the line clicked while paused, or -1.
+     */
+    primaryLine(time: number, cued: number): number;
+    vocalEnd(index: number): number;
+    vocalGap(time: number): Float64Array;
+    /**
+     * Gaps as `start, end, after, opposite` fours.
+     */
+    vocalGaps(): Float64Array;
+}
+
+/**
+ * The lyrics scroll position: a spring between lines and a glide after
+ * seeks.
+ */
+export class Scroller {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor();
+    place(): void;
+    shiftGlide(by: number): void;
+    startGlide(from: number, now: number): void;
+    start(now: number): void;
+    stopGlide(): void;
+    tick(now: number): number;
+    readonly gliding: boolean;
+    position: number;
+    readonly running: boolean;
+    target: number;
+    velocity: number;
+}
+
 export class Spline {
     free(): void;
     [Symbol.dispose](): void;
@@ -60,11 +108,19 @@ export class Syllable {
  */
 export function countdownDots(gap_start: number, gap_end: number, time: number, reduce_motion: boolean): Float64Array;
 
+export function countdownTime(gap_start: number, gap_end: number, position: number): number;
+
 export function countdownVisible(gap_start: number, gap_end: number, time: number): boolean;
+
+export function cueHolds(playing: boolean, position: number, clicked_at: number, line_start: number): boolean;
 
 export function glideScroll(from: number, to: number, elapsed: number): number;
 
+export function heldTarget(target: number, line_top: number, card: boolean, focus: number, end: number): number;
+
 export function isEmphasis(start: number, end: number, text: string, estimated: boolean): boolean;
+
+export function leadTop(card: boolean, compact: boolean, stacked: boolean, client_height: number, opening: number, focus: number, first_line_height: number): number;
 
 export function letterGoals(start: number, end: number, time: number, count: number): Float64Array;
 
@@ -85,6 +141,14 @@ export function motionCurve(curve: number, x: number): number;
  */
 export function motionSettings(): Float64Array;
 
+export function positionJumped(last: number, now: number): boolean;
+
+export function resumeFollowing(now: number, browsed_at: number, line_top: number, line_bottom: number, view_top: number, view_bottom: number): boolean;
+
+export function scrollFocus(card: boolean, client_height: number): number;
+
+export function scrollTarget(line_top: number, line_height: number, centred: boolean, focus: number, client_height: number, scroll_height: number): number;
+
 export function simpleGoal(start: number, end: number, time: number): Float64Array;
 
 export function stepScroll(position: number, velocity: number, target: number, seconds: number): Float64Array;
@@ -98,14 +162,6 @@ export function tuneMotion(legacy: boolean, idle_scale: number, word_peak_scale:
 
 export function vocalEnd(end: number, word_ends: Float64Array): number;
 
-export function vocalGap(lines: Float64Array, time: number): Float64Array;
-
-/**
- * Lines as `start, end, opposite, word count, word ends…`; gaps come back as
- * `start, end, after, opposite` fours.
- */
-export function vocalGaps(lines: Float64Array): Float64Array;
-
 export function wordGoal(start: number, end: number, time: number): Float64Array;
 
 export function wordGroupSizes(texts: string[]): Uint32Array;
@@ -115,20 +171,54 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_countdown_free: (a: number, b: number) => void;
+    readonly __wbg_lyriclines_free: (a: number, b: number) => void;
+    readonly __wbg_scroller_free: (a: number, b: number) => void;
     readonly __wbg_spline_free: (a: number, b: number) => void;
     readonly __wbg_spring_free: (a: number, b: number) => void;
     readonly __wbg_syllable_free: (a: number, b: number) => void;
     readonly countdownDots: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly countdownTime: (a: number, b: number, c: number) => number;
     readonly countdownVisible: (a: number, b: number, c: number) => number;
     readonly countdown_frame: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly countdown_new: () => number;
+    readonly cueHolds: (a: number, b: number, c: number, d: number) => number;
     readonly glideScroll: (a: number, b: number, c: number) => number;
+    readonly heldTarget: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly isEmphasis: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly leadTop: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly letterGoals: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly lineBlur: (a: number) => number;
     readonly lineWipe: (a: number, b: number, c: number, d: number) => number;
+    readonly lyriclines_activeLines: (a: number, b: number, c: number) => void;
+    readonly lyriclines_allSung: (a: number, b: number) => number;
+    readonly lyriclines_endsOnRight: (a: number, b: number) => number;
+    readonly lyriclines_highlighterTime: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly lyriclines_new: (a: number, b: number) => number;
+    readonly lyriclines_primaryLine: (a: number, b: number, c: number) => number;
+    readonly lyriclines_vocalEnd: (a: number, b: number) => number;
+    readonly lyriclines_vocalGap: (a: number, b: number, c: number) => void;
+    readonly lyriclines_vocalGaps: (a: number, b: number) => void;
     readonly motionCurve: (a: number, b: number) => number;
     readonly motionSettings: (a: number) => void;
+    readonly positionJumped: (a: number, b: number) => number;
+    readonly resumeFollowing: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly scrollFocus: (a: number, b: number) => number;
+    readonly scrollTarget: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly scroller_gliding: (a: number) => number;
+    readonly scroller_new: () => number;
+    readonly scroller_place: (a: number) => void;
+    readonly scroller_position: (a: number) => number;
+    readonly scroller_running: (a: number) => number;
+    readonly scroller_set_position: (a: number, b: number) => void;
+    readonly scroller_set_target: (a: number, b: number) => void;
+    readonly scroller_set_velocity: (a: number, b: number) => void;
+    readonly scroller_shiftGlide: (a: number, b: number) => void;
+    readonly scroller_start: (a: number, b: number) => void;
+    readonly scroller_startGlide: (a: number, b: number, c: number) => void;
+    readonly scroller_stopGlide: (a: number) => void;
+    readonly scroller_target: (a: number) => number;
+    readonly scroller_tick: (a: number, b: number) => number;
+    readonly scroller_velocity: (a: number) => number;
     readonly simpleGoal: (a: number, b: number, c: number, d: number) => void;
     readonly spline_at: (a: number, b: number) => number;
     readonly spline_new: (a: number, b: number) => number;
@@ -150,8 +240,6 @@ export interface InitOutput {
     readonly syllable_values: (a: number, b: number) => void;
     readonly tuneMotion: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly vocalEnd: (a: number, b: number, c: number) => number;
-    readonly vocalGap: (a: number, b: number, c: number, d: number) => void;
-    readonly vocalGaps: (a: number, b: number, c: number) => void;
     readonly wordGoal: (a: number, b: number, c: number, d: number) => void;
     readonly wordGroupSizes: (a: number, b: number, c: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;

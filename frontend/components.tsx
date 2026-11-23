@@ -66,7 +66,7 @@ import type {
   Jam,
 } from "./types";
 import type { AppState } from "./state";
-import { activeLines, endsOnRight, formatTime } from "./state";
+import { formatTime } from "./state";
 import { PlaybackClock } from "./playback-clock";
 import { rpc } from "./bridge";
 import { useMotionCover } from "./motion-cover";
@@ -77,18 +77,15 @@ import {
   useCreatorProfile,
 } from "./creator-profile";
 import {
-  stepScroll,
+  linesOf,
   vocalGaps,
   type VocalGap,
   wordGroups,
   vocalGap,
-  vocalEnd,
   lineBlur,
   tuneMotion,
-  glideScroll,
-  GLIDE_MS,
-  type ScrollSpring,
 } from "./lyric-motion";
+import * as engine from "./lyric-engine";
 import { LyricAnimator } from "./lyric-animator";
 import { HighlighterWords, markerColour } from "./highlighter";
 import { LyricWord } from "./lyric-word";
@@ -609,8 +606,6 @@ export function useLyricPosition(
  *  fade-in after a seek ends as it begins. */
 const SEEK_FADE_LEAD_MS = 300;
 const lyricSeekTarget = (ms: number) => Math.max(0, ms - SEEK_FADE_LEAD_MS);
-/** Spicy Lyrics resumes following this long after the last scroll. */
-const BROWSE_COOLDOWN_MS = 750;
 export function LyricsDisplay({
   lyrics,
   positionMs,
@@ -644,10 +639,10 @@ export function LyricsDisplay({
   // As in Spicy Lyrics, browsing ends on its own once the user stops
   // scrolling with the current lyric still on screen; scrolled away from
   // it, browsing stays until they return or select a lyric.
-  const glide = useRef<{ from: number; start: number }>(undefined);
+  const scroller = useMemo(() => new engine.Scroller(), []);
   const browsedAt = useRef(0);
   const browse = () => {
-    glide.current = undefined;
+    scroller.stopGlide();
     browsedAt.current = performance.now();
     setFollowing(false);
   };
@@ -666,11 +661,14 @@ export function LyricsDisplay({
   const transport = useRef({ playing, positionMs });
   transport.current = { playing, positionMs };
   const selected =
-    !playing &&
     pausedLine &&
     lyrics.lines[pausedLine.index] === pausedLine.line &&
-    (positionMs === pausedLine.from ||
-      Math.abs(positionMs - pausedLine.line.start_ms) <= 25)
+    engine.cueHolds(
+      playing,
+      positionMs,
+      pausedLine.from,
+      pausedLine.line.start_ms,
+    )
       ? pausedLine.index
       : undefined;
   const cueLine = selected === undefined ? undefined : lyrics.lines[selected];
@@ -696,7 +694,6 @@ export function LyricsDisplay({
       })),
     [lyrics],
   );
-  const spring = useRef<ScrollSpring>({ position: 0, velocity: 0, target: 0 });
   const heldEnd = useRef<{ top: number; gap: number } | null>(null);
   /** The credits are in view at the scroll's target, so they hold. */
   const holdEnd = useRef(false);
@@ -750,10 +747,7 @@ export function LyricsDisplay({
         gap={item}
         // Song time only matters near the pause; held still elsewhere, a
         // countdown far off does not render again every frame.
-        time={Math.min(
-          item.end + COUNTDOWN_REACH_MS,
-          Math.max(item.start - COUNTDOWN_REACH_MS, positionMs),
-        )}
+        time={engine.countdownTime(item.start, item.end, positionMs)}
         reduceMotion={settings.reduce_motion}
         visible={visible}
       />
@@ -766,15 +760,9 @@ export function LyricsDisplay({
     (cueLine === undefined && settings.lyrics_early_scroll
       ? (settings.lyrics_early_scroll_ms ?? 200)
       : 0);
-  const active = activeLines(lyrics.lines, scrollTime);
-  const primary =
-    selected ??
-    active.find((index) => !lyrics.lines[index].background) ??
-    lyrics.lines.reduce(
-      (last, line, index) =>
-        line.start_ms <= scrollTime && !line.background ? index : last,
-      0,
-    );
+  const song = linesOf(lyrics.lines);
+  const active = Array.from(song.activeLines(scrollTime));
+  const primary = song.primaryLine(scrollTime, selected ?? -1);
   useEffect(() => {
     setFollowing(true);
   }, [lyrics]);
@@ -782,7 +770,7 @@ export function LyricsDisplay({
   // slide straight there instead of springing through the whole song.
   const lastPosition = useRef(lyricTime),
     jumped = useRef(false);
-  const positionJumped = Math.abs(lyricTime - lastPosition.current) > 1500;
+  const positionJumped = engine.positionJumped(lastPosition.current, lyricTime);
   if (positionJumped) jumped.current = true;
   lastPosition.current = lyricTime;
   const animator = useRef<LyricAnimator>(undefined);
@@ -832,50 +820,22 @@ export function LyricsDisplay({
     const container = scroll.current,
       line = gap ? waiting.current : lines.current[primary];
     if (!container || !line || !lyrics.synced) {
-      spring.current.velocity = 0;
+      scroller.velocity = 0;
       return;
     }
     let frame = 0,
       last = performance.now();
-    spring.current.position = container.scrollTop;
+    scroller.position = container.scrollTop;
     const tick = (time: number) => {
       frame = 0;
       if (!frameDue(last, time)) {
         frame = requestAnimationFrame(tick);
         return;
       }
-      const motion = spring.current,
-        slide = glide.current;
-      if (slide) {
-        const elapsed = time - slide.start;
-        container.scrollTop = motion.position = glideScroll(
-          slide.from,
-          motion.target,
-          elapsed,
-        );
-        motion.velocity = 0;
-        last = time;
-        if (elapsed < GLIDE_MS) frame = requestAnimationFrame(tick);
-        else {
-          glide.current = undefined;
-          noteHeldRest(container, true);
-        }
-        return;
-      }
-      container.scrollTop = stepScroll(
-        motion,
-        Math.min(0.064, Math.max(0, (time - last) / 1000)),
-      );
       last = time;
-      if (
-        Math.abs(motion.position - motion.target) > 0.2 ||
-        Math.abs(motion.velocity) > 0.5
-      )
-        frame = requestAnimationFrame(tick);
-      else {
-        container.scrollTop = motion.target;
-        noteHeldRest(container, true);
-      }
+      container.scrollTop = scroller.tick(time);
+      if (scroller.running) frame = requestAnimationFrame(tick);
+      else noteHeldRest(container, true);
     };
     const retarget = () => {
       const stacked = container
@@ -888,9 +848,7 @@ export function LyricsDisplay({
       // Expanded over the whole panel, it reads like the lyrics page: the
       // song starts a third down and the current line stays centred.
       const card = compact && !container.closest(".lyric-preview.expanded");
-      const focus = card
-        ? Math.min(40, container.clientHeight * 0.14)
-        : container.clientHeight / 2;
+      const focus = engine.scrollFocus(card, container.clientHeight);
       const centred = !card;
       // Minimal lyrics in full screen begin lower, as in Spicy Lyrics.
       const opening =
@@ -899,14 +857,15 @@ export function LyricsDisplay({
           : 0.28;
       container.style.setProperty(
         "--lead-top",
-        `${card ? 8 : compact || !stacked ? container.clientHeight * opening : Math.max(0, focus - (lines.current[0]?.offsetHeight ?? 0) / 2)}px`,
+        `${engine.leadTop(card, compact, !!stacked, container.clientHeight, opening, focus, lines.current[0]?.offsetHeight ?? 0)}px`,
       );
-      spring.current.target = Math.max(
-        0,
-        Math.min(
-          container.scrollHeight - container.clientHeight,
-          line.offsetTop + (centred ? line.offsetHeight / 2 : 0) - focus,
-        ),
+      scroller.target = engine.scrollTarget(
+        line.offsetTop,
+        line.offsetHeight,
+        centred,
+        focus,
+        container.clientHeight,
+        container.scrollHeight,
       );
       // Credits in view stay whole: when a pause's dots open near the end,
       // the lyrics move up rather than the credits being pushed off the
@@ -921,13 +880,16 @@ export function LyricsDisplay({
       const holding =
         !!above &&
         above.offsetTop + above.offsetHeight <
-          spring.current.target + container.clientHeight;
+          scroller.target + container.clientHeight;
       // The card keeps its faded line above the current one even here;
       // aiming at the line's top edge slid it to the very top and back.
       if (holding)
-        spring.current.target = Math.max(
-          spring.current.target,
-          Math.min(end, line.offsetTop - (card ? focus : 0)),
+        scroller.target = engine.heldTarget(
+          scroller.target,
+          line.offsetTop,
+          card,
+          focus,
+          end,
         );
       // The dots grow over half a second; a spring chasing them would let
       // the credits dip out of view first. Shifting in the same frame keeps
@@ -950,14 +912,14 @@ export function LyricsDisplay({
         const shift = held.gap - gap();
         if (shift > 0) {
           container.scrollTop += shift;
-          spring.current.position = container.scrollTop;
-          if (glide.current) glide.current.from += shift;
+          scroller.position = container.scrollTop;
+          scroller.shiftGlide(shift);
         }
       }
       // A pause opening above held credits only pushes the lyrics up; the
       // scroll stays where it rested rather than re-aiming at the dots.
       if (anchored && line === waiting.current)
-        spring.current.target = container.scrollTop;
+        scroller.target = container.scrollTop;
       heldEnd.current = !holding
         ? null
         : anchored
@@ -972,9 +934,9 @@ export function LyricsDisplay({
         holding && (anchored || creditsInView(container, above!)),
       );
       if (!following) {
-        spring.current.velocity = 0;
+        scroller.velocity = 0;
         setReturnDirection(
-          container.scrollTop > spring.current.target ? "up" : "down",
+          container.scrollTop > scroller.target ? "up" : "down",
         );
         return;
       }
@@ -983,27 +945,23 @@ export function LyricsDisplay({
         reworded = false;
         cancelAnimationFrame(frame);
         frame = 0;
-        glide.current = undefined;
-        container.scrollTop = spring.current.position = spring.current.target;
-        spring.current.velocity = 0;
+        scroller.place();
+        container.scrollTop = scroller.position;
         return;
       }
       // Smooth scrolling off: the browser's own smooth scroll, not the spring.
       const native = settings.lyrics_smooth_scroll === false;
       if (jumped.current && !settings.reduce_motion && !native)
-        glide.current = {
-          from: container.scrollTop,
-          start: performance.now(),
-        };
+        scroller.startGlide(container.scrollTop, performance.now());
       if (settings.reduce_motion || native) {
         container.scrollTo({
-          top: spring.current.target,
+          top: scroller.target,
           behavior: native && !settings.reduce_motion ? "smooth" : "instant",
         });
-        spring.current.position = spring.current.target;
-        spring.current.velocity = 0;
+        scroller.place();
       } else if (!frame) {
         last = performance.now();
+        scroller.start(last);
         frame = requestAnimationFrame(tick);
       }
     };
@@ -1041,13 +999,21 @@ export function LyricsDisplay({
   }, [positionMs, following]);
   useEffect(() => {
     if (following || !lyrics.synced) return;
-    if (performance.now() - browsedAt.current < BROWSE_COOLDOWN_MS) return;
     const container = scroll.current,
       line = lines.current[primary];
     if (!container || !line) return;
     const view = container.getBoundingClientRect(),
       box = line.getBoundingClientRect();
-    if (Math.min(box.bottom, view.bottom) - Math.max(box.top, view.top) >= 5)
+    if (
+      engine.resumeFollowing(
+        performance.now(),
+        browsedAt.current,
+        box.top,
+        box.bottom,
+        view.top,
+        view.bottom,
+      )
+    )
       setFollowing(true);
   }, [positionMs, following, primary, lyrics.synced]);
   const highlighter = !!settings.lyrics_highlighter && lyrics.synced;
@@ -1065,7 +1031,7 @@ export function LyricsDisplay({
     );
   return (
     <div
-      className={`lyrics-display ${compact ? "compact" : ""} ${footerMode !== "off" ? "has-pinned-footer" : ""} ${!lyrics.synced ? "static-lyrics" : ""} ${settings.reduce_motion ? "reduce-motion" : ""} ${settings.lyrics_simple ? "simple-lyrics" : ""} ${settings.lyrics_right_align ? "lyrics-right" : ""} ${settings.lyrics_flip_duet ? "lyrics-flip-duet" : ""} ${settings.lyrics_wide_duet === false ? "" : "lyrics-wide-duet"} ${settings.lyrics_line_hover ? "lyrics-line-hover" : ""} ${lyrics.lines.some((line) => line.opposite) ? "has-duet" : ""} ${settings.lyrics_minimal && !compact ? "minimal" : ""} ${highlighter ? "highlighter" : ""} ${settings.lyrics_keep_overlaps !== false ? "keep-overlaps" : ""} ${lyrics.synced && lyrics.lines.length && lyricTime >= Math.max(...lyrics.lines.map(vocalEnd)) ? "all-sung" : ""} ${settings.lyrics_credits_follow && endsOnRight(lyrics.lines, !!(settings.lyrics_flip_duet || settings.lyrics_right_align)) ? "credits-right" : ""}`}
+      className={`lyrics-display ${compact ? "compact" : ""} ${footerMode !== "off" ? "has-pinned-footer" : ""} ${!lyrics.synced ? "static-lyrics" : ""} ${settings.reduce_motion ? "reduce-motion" : ""} ${settings.lyrics_simple ? "simple-lyrics" : ""} ${settings.lyrics_right_align ? "lyrics-right" : ""} ${settings.lyrics_flip_duet ? "lyrics-flip-duet" : ""} ${settings.lyrics_wide_duet === false ? "" : "lyrics-wide-duet"} ${settings.lyrics_line_hover ? "lyrics-line-hover" : ""} ${lyrics.lines.some((line) => line.opposite) ? "has-duet" : ""} ${settings.lyrics_minimal && !compact ? "minimal" : ""} ${highlighter ? "highlighter" : ""} ${settings.lyrics_keep_overlaps !== false ? "keep-overlaps" : ""} ${lyrics.synced && song.allSung(lyricTime) ? "all-sung" : ""} ${settings.lyrics_credits_follow && song.endsOnRight(!!(settings.lyrics_flip_duet || settings.lyrics_right_align)) ? "credits-right" : ""}`}
       data-following={following}
       style={
         {
@@ -1103,7 +1069,7 @@ export function LyricsDisplay({
           noteHeldRest(node, false);
           if (!following)
             setReturnDirection(
-              node.scrollTop > spring.current.target ? "up" : "down",
+              node.scrollTop > scroller.target ? "up" : "down",
             );
         }}
         ref={scroll}
@@ -1135,7 +1101,7 @@ export function LyricsDisplay({
                 line={line}
                 action={lineActions[index]}
                 playing={playing}
-                past={!playing && scrollTime >= vocalEnd(line)}
+                past={!playing && scrollTime >= song.vocalEnd(index)}
                 blur={compact || playing ? 0 : lineBlur(distance)}
                 synced={lyrics.synced}
                 highlighter={highlighter}
@@ -1143,17 +1109,12 @@ export function LyricsDisplay({
                 // even after the next line takes over, so the pen finishes
                 // at the singing's pace; then it keeps all its ink. Lines
                 // not being sung hold still, so they skip rendering.
-                time={
-                  !highlighter
-                    ? 0
-                    : playing ||
-                        (lyricTime >= line.start_ms &&
-                          lyricTime < vocalEnd(line))
-                      ? lyricTime
-                      : lyricTime >= line.start_ms
-                        ? Infinity
-                        : -Infinity
-                }
+                time={song.highlighterTime(
+                  index,
+                  highlighter,
+                  playing,
+                  lyricTime,
+                )}
                 translation={settings.lyrics_translations}
               />
               {gaps.has(index) && waitingDots(gaps.get(index)!)}
@@ -1521,8 +1482,6 @@ const LyricCredits = memo(function LyricCredits({
 });
 
 /** Static lyric markup. LyricAnimator moves the syllables and letters. */
-/** How far either side of a pause its countdown follows song time. */
-const COUNTDOWN_REACH_MS = 3000;
 
 /** One lyric line. Memoised: while a song plays only the lines whose role,
  *  blur or ink changes render again, not every word of every line. */
