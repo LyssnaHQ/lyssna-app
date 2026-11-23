@@ -272,3 +272,34 @@ fn whole_lines_read_as_the_web_view_read_them() {
         ["Annyeong", "haseyo"]
     );
 }
+
+#[test]
+fn japanese_lines_read_as_romanized_lyrics_write_them() {
+    let read = |text: &str| {
+        joined(
+            &text.split_inclusive(' ').collect::<Vec<_>>(),
+            japanese(true),
+        )
+    };
+    assert_eq!(read("こぼれてく記憶の砂"), "Koboreteku kioku no suna");
+    assert_eq!(read("虚しい輪を描いてる"), "Munashii wa wo egaiteru");
+    assert_eq!(
+        read("二度となにも失くさぬように"),
+        "Nido to nani mo nakusanu you ni"
+    );
+    assert_eq!(read("ねえ こんなに呆気なく"), "Nee konna ni akkenaku");
+    assert_eq!(read("追憶という名の罠"), "Tsuioku to iu na no wana");
+    assert_eq!(read("消えてしまうの"), "Kiete shimau no");
+}
+
+#[test]
+fn spaces_and_quotes_keep_words_in_place() {
+    let read = |text: &str| {
+        joined(
+            &text.split_inclusive(' ').collect::<Vec<_>>(),
+            japanese(true),
+        )
+    };
+    assert_eq!(read("\"きっと\" 今も"), "\"Kitto\" ima mo");
+    assert_eq!(read("「きっと」今も"), "\"Kitto\" ima mo");
+}

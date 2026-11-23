@@ -218,6 +218,21 @@ pub fn kana_to_romaji(kana: &str) -> String {
     )
 }
 
+/// Spellings the dictionary misreads, swapped for ones it knows before
+/// tokenizing. Each keeps its length, so tokens still line up with the text.
+const RESPELLINGS: [(&str, &str); 1] = [("失く", "無く")];
+
+/// Tokens that romanized lyrics write as two words, and where the second
+/// one starts.
+fn second_word(surface: &str) -> Option<usize> {
+    Some(match surface {
+        "こんなに" | "そんなに" | "あんなに" | "どんなに" => 3,
+        "という" | "といった" => 1,
+        "二度と" => 2,
+        _ => return None,
+    })
+}
+
 const MACRONS: [(&str, &str); 10] = [
     ("ā", "aa"),
     ("ī", "ii"),
@@ -244,6 +259,15 @@ fn mark(c: char) -> Option<&'static str> {
         '）' => ")",
         _ => return None,
     })
+}
+
+/// Spoken contractions of a te-form helper stay on their verb: てる, てく.
+fn contracted(token: &Token, previous: Option<&str>) -> bool {
+    token.pos == "動詞"
+        && token.pos_detail == "非自立"
+        && (token.surface.starts_with(['て', 'で'])
+            || (matches!(previous, Some("て" | "で"))
+                && token.surface.starts_with(['く', 'き', 'け', 'こ'])))
 }
 
 pub(crate) fn read(cells: &mut [Cell], as_written: bool) {
@@ -279,14 +303,30 @@ pub(crate) fn read(cells: &mut [Cell], as_written: bool) {
             kept.push(index);
         }
     }
-    let text: String = kept.iter().map(|&index| cells[index].char).collect();
+    let written: Vec<char> = kept.iter().map(|&index| cells[index].char).collect();
+    let mut text: String = written.iter().collect();
+    for (from, to) in RESPELLINGS {
+        text = text.replace(from, to);
+    }
+    let spelled: Vec<char> = text.chars().collect();
     let tokens = tokenize(&text);
     let mut at = 0;
     let mut previous_pos: Option<String> = None;
+    let mut previous_surface: Option<String> = None;
     // A small tsu that ends one token doubles the sound starting the next.
     let mut carried = String::new();
     for token in &tokens {
-        let chars: Vec<char> = token.surface.chars().collect();
+        let found: Vec<char> = token.surface.chars().collect();
+        // The tokenizer leaves out whitespace, so find where this token is.
+        while at < spelled.len() && !spelled[at..].starts_with(&found) {
+            at += 1;
+        }
+        let chars: Vec<char> = written[at.min(written.len())..]
+            .iter()
+            .take(found.len())
+            .copied()
+            .collect();
+        let surface: String = chars.iter().collect();
         let indices: Vec<usize> = kept.iter().skip(at).take(chars.len()).copied().collect();
         at += chars.len();
         let before = previous_pos.replace(token.pos.clone());
@@ -300,7 +340,9 @@ pub(crate) fn read(cells: &mut [Cell], as_written: bool) {
             && before
                 .as_deref()
                 .is_some_and(|pos| ["動詞", "形容詞", "助動詞"].contains(&pos)))
-            || token.pos_detail == "接尾";
+            || token.pos_detail == "接尾"
+            || contracted(token, previous_surface.as_deref());
+        previous_surface = Some(token.surface.clone());
         let mut kana = if as_written {
             token.reading.clone()
         } else {
@@ -321,13 +363,13 @@ pub(crate) fn read(cells: &mut [Cell], as_written: bool) {
             carried.clear();
             continue;
         }
-        if particle && token.surface == "は" {
+        if particle && surface == "は" {
             kana = "ワ".into();
         }
-        if particle && token.surface == "へ" {
+        if particle && surface == "へ" {
             kana = "エ".into();
         }
-        let aligned = align_reading(&token.surface, &kana).unwrap_or_else(|| {
+        let aligned = align_reading(&surface, &kana).unwrap_or_else(|| {
             std::iter::once(to_katakana(&kana))
                 .chain(chars.iter().skip(1).map(|_| String::new()))
                 .collect()
@@ -374,8 +416,8 @@ pub(crate) fn read(cells: &mut [Cell], as_written: bool) {
         for &index in &indices {
             cells[index].out.clear();
         }
-        for (number, (first, kana)) in groups.iter().enumerate() {
-            let mut romaji = if particle && token.surface == "を" && as_written {
+        let spell = |kana: &str| {
+            let mut romaji = if particle && surface == "を" && as_written {
                 "wo".to_owned()
             } else {
                 kana_to_romaji(kana)
@@ -383,9 +425,24 @@ pub(crate) fn read(cells: &mut [Cell], as_written: bool) {
             if as_written {
                 romaji = replace_pairs(&romaji, &MACRONS);
             }
-            cells[*first].out = romaji.replace('ッ', "");
+            romaji.replace('ッ', "")
+        };
+        let split = second_word(&surface).filter(|&offset| offset < aligned.len());
+        for (number, (first, kana)) in groups.iter().enumerate() {
+            cells[*first].out = spell(kana);
             if number == 0 && !attaches {
                 cells[*first].start = true;
+            }
+        }
+        if let Some(offset) = split
+            && let Some(&index) = indices.get(offset)
+        {
+            if groups.iter().any(|(first, _)| *first == index) {
+                cells[index].start = true;
+            } else if groups.len() == 1 {
+                let head: String = aligned[..offset].concat();
+                let tail: String = aligned[offset..].concat();
+                cells[groups[0].0].out = format!("{} {}", spell(&head), spell(&tail));
             }
         }
     }

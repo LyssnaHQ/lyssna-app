@@ -703,6 +703,7 @@ pub fn romanize_pieces(pieces: &[&str], readers: Readers) -> Vec<String> {
     read_greek(&mut cells);
     let mut out = vec![String::new(); pieces.len()];
     let mut emitted_ends_word = false;
+    let mut emitted: Option<char> = None;
     for cell in &cells {
         let mut text = cell.out.clone();
         if cell.start
@@ -713,7 +714,11 @@ pub fn romanize_pieces(pieces: &[&str], readers: Readers) -> Vec<String> {
             text.insert(0, ' ');
         }
         if let Some(last) = text.chars().last() {
-            emitted_ends_word = !last.is_whitespace();
+            // No space goes between an opening quote and the word it opens.
+            let opens = "(「『[“‘".contains(last)
+                || (last == '"' && emitted.is_none_or(char::is_whitespace));
+            emitted_ends_word = !last.is_whitespace() && !opens;
+            emitted = Some(last);
         }
         out[cell.owner].push_str(&text);
     }
