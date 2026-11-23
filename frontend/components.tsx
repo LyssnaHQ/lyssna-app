@@ -1363,7 +1363,9 @@ const LyricCredits = memo(function LyricCredits({
         className={`lyric-source community-credits lyssna-credits ${expanded ? "expanded" : ""}`}
       >
         <span className="community-lead">
-          {lyrics.instrumental ? "Provided by: Lyssna" : "Lyrics provided by: Lyssna"}
+          {lyrics.instrumental
+            ? "Provided by: Lyssna"
+            : "Lyrics provided by: Lyssna"}
         </span>
         <LyssnaContributors credits={lyrics.credits} song={lyrics.song_id} />
       </div>
