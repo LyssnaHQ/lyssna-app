@@ -355,12 +355,19 @@ export function SettingsWindow({
     key: keyof typeof PINNABLE_EFFECTS,
     help: string,
     keywords: string,
+    unavailable?: string,
   ) => {
     const { label } = PINNABLE_EFFECTS[key];
     const pins = settings.pinned_lyric_effects ?? [];
     const pinned = pins.includes(key);
     return (
-      <SettingRow key={key} label={label} help={help} keywords={keywords}>
+      <SettingRow
+        key={key}
+        label={label}
+        help={help}
+        keywords={keywords}
+        unavailable={unavailable}
+      >
         <span className="setting-pin-group">
           <button
             className={`icon-button setting-pin ${pinned ? "active" : ""}`}
@@ -1290,9 +1297,8 @@ export function SettingsWindow({
           "In full screen, sung lines fade away and the lines still to come stay dim.",
           "minimal fullscreen full screen hide sung",
         ),
-        flag(
+        pinnable(
           "lyrics_visualiser",
-          "Visualiser",
           "Show bars that move with the music behind the lyrics, coloured by the album cover.",
           "visualiser visualizer bars spectrum equalizer audio",
           soloistPlays,

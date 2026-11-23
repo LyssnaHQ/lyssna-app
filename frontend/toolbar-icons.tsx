@@ -72,10 +72,20 @@ export const HighlighterIcon = () => (
   </Icon>
 );
 
+/** Three bars that dip in turn, like the music under them. */
+export const VisualiserIcon = () => (
+  <Icon name="visualiser">
+    <path className="part-level" d="M5 21v-6" />
+    <path className="part-level" d="M12 21V3" />
+    <path className="part-level" d="M19 21V9" />
+  </Icon>
+);
+
 /** Effects that can be pinned to the lyrics toolbar from Settings. */
 export const PINNABLE_EFFECTS = {
   space_gravity: { label: "Space Gravity", Icon: GravityIcon },
   lyrics_highlighter: { label: "Highlighter", Icon: HighlighterIcon },
+  lyrics_visualiser: { label: "Visualiser", Icon: VisualiserIcon },
 } as const;
 
 /** Rows that squeeze together. */

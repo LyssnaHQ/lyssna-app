@@ -14572,7 +14572,14 @@ test("pinned lyric effects get a toggle on the lyrics toolbar", async ({
   await page
     .getByRole("button", { name: "Pin Highlighter to the lyrics toolbar" })
     .click();
+  await page.getByRole("tab", { name: "Lyrics", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Pin Visualiser to the lyrics toolbar" })
+    .click();
   await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(
+    toolbar.locator('[data-icon="lyrics_visualiser"] .part-level'),
+  ).toHaveCount(3);
   const gravity = toolbar.locator('[data-icon="space_gravity"]');
   await expect(gravity).toHaveAttribute("aria-pressed", "false");
   await expect(toolbar.locator('[data-icon="lyrics_highlighter"]')).toHaveCount(

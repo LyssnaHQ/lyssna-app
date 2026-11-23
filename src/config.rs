@@ -628,8 +628,10 @@ impl Settings {
         self.hidden_settings.truncate(200);
         let mut pinned = std::collections::HashSet::new();
         self.pinned_lyric_effects.retain(|id| {
-            matches!(id.as_str(), "space_gravity" | "lyrics_highlighter")
-                && pinned.insert(id.clone())
+            matches!(
+                id.as_str(),
+                "space_gravity" | "lyrics_highlighter" | "lyrics_visualiser"
+            ) && pinned.insert(id.clone())
         });
         self.lyric_song_offsets.retain(|uri, offset| {
             *offset = (*offset).clamp(-10_000, 10_000);
@@ -974,13 +976,13 @@ mod tests {
         assert_eq!(older.lyrics_background_brightness, 100);
         assert_eq!(older.ttml_reviewer, "off");
         let mut pins: Settings = serde_json::from_str(
-            r#"{"pinned_lyric_effects":["lyrics_highlighter","nope","lyrics_highlighter","space_gravity"],"ttml_reviewer":"sometimes"}"#,
+            r#"{"pinned_lyric_effects":["lyrics_highlighter","nope","lyrics_highlighter","space_gravity","lyrics_visualiser"],"ttml_reviewer":"sometimes"}"#,
         )
         .unwrap();
         pins.clean_lyrics_options();
         assert_eq!(
             pins.pinned_lyric_effects,
-            ["lyrics_highlighter", "space_gravity"]
+            ["lyrics_highlighter", "space_gravity", "lyrics_visualiser"]
         );
         assert_eq!(pins.ttml_reviewer, "off");
         let mut fps: Settings = serde_json::from_str(r#"{"animation_fps_cap":5}"#).unwrap();
