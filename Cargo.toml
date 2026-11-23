@@ -17,7 +17,7 @@ name = "lyssna-release"
 path = "src/bin/lyssna-release.rs"
 
 [workspace]
-members = ["vendor/librespot-core", "vendor/librespot-playback", "vendor/librespot-connect"]
+members = ["vendor/librespot-core", "vendor/librespot-playback", "vendor/librespot-connect", "crates/lyric-engine"]
 default-members = ["."]
 
 [features]

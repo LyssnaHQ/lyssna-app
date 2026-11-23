@@ -1,0 +1,649 @@
+//! Lyssna's lyric timing and motion. The web view loads this as WebAssembly
+//! and keeps only DOM work in TypeScript.
+
+pub mod motion;
+
+use std::cell::RefCell;
+
+use motion::{CountdownSprings, Dot, DotCurves, Goal, Motion, SyllableSprings, Tuning};
+use wasm_bindgen::prelude::*;
+
+thread_local! {
+    static MOTION: RefCell<Motion> = RefCell::new(Motion::default());
+    static DOTS: DotCurves = DotCurves::default();
+}
+
+fn with_motion<T>(read: impl FnOnce(&Motion) -> T) -> T {
+    MOTION.with(|motion| read(&motion.borrow()))
+}
+
+fn goal_values(goals: &[Goal]) -> Vec<f64> {
+    goals
+        .iter()
+        .flat_map(|goal| [goal.scale, goal.lift, goal.glow, goal.gradient])
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen(js_name = tuneMotion)]
+pub fn tune_motion(
+    legacy: bool,
+    idle_scale: f64,
+    word_peak_scale: f64,
+    letter_peak_scale: f64,
+    vertical_strength: f64,
+    glow_strength: f64,
+    scale_frequency: f64,
+    scale_damping: f64,
+    vertical_frequency: f64,
+    vertical_damping: f64,
+    glow_frequency: f64,
+    glow_damping: f64,
+    blur_strength: f64,
+) {
+    MOTION.with(|motion| {
+        motion.borrow_mut().tune(Tuning {
+            legacy,
+            idle_scale,
+            word_peak_scale,
+            letter_peak_scale,
+            vertical_strength,
+            glow_strength,
+            scale_frequency,
+            scale_damping,
+            vertical_frequency,
+            vertical_damping,
+            glow_frequency,
+            glow_damping,
+            blur_strength,
+        })
+    });
+}
+
+/// 0 scale, 1 letter scale, 2 lift, 3 letter lift, 4 glow.
+#[wasm_bindgen(js_name = motionCurve)]
+pub fn motion_curve(curve: u8, x: f64) -> f64 {
+    with_motion(|motion| match curve {
+        0 => motion.scale.at(x),
+        1 => motion.letter_scale.at(x),
+        2 => motion.lift.at(x),
+        3 => motion.letter_lift.at(x),
+        _ => motion.glow.at(x),
+    })
+}
+
+/// Scalars and spring settings, in the order `lyric-motion.ts` reads them.
+#[wasm_bindgen(js_name = motionSettings)]
+pub fn motion_settings() -> Vec<f64> {
+    with_motion(|motion| {
+        vec![
+            motion.idle_scale,
+            motion.sung_letter_glow,
+            motion.emphasis_tail_ms,
+            motion.lead_ms,
+            motion.blur_per_line,
+            motion.max_blur,
+            motion.scale_spring.0,
+            motion.scale_spring.1,
+            motion.lift_spring.0,
+            motion.lift_spring.1,
+            motion.glow_spring.0,
+            motion.glow_spring.1,
+        ]
+    })
+}
+
+#[wasm_bindgen(js_name = wordGoal)]
+pub fn word_goal(start: f64, end: f64, time: f64) -> Vec<f64> {
+    with_motion(|motion| goal_values(&[motion.word_goal(start, end, time)]))
+}
+
+#[wasm_bindgen(js_name = letterGoals)]
+pub fn letter_goals(start: f64, end: f64, time: f64, count: usize) -> Vec<f64> {
+    with_motion(|motion| goal_values(&motion.letter_goals(start, end, time, count)))
+}
+
+#[wasm_bindgen(js_name = simpleGoal)]
+pub fn simple_goal(start: f64, end: f64, time: f64) -> Vec<f64> {
+    goal_values(&[motion::simple_goal(start, end, time)])
+}
+
+/// 0 unsung, 1 active, 2 sung.
+#[wasm_bindgen(js_name = sungState)]
+pub fn sung_state(start: f64, end: f64, time: f64) -> u8 {
+    motion::sung(start, end, time) as u8
+}
+
+#[wasm_bindgen(js_name = lineBlur)]
+pub fn line_blur(distance: f64) -> f64 {
+    with_motion(|motion| motion.line_blur(distance))
+}
+
+#[wasm_bindgen(js_name = glideScroll)]
+pub fn glide_scroll(from: f64, to: f64, elapsed: f64) -> f64 {
+    motion::glide_scroll(from, to, elapsed)
+}
+
+#[wasm_bindgen(js_name = stepScroll)]
+pub fn step_scroll(position: f64, velocity: f64, target: f64, seconds: f64) -> Vec<f64> {
+    let (position, velocity) = motion::step_scroll(position, velocity, target, seconds);
+    vec![position, velocity]
+}
+
+#[wasm_bindgen(js_name = vocalEnd)]
+pub fn vocal_end(end: f64, word_ends: &[f64]) -> f64 {
+    motion::Line {
+        end,
+        word_ends: word_ends.to_vec(),
+        ..Default::default()
+    }
+    .vocal_end()
+}
+
+fn gap_values(gap: &motion::VocalGap) -> [f64; 4] {
+    [gap.start, gap.end, gap.after as f64, gap.opposite]
+}
+
+/// Lines as `start, end, opposite, word count, word ends…`; gaps come back as
+/// `start, end, after, opposite` fours.
+#[wasm_bindgen(js_name = vocalGaps)]
+pub fn vocal_gaps(lines: &[f64]) -> Vec<f64> {
+    motion::vocal_gaps(&motion::lines_from_flat(lines))
+        .iter()
+        .flat_map(gap_values)
+        .collect()
+}
+
+#[wasm_bindgen(js_name = vocalGap)]
+pub fn vocal_gap(lines: &[f64], time: f64) -> Vec<f64> {
+    motion::vocal_gap(&motion::lines_from_flat(lines), time)
+        .map(|gap| gap_values(&gap).to_vec())
+        .unwrap_or_default()
+}
+
+#[wasm_bindgen(js_name = isEmphasis)]
+pub fn is_emphasis(start: f64, end: f64, text: &str, estimated: bool) -> bool {
+    motion::is_emphasis(start, end, text, estimated)
+}
+
+#[wasm_bindgen(js_name = wordGroupSizes)]
+pub fn word_group_sizes(texts: Vec<String>) -> Vec<u32> {
+    motion::word_group_sizes(texts.iter().map(String::as_str))
+        .into_iter()
+        .map(|size| size as u32)
+        .collect()
+}
+
+fn dot_values(dots: &[Dot]) -> Vec<f64> {
+    dots.iter()
+        .flat_map(|dot| [dot.opacity, dot.scale, dot.glow, dot.lift])
+        .collect()
+}
+
+fn dots_from(values: &[f64]) -> Vec<Dot> {
+    values
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|&[opacity, scale, glow, lift]| Dot {
+            opacity,
+            scale,
+            glow,
+            lift,
+        })
+        .collect()
+}
+
+#[wasm_bindgen(js_name = countdownVisible)]
+pub fn countdown_visible(gap_start: f64, gap_end: f64, time: f64) -> bool {
+    motion::countdown_visible(gap_start, gap_end, time)
+}
+
+/// Three dots as `opacity, scale, glow, lift` fours.
+#[wasm_bindgen(js_name = countdownDots)]
+pub fn countdown_dots(gap_start: f64, gap_end: f64, time: f64, reduce_motion: bool) -> Vec<f64> {
+    DOTS.with(|curves| dot_values(&curves.dots(gap_start, gap_end, time, reduce_motion)))
+}
+
+#[wasm_bindgen]
+pub struct Spline(motion::Spline);
+
+#[wasm_bindgen]
+impl Spline {
+    /// Points as `x, y` pairs.
+    #[wasm_bindgen(constructor)]
+    pub fn new(points: &[f64]) -> Self {
+        let pairs: Vec<(f64, f64)> = points
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&[x, y]| (x, y))
+            .collect();
+        Self(motion::Spline::new(&pairs))
+    }
+
+    pub fn at(&self, x: f64) -> f64 {
+        self.0.at(x)
+    }
+}
+
+#[wasm_bindgen]
+pub struct Spring(motion::Spring);
+
+#[wasm_bindgen]
+impl Spring {
+    #[wasm_bindgen(constructor)]
+    pub fn new(position: f64, frequency: f64, damping: f64) -> Self {
+        Self(motion::Spring::new(position, frequency, damping))
+    }
+
+    pub fn step(&mut self, seconds: f64) -> f64 {
+        self.0.step(seconds)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn position(&self) -> f64 {
+        self.0.position
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_position(&mut self, value: f64) {
+        self.0.position = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn velocity(&self) -> f64 {
+        self.0.velocity
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_velocity(&mut self, value: f64) {
+        self.0.velocity = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn goal(&self) -> f64 {
+        self.0.goal
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_goal(&mut self, value: f64) {
+        self.0.goal = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn damping(&self) -> f64 {
+        self.0.damping
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_damping(&mut self, value: f64) {
+        self.0.damping = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn asleep(&self) -> bool {
+        self.0.asleep()
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Default)]
+pub struct Countdown(CountdownSprings);
+
+#[wasm_bindgen]
+impl Countdown {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Targets and result as `opacity, scale, glow, lift` fours.
+    pub fn frame(&mut self, targets: &[f64], time: f64, now: f64, snap: bool) -> Vec<f64> {
+        dot_values(&self.0.frame(&dots_from(targets), time, now, snap))
+    }
+}
+
+/// Values per piece: fill position (percent), scale, lift (em), glow radius
+/// (px) and glow opacity (percent). NaN leaves a style untouched.
+pub const PIECE_VALUES: usize = 5;
+
+/// One rendered syllable of a live line, with its held word's letters. The
+/// animator steps it every frame and writes the values it returns.
+#[wasm_bindgen]
+pub struct Syllable {
+    start: f64,
+    end: f64,
+    letter_offset: usize,
+    letter_count: usize,
+    calm: f64,
+    simple: bool,
+    word: SyllableSprings,
+    letters: Vec<SyllableSprings>,
+    values: Vec<f64>,
+}
+
+#[wasm_bindgen]
+impl Syllable {
+    /// `letters` is how many of the held word's letters this piece shows,
+    /// starting at `letter_offset` of `letter_count`.
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        start: f64,
+        end: f64,
+        emphasis: bool,
+        letters: usize,
+        letter_offset: usize,
+        letter_count: usize,
+        calm: f64,
+        simple: bool,
+    ) -> Self {
+        with_motion(|motion| {
+            let mut word = motion.springs(motion.scale.at(0.0), motion.lift.at(0.0));
+            if simple {
+                let rest = motion::simple_goal(1.0, 2.0, 0.0).lift;
+                word.lift.position = rest;
+                word.lift.goal = rest;
+            }
+            Self {
+                start,
+                end: end
+                    - if emphasis {
+                        motion.emphasis_tail_ms
+                    } else {
+                        0.0
+                    },
+                letter_offset,
+                letter_count: if letters > 0 && letter_count == 0 {
+                    letters
+                } else {
+                    letter_count
+                },
+                calm,
+                simple,
+                word,
+                letters: (0..letters)
+                    .map(|_| {
+                        motion.springs(motion.letter_scale.at(0.0), motion.letter_lift.at(0.0))
+                    })
+                    .collect(),
+                values: vec![f64::NAN; PIECE_VALUES * (1 + letters)],
+            }
+        })
+    }
+
+    /// Steps the springs to song `time` and reports whether any still move.
+    pub fn step(&mut self, time: f64, seconds: f64, reduce_motion: bool) -> bool {
+        self.values.fill(f64::NAN);
+        if self.simple {
+            self.step_simple(time, seconds, reduce_motion)
+        } else {
+            with_motion(|motion| {
+                self.step_full(motion, time + motion.lead_ms, seconds, reduce_motion)
+            })
+        }
+    }
+
+    /// The values the last step produced, piece by piece, word first.
+    pub fn values(&self) -> Vec<f64> {
+        self.values.clone()
+    }
+
+    fn set(&mut self, piece: usize, slot: usize, value: f64) {
+        self.values[piece * PIECE_VALUES + slot] = value;
+    }
+
+    fn step_simple(&mut self, time: f64, seconds: f64, reduce_motion: bool) -> bool {
+        let goal = motion::simple_goal(self.start, self.end, time);
+        if self.letters.is_empty() {
+            self.set(0, 0, goal.gradient);
+        } else {
+            let share = (self.end - self.start) / self.letter_count.max(1) as f64;
+            for part in 0..self.letters.len() {
+                let from = self.start + (self.letter_offset + part) as f64 * share;
+                let fill = motion::simple_goal(from, from + share, time).gradient;
+                self.set(1 + part, 0, fill);
+            }
+        }
+        if reduce_motion {
+            return false;
+        }
+        let lift = self.word.step(goal, seconds).lift;
+        self.set(0, 2, lift);
+        !self.word.lift.asleep()
+    }
+
+    fn apply(
+        &mut self,
+        piece: usize,
+        goal: Goal,
+        seconds: f64,
+        glow: Option<(f64, f64)>,
+        reduce_motion: bool,
+    ) {
+        if glow.is_some() {
+            self.set(piece, 0, goal.gradient);
+        }
+        if reduce_motion {
+            return;
+        }
+        let springs = if piece == 0 {
+            &mut self.word
+        } else {
+            &mut self.letters[piece - 1]
+        };
+        let pose = springs.step(goal, seconds);
+        let calm = self.calm;
+        self.set(piece, 1, 1.0 + (pose.scale - 1.0) * calm);
+        self.set(piece, 2, pose.lift * calm);
+        if let Some((radius, opacity)) = glow {
+            self.set(piece, 3, 4.0 + radius * pose.glow * calm);
+            self.set(piece, 4, (pose.glow * opacity * calm).clamp(0.0, 100.0));
+        }
+    }
+
+    fn step_full(
+        &mut self,
+        motion: &Motion,
+        ahead: f64,
+        seconds: f64,
+        reduce_motion: bool,
+    ) -> bool {
+        let goal = motion.word_goal(self.start, self.end, ahead);
+        let word_glow = self.letters.is_empty().then_some((2.0, 35.0));
+        self.apply(0, goal, seconds, word_glow, reduce_motion);
+        if ahead >= self.end {
+            for letter in &mut self.letters {
+                letter.settle();
+            }
+        }
+        if !self.letters.is_empty() {
+            let goals = motion.letter_goals(self.start, self.end, ahead, self.letter_count);
+            for part in 0..self.letters.len() {
+                let Some(goal) = goals.get(self.letter_offset + part).copied() else {
+                    break;
+                };
+                self.apply(1 + part, goal, seconds, Some((12.0, 185.0)), reduce_motion);
+            }
+        }
+        !reduce_motion
+            && (!self.word.asleep() || self.letters.iter().any(|letter| !letter.asleep()))
+    }
+}
+
+/// Fill position of a line without word timing, or NaN when it should rest.
+#[wasm_bindgen(js_name = lineWipe)]
+pub fn line_wipe(start: f64, end: f64, time: f64, simple: bool) -> f64 {
+    if simple || time < start - 1000.0 {
+        return f64::NAN;
+    }
+    let span = if end - start == 0.0 { 1.0 } else { end - start };
+    120.0 * ((time - start) / span).clamp(0.0, 1.0) - 20.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Syllable;
+    use super::motion::{self, *};
+
+    fn line(start: f64, end: f64) -> Line {
+        Line {
+            start,
+            end,
+            ..Default::default()
+        }
+    }
+
+    fn close(a: f64, b: f64, digits: i32) -> bool {
+        (a - b).abs() < 10f64.powi(-digits) / 2.0
+    }
+
+    #[test]
+    fn scroll_is_stable_through_retargets_at_any_refresh_rate() {
+        let results: Vec<f64> = [30, 60, 144]
+            .iter()
+            .map(|&rate| {
+                let (mut position, mut velocity) = (0.0, 0.0);
+                for _ in 0..rate {
+                    (position, velocity) =
+                        step_scroll(position, velocity, 1000.0, 1.0 / rate as f64);
+                }
+                let before = position;
+                (position, _) = step_scroll(position, velocity, 1100.0, 1.0 / rate as f64);
+                assert!(position > before && position < 1100.0);
+                before
+            })
+            .collect();
+        let spread = results.iter().cloned().fold(f64::MIN, f64::max)
+            - results.iter().cloned().fold(f64::MAX, f64::min);
+        assert!(spread < 0.01);
+    }
+
+    #[test]
+    fn curves_pass_through_their_points_without_kinks() {
+        let curve = motion::Spline::new(&[(0.0, 0.95), (0.7, 1.0505), (1.0, 1.0)]);
+        assert!(close(curve.at(0.0), 0.95, 2));
+        assert!(close(curve.at(0.7), 1.0505, 2));
+        assert!(close(curve.at(1.0), 1.0, 2));
+        let mut x = 0.001;
+        while x <= 1.0 {
+            assert!((curve.at(x) - curve.at(x - 0.001)).abs() < 0.001);
+            x += 0.001;
+        }
+    }
+
+    #[test]
+    fn springs_settle_at_their_goal_at_any_frame_rate() {
+        for rate in [30, 60, 144] {
+            let mut spring = motion::Spring::new(0.95, 0.88, 0.64);
+            spring.goal = 1.0;
+            for _ in 0..rate * 5 {
+                spring.step(1.0 / rate as f64);
+            }
+            assert!(spring.asleep() && close(spring.position, 1.0, 2));
+        }
+    }
+
+    #[test]
+    fn unsung_rests_low_fill_sweeps_and_sung_settles() {
+        let motion = Motion::default();
+        assert_eq!(
+            motion.word_goal(1000.0, 2000.0, 500.0),
+            Goal {
+                scale: 1.0,
+                lift: 0.01,
+                glow: 0.0,
+                gradient: -20.0
+            }
+        );
+        let singing = motion.word_goal(1000.0, 2000.0, 1700.0);
+        assert!(close(singing.scale, 1.075, 2) && close(singing.gradient, 64.0, 2));
+        assert!(close(
+            motion.word_goal(1000.0, 2000.0, 1400.0).glow,
+            1.4012,
+            3
+        ));
+        assert!(close(
+            motion.word_goal(1000.0, 2000.0, 1500.0).lift,
+            -0.0353,
+            4
+        ));
+    }
+
+    #[test]
+    fn held_word_pops_its_sung_letter() {
+        let goals = Motion::default().letter_goals(1000.0, 2000.0, 1310.0, 4);
+        assert!(goals[1].scale > goals[0].scale);
+        assert_eq!(goals[0].gradient, 100.0);
+        assert!(close(goals[2].scale, 1.0, 4) && goals[2].gradient == -20.0);
+    }
+
+    #[test]
+    fn waiting_dots_only_in_long_gaps_without_any_vocals() {
+        let mut background = line(2000.0, 6000.0);
+        background.word_ends = vec![6000.0];
+        let lines = [line(1000.0, 3000.0), background, line(10000.0, 12000.0)];
+        assert_eq!(vocal_gap(&lines, 4000.0), None);
+        assert_eq!(
+            vocal_gap(&lines, 6500.0),
+            Some(VocalGap {
+                start: 6000.0,
+                end: 10000.0,
+                after: 1,
+                opposite: 0.0
+            })
+        );
+        assert_eq!(vocal_gaps(&lines).len(), 1);
+    }
+
+    #[test]
+    fn flat_lines_round_trip() {
+        let lines = lines_from_flat(&[
+            0.0, 1000.0, 1.0, 2.0, 400.0, 900.0, 2000.0, 3000.0, 0.0, 0.0,
+        ]);
+        assert_eq!(lines.len(), 2);
+        assert!(
+            lines[0].opposite == 1.0
+                && lines[0].vocal_end() == 900.0
+                && lines[1].vocal_end() == 3000.0
+        );
+    }
+
+    #[test]
+    fn syllables_join_unless_whitespace_separates_them() {
+        assert_eq!(word_group_sizes(["Hel", "lo ", "world", "!"]), vec![2, 2]);
+        assert_eq!(word_group_sizes(["a", " b"]), vec![1, 1]);
+    }
+
+    #[test]
+    fn emphasis_needs_a_real_hold_without_spaces_or_rtl_text() {
+        assert!(is_emphasis(0.0, 1200.0, "Ooh", false));
+        assert!(!is_emphasis(0.0, 1200.0, "Ooh", true));
+        assert!(!is_emphasis(0.0, 900.0, "Ooh", false));
+        assert!(!is_emphasis(0.0, 1200.0, "a b", false));
+        assert!(!is_emphasis(0.0, 1200.0, "שלום", false));
+    }
+
+    #[test]
+    fn live_syllable_writes_fill_and_motion_then_rests() {
+        let mut syllable = Syllable::new(1000.0, 2000.0, false, 0, 0, 0, 1.0, false);
+        assert!(syllable.step(1500.0, 1.0 / 60.0, false));
+        let values = syllable.values();
+        assert!(values[0] > -20.0 && values[0] < 100.0);
+        assert!(values[1] > 0.9 && values[3] >= 4.0);
+        let mut awake = true;
+        for _ in 0..600 {
+            awake = syllable.step(5000.0, 1.0 / 60.0, false);
+        }
+        assert!(!awake && syllable.values()[0] == 100.0);
+    }
+
+    #[test]
+    fn reduced_motion_only_fills() {
+        let mut syllable = Syllable::new(1000.0, 2000.0, false, 0, 0, 0, 1.0, false);
+        assert!(!syllable.step(1500.0, 1.0 / 60.0, true));
+        let values = syllable.values();
+        assert!(!values[0].is_nan() && values[1].is_nan() && values[2].is_nan());
+    }
+}

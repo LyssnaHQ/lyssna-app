@@ -1,47 +1,31 @@
 import type { Lyrics } from "./types";
-import {
-  MOTION,
-  SyllableSprings,
-  letterGoals,
-  vocalEnd,
-  wordGoal,
-  type SyllableGoal,
-} from "./lyric-motion";
+import * as engine from "./lyric-engine";
+import { goalsOf, vocalEnd, type SyllableGoal } from "./lyric-motion";
 import { frameDue } from "./frame-cap";
 
 /** Simple lyrics mode: no scale or glow, a wider soft edge
  *  starting further back, and a small steady rise across each word. */
-export function simpleGoal(
+export const simpleGoal = (
   start: number,
   end: number,
   time: number,
-): SyllableGoal {
-  const at =
-    time < start ? 0 : time >= end ? 1 : (time - start) / (end - start || 1);
-  return {
-    scale: 1,
-    lift: 0.01 - 0.043 * at,
-    glow: 0,
-    gradient: time < start ? -50 : time >= end ? 100 : -50 + 120 * at,
-  };
-}
+): SyllableGoal => goalsOf(engine.simpleGoal(start, end, time))[0];
 
 interface Piece {
   element: HTMLElement;
-  springs: SyllableSprings;
-  /** Share of the motion shown: the reading under a line moves less. */
-  calm: number;
   /** Last value written per style property, to skip redundant writes. */
   written: Map<string, string>;
 }
-interface Syllable extends Piece {
-  start: number;
-  end: number;
-  letters: Piece[];
-  letterOffset: number;
-  letterCount: number;
+interface Syllable {
+  /** Steps this syllable's springs in Rust; the word comes first in
+   * `pieces`, then the held word's letters. */
+  motion: engine.Syllable;
+  pieces: Piece[];
 }
 const LAYERED_LINES = 4;
+/** Values per piece from the engine: fill, scale, lift, glow radius and
+ * glow opacity. */
+const VALUES = 5;
 const STYLES = [
   "scale",
   "translate",
@@ -49,14 +33,6 @@ const STYLES = [
   "--gradient-ratio",
   "--glow",
 ];
-const piece = (element: HTMLElement, letter = false): Piece => ({
-  element,
-  calm: element.closest(".lyric-romanization") ? 0.35 : 1,
-  springs: letter
-    ? new SyllableSprings(MOTION.letterScale(0), MOTION.letterLift(0))
-    : new SyllableSprings(),
-  written: new Map(),
-});
 function write(target: Piece, property: string, value: string) {
   if (target.written.get(property) === value) return;
   target.written.set(property, value);
@@ -66,10 +42,30 @@ function clear(target: Piece) {
   for (const property of STYLES) target.element.style.removeProperty(property);
   target.written.clear();
 }
+function show(target: Piece, values: Float64Array, at: number) {
+  const fill = values[at],
+    scale = values[at + 1],
+    lift = values[at + 2],
+    radius = values[at + 3],
+    opacity = values[at + 4];
+  if (!Number.isNaN(fill)) {
+    write(target, "--gradient-position", `${fill}%`);
+    write(target, "--gradient-ratio", `${fill / 100}`);
+  }
+  if (!Number.isNaN(scale)) write(target, "scale", scale.toFixed(4));
+  if (!Number.isNaN(lift)) write(target, "translate", `0 ${lift.toFixed(4)}em`);
+  if (!Number.isNaN(radius))
+    write(
+      target,
+      "--glow",
+      `0 0 ${radius.toFixed(2)}px rgb(255 255 255 / ${opacity.toFixed(1)}%)`,
+    );
+}
 
 /** Drives syllable springs on rendered lyric lines. Lines being sung, and
- * lines whose springs are still settling, are stepped every frame and written
- * straight to the DOM. Other lines rest on static styles. */
+ * lines whose springs are still settling, are stepped every frame by the Rust
+ * lyric engine and written straight to the DOM. Other lines rest on static
+ * styles. */
 export class LyricAnimator {
   private live = new Map<number, Syllable[]>();
   /** Finished lines whose words still hold their layers. */
@@ -98,18 +94,18 @@ export class LyricAnimator {
   reset() {
     for (const [index, syllables] of this.live) this.release(index, syllables);
     for (const index of this.layered) this.unlayer(index);
-    for (const index of [...this.wiping.keys()]) this.wipe(index, undefined);
+    for (const index of [...this.wiping.keys()]) this.wipe(index, Number.NaN);
   }
   /** A line without word timing fills top to bottom while it is sung. It
    *  turns active slightly early, so it rests unfilled until it starts. */
-  private wipe(index: number, progress: number | undefined) {
+  private wipe(index: number, position: number) {
     const element = this.line(index);
-    if (progress === undefined) {
+    if (Number.isNaN(position)) {
       element?.style.removeProperty("--line-wipe");
       this.wiping.delete(index);
       return;
     }
-    const value = `${(120 * progress - 20).toFixed(2)}%`;
+    const value = `${position.toFixed(2)}%`;
     if (this.wiping.get(index) === value) return;
     element?.style.setProperty("--line-wipe", value);
     this.wiping.set(index, value);
@@ -138,8 +134,8 @@ export class LyricAnimator {
     if (finished) this.layered.add(index);
     else this.unlayer(index);
     for (const syllable of syllables) {
-      clear(syllable);
-      syllable.letters.forEach(clear);
+      syllable.pieces.forEach(clear);
+      syllable.motion.free();
     }
     this.live.delete(index);
   }
@@ -171,112 +167,44 @@ export class LyricAnimator {
       const start = timed ? Number(node.dataset.start) : words[part].start_ms,
         end = timed ? Number(node.dataset.end) : words[part].end_ms;
       const letters = emphasis
-        ? Array.from(
-            node.querySelectorAll<HTMLElement>(".lyric-letter"),
-            (letter) => piece(letter, true),
-          )
+        ? Array.from(node.querySelectorAll<HTMLElement>(".lyric-letter"))
         : [];
-      const base = piece(node);
-      if (this.simple)
-        base.springs.lift.position = base.springs.lift.goal = simpleGoal(
-          1,
-          2,
-          0,
-        ).lift;
+      const pieces = [node, ...letters].map((element) => ({
+        element,
+        written: new Map<string, string>(),
+      }));
       return {
-        ...base,
-        start,
-        end: end - (emphasis ? MOTION.emphasisTailMs : 0),
-        letters,
-        letterOffset: Number(node.dataset.letterOffset ?? 0),
-        letterCount: Number(node.dataset.letterCount ?? letters.length),
+        pieces,
+        motion: new engine.Syllable(
+          start,
+          end,
+          emphasis,
+          letters.length,
+          Number(node.dataset.letterOffset ?? 0),
+          Number(node.dataset.letterCount ?? letters.length),
+          // The reading under a line moves less.
+          node.closest(".lyric-romanization") ? 0.35 : 1,
+          this.simple,
+        ),
       };
     });
   }
-  private apply(
-    target: Piece,
-    goal: SyllableGoal,
-    seconds: number,
-    glow: [blur: number, opacity: number] | undefined,
-  ) {
-    if (glow) {
-      write(target, "--gradient-position", `${goal.gradient}%`);
-      write(target, "--gradient-ratio", `${goal.gradient / 100}`);
-    }
-    if (this.reduceMotion) return;
-    const motion = target.springs.step(goal, seconds);
-    const calm = target.calm;
-    write(target, "scale", (1 + (motion.scale - 1) * calm).toFixed(4));
-    write(target, "translate", `0 ${(motion.lift * calm).toFixed(4)}em`);
-    if (!glow) return;
-    const radius = 4 + glow[0] * motion.glow * calm,
-      opacity = Math.min(100, Math.max(0, motion.glow * glow[1] * calm));
-    write(
-      target,
-      "--glow",
-      `0 0 ${radius.toFixed(2)}px rgb(255 255 255 / ${opacity.toFixed(1)}%)`,
-    );
-  }
   private step(seconds: number): boolean {
     const time = this.time,
-      // Springs trail their goals, so syllables aim slightly ahead of the
-      // voice; line timing itself stays exact.
-      ahead = time + MOTION.leadMs;
+      simple = this.simple;
     let moving = false;
     this.lyrics.lines.forEach((line, index) => {
       if (line.words.length) return;
-      const end = this.ends[index];
-      if (this.simple || time < line.start_ms - 1000) {
-        if (this.wiping.has(index)) this.wipe(index, undefined);
-        return;
-      }
-      const progress = (time - line.start_ms) / (end - line.start_ms || 1);
-      this.wipe(index, Math.min(1, Math.max(0, progress)));
+      const position = engine.lineWipe(
+        line.start_ms,
+        this.ends[index],
+        time,
+        simple,
+      );
+      if (!Number.isNaN(position) || this.wiping.has(index))
+        this.wipe(index, position);
     });
-    if (this.simple) {
-      this.lyrics.lines.forEach((line, index) => {
-        if (!line.words.length) return;
-        const active = line.start_ms <= time && time < this.ends[index];
-        let syllables = this.live.get(index);
-        if (!active && !syllables) return;
-        if (syllables && time < line.start_ms) {
-          this.release(index, syllables);
-          return;
-        }
-        if (!syllables) {
-          syllables = this.build(index);
-          if (!syllables) return;
-          this.live.set(index, syllables);
-        }
-        let awake = false;
-        for (const syllable of syllables) {
-          const goal = simpleGoal(syllable.start, syllable.end, time);
-          if (syllable.letters.length) {
-            // Held words fill letter by letter but move as one block.
-            const share =
-              (syllable.end - syllable.start) / syllable.letterCount;
-            syllable.letters.forEach((letter, part) => {
-              const from =
-                syllable.start + (syllable.letterOffset + part) * share;
-              const fill = simpleGoal(from, from + share, time).gradient;
-              write(letter, "--gradient-position", `${fill}%`);
-              write(letter, "--gradient-ratio", `${fill / 100}`);
-            });
-          } else {
-            write(syllable, "--gradient-position", `${goal.gradient}%`);
-            write(syllable, "--gradient-ratio", `${goal.gradient / 100}`);
-          }
-          if (this.reduceMotion) continue;
-          const lift = syllable.springs.step(goal, seconds).lift;
-          write(syllable, "translate", `0 ${lift.toFixed(4)}em`);
-          awake ||= !syllable.springs.lift.asleep;
-        }
-        moving ||= awake;
-        if (!awake && !active) this.release(index, syllables);
-      });
-      return moving;
-    }
-    this.dropOldLayers();
+    if (!simple) this.dropOldLayers();
     this.lyrics.lines.forEach((line, index) => {
       if (!line.words.length) return;
       const active = line.start_ms <= time && time < this.ends[index];
@@ -292,39 +220,23 @@ export class LyricAnimator {
         syllables = this.build(index);
         if (!syllables) return;
         this.live.set(index, syllables);
-        this.layered.delete(index);
-        // Its text keeps its own layer until it rests, as a line ending
-        // otherwise redraws mid-spring and its words jump.
-        this.line(index)?.setAttribute("data-settling", "");
+        if (!simple) {
+          this.layered.delete(index);
+          // Its text keeps its own layer until it rests, as a line ending
+          // otherwise redraws mid-spring and its words jump.
+          this.line(index)?.setAttribute("data-settling", "");
+        }
       }
       let awake = false;
       for (const syllable of syllables) {
-        const goal = wordGoal(syllable.start, syllable.end, ahead);
-        // Held words move as a block while their letters carry the fill and
-        // glow.
-        this.apply(
-          syllable,
-          goal,
-          seconds,
-          syllable.letters.length ? undefined : [2, 35],
+        awake = syllable.motion.step(time, seconds, this.reduceMotion) || awake;
+        const values = syllable.motion.values();
+        syllable.pieces.forEach((piece, part) =>
+          show(piece, values, part * VALUES),
         );
-        if (ahead >= syllable.end)
-          for (const letter of syllable.letters) letter.springs.settle();
-        letterGoals(syllable.start, syllable.end, ahead, syllable.letterCount)
-          .slice(
-            syllable.letterOffset,
-            syllable.letterOffset + syllable.letters.length,
-          )
-          .forEach((goal, letter) =>
-            this.apply(syllable.letters[letter], goal, seconds, [12, 185]),
-          );
-        awake ||=
-          !this.reduceMotion &&
-          (!syllable.springs.asleep ||
-            syllable.letters.some((letter) => !letter.springs.asleep));
       }
       moving ||= awake;
-      if (!awake && !active) this.release(index, syllables, true);
+      if (!awake && !active) this.release(index, syllables, !simple);
     });
     return moving;
   }
