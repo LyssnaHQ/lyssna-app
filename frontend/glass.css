@@ -394,14 +394,16 @@
 .glass-refraction .lyrics-toolbar {
   /* Dark and dimmed, so the icons stay readable over bright artwork while
      the bend still shows. */
-  background: light-dark(#f4f4f099, #0b0b0f99);
+  --toolbar-glass-fill: light-dark(#f4f4f073, #0b0b0f73);
+  --toolbar-glass-active-fill: light-dark(#f7f7f4a6, #08080b99);
+  background: var(--toolbar-glass-fill);
   -webkit-backdrop-filter: url(#glass-refraction) blur(8px) saturate(1.4)
     brightness(0.82);
   backdrop-filter: url(#glass-refraction) blur(8px) saturate(1.4)
     brightness(0.82);
 }
-.glass-refraction .lyrics-toolbar:hover {
-  background: light-dark(#f7f7f4b8, #08080bb8);
+.glass-refraction .lyrics-toolbar:is(:hover, :focus-within) {
+  background: var(--toolbar-glass-active-fill);
 }
 .glass-refraction .profile-menu,
 .glass-refraction .song-menu {
@@ -421,7 +423,8 @@
   -webkit-backdrop-filter: blur(14px) saturate(2.1) brightness(1.06);
   backdrop-filter: blur(14px) saturate(2.1) brightness(1.06);
 }
-.glass-refraction.macos :is(.lyrics-toolbar, .profile-menu, .song-menu) {
+.glass-refraction .lyrics-toolbar,
+.glass-refraction.macos :is(.profile-menu, .song-menu) {
   box-shadow:
     inset 0 1px 0 #ffffff8c,
     inset 0 0 0 1px #ffffff21,
@@ -430,7 +433,6 @@
     0 10px 30px #00000059;
 }
 /* A clear lens: a thin bright top rim and a soft lower shade. */
-.glass-refraction .lyrics-toolbar,
 .glass-refraction .profile-menu,
 .glass-refraction .song-menu {
   box-shadow:
@@ -438,4 +440,13 @@
     inset 0 0 0 1px #ffffff17,
     inset 0 -12px 20px -14px #00000073,
     0 10px 30px #00000059;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-refraction .lyrics-toolbar {
+    --toolbar-glass-fill: light-dark(#e3e3de, #1c1c21);
+    --toolbar-glass-active-fill: light-dark(#ebebe6, #242429);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
