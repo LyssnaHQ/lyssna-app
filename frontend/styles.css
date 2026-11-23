@@ -7119,7 +7119,7 @@ button.contributor-avatar {
   cursor: pointer;
 }
 .contributor-avatar + .contributor-avatar {
-  margin-inline-start: -0.35em;
+  margin-inline-start: -0.55em;
 }
 .contributor-avatar:focus-visible {
   z-index: 6;

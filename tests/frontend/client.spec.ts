@@ -3467,10 +3467,10 @@ test("Lyssna lyrics list their contributors with stacked avatars", async ({
             avatar_url: "https://api.lyssna.org/v1/images/a.png",
             share: 75,
             text_share: 100,
-            timing_share: 50,
+            timing_share: 80,
             original: true,
           },
-          { share: 25, text_share: 0, timing_share: 50, original: false },
+          { share: 25, text_share: 0, timing_share: 20, original: false },
         ],
         lines: [
           {
@@ -3508,7 +3508,7 @@ test("Lyssna lyrics list their contributors with stacked avatars", async ({
     contributors.getByRole("button", { name: "Arashii" }).first(),
   ).toHaveAttribute(
     "title",
-    "Arashii: 75% of these lyrics (100% of the words, 50% of the timing)",
+    "Arashii: 75% of these lyrics (100% of the words, 80% of the timing)",
   );
   await expect(
     contributors.getByRole("img", { name: "Deleted user" }),
@@ -3569,6 +3569,70 @@ test("Lyssna lyrics list their contributors with stacked avatars", async ({
   await people([25, 25, 25, 25]);
   await expect(contributors.locator(".contributor-avatar")).toHaveCount(4);
   await expect(contributors.locator(".contributor-names")).toHaveCount(0);
+  // 30% of the timing is enough to be named, and Apple Music's original sync
+  // shows with its own picture and opens the song's page.
+  await page.evaluate((uri) => {
+    (window as any).__clientTest.emit({
+      type: "lyrics",
+      uri,
+      lyrics: {
+        source: "lyssna",
+        synced: true,
+        instrumental: false,
+        song_id: "0b9f6c1e-8a51-4e8f-9a52-3a1f0d6e2c44",
+        credits: [
+          {
+            user_id: "u1",
+            username: "Timer",
+            share: 13,
+            text_share: 0,
+            timing_share: 30,
+            original: false,
+          },
+          {
+            username: "Apple Music",
+            share: 87,
+            text_share: 100,
+            timing_share: 70,
+            original: true,
+            source: "apple_music",
+          },
+        ],
+        lines: [
+          {
+            text: "Only line",
+            start_ms: 1000,
+            end_ms: 3000,
+            background: false,
+            opposite: false,
+            words: [],
+            translation: "",
+            romanization: "",
+          },
+        ],
+      },
+    });
+  }, track.uri);
+  await expect(contributors.locator(".contributor-names")).toHaveText(
+    "Apple Music,Timer",
+  );
+  await expect(credits.locator(".community-lead")).toHaveText(
+    "Lyrics provided by: Apple Music (via Lyssna)",
+  );
+  const apple = contributors.locator(".contributor-avatar").first();
+  await expect(apple).toHaveAttribute("aria-label", "Apple Music");
+  await expect(apple.locator("img")).toHaveAttribute("src", /apple-music/);
+  await apple.click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__clientTest.commands.filter(
+            (entry: any) => entry.command === "open_song_page",
+          ).length,
+      ),
+    )
+    .toBeGreaterThanOrEqual(2);
 });
 
 test("community credits show the Discord username looked up by ID", async ({

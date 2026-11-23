@@ -312,6 +312,8 @@ export interface LyssnaCredit {
   text_share: number;
   timing_share: number;
   original: boolean;
+  /** `apple_music` for Apple Music's original sync, which isn't an account. */
+  source?: string;
 }
 export interface Contributor {
   id: string;

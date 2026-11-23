@@ -1179,6 +1179,8 @@ const openLyssnaCredit = (username: string, song?: string) =>
         })
   ).catch(() => {});
 
+const APPLE_MUSIC_PICTURE = new URL("./apple-music.jpg", import.meta.url).href;
+
 function ContributorAvatar({
   person,
   layer,
@@ -1189,9 +1191,11 @@ function ContributorAvatar({
   song?: string;
 }) {
   const [avatar, setAvatar] = useState(
-    person.username && person.avatar_url?.startsWith("https://")
-      ? person.avatar_url
-      : undefined,
+    person.source === "apple_music"
+      ? APPLE_MUSIC_PICTURE
+      : person.username && person.avatar_url?.startsWith("https://")
+        ? person.avatar_url
+        : undefined,
   );
   const name = person.username || "Deleted user";
   const share = `${name}: ${Math.round(person.share)}% of these lyrics (${Math.round(person.text_share)}% of the words, ${Math.round(person.timing_share)}% of the timing)`;
@@ -1228,7 +1232,8 @@ function ContributorAvatar({
 }
 
 /** "Contributors:" with up to five stacked avatars, largest share first, and
- *  up to two of them named: only those with more than 30% of the lyrics. */
+ *  up to two of them named: those with more than 30% of the lyrics or at
+ *  least 30% of the timing. */
 function LyssnaContributors({
   credits,
   song,
@@ -1237,7 +1242,9 @@ function LyssnaContributors({
   song?: string;
 }) {
   const shown = [...credits].sort((a, b) => b.share - a.share).slice(0, 5);
-  const named = shown.filter((person) => person.share > 30).slice(0, 2);
+  const named = shown
+    .filter((person) => person.share > 30 || person.timing_share >= 30)
+    .slice(0, 2);
   return (
     <span className="lyssna-contributors">
       <span>Contributors:</span>
@@ -1347,11 +1354,17 @@ const LyricCredits = memo(function LyricCredits({
     }
   };
   if (lyrics.source === "lyssna" && lyrics.credits?.length) {
+    // Lyrics that are mostly Apple Music's original sync credit Apple Music first.
+    const top = lyrics.credits.reduce((best, person) =>
+      person.share > best.share ? person : best,
+    );
+    const provider =
+      top.source === "apple_music" ? "Apple Music (via Lyssna)" : "Lyssna";
     return (
       <div
         className={`lyric-source community-credits lyssna-credits ${expanded ? "expanded" : ""}`}
       >
-        <span className="community-lead">Lyrics provided by: Lyssna</span>
+        <span className="community-lead">Lyrics provided by: {provider}</span>
         <LyssnaContributors credits={lyrics.credits} song={lyrics.song_id} />
       </div>
     );

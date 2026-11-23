@@ -148,7 +148,11 @@ pub fn fetch(
     let url = lyrics_url("spotify", id, "lyssna", isrc.as_deref(), fresh);
     match view::<LyssnaAnswer>(client, &url)? {
         None => bail!("No Lyssna lyrics for this song"),
-        Some(LyssnaAnswer::Lyrics(view)) => read_view(view, track.duration_ms),
+        Some(LyssnaAnswer::Lyrics(view)) => {
+            let mut lyrics = read_view(view, track.duration_ms)?;
+            credit_apple_music(client, &mut lyrics);
+            Ok(lyrics)
+        }
         Some(LyssnaAnswer::Instrumental(view)) if view.instrumental => Ok(Lyrics {
             instrumental: true,
             synced: true,
@@ -158,6 +162,50 @@ pub fn fetch(
         }),
         Some(LyssnaAnswer::Instrumental(_)) => bail!("No Lyssna lyrics for this song"),
     }
+}
+
+#[derive(Deserialize)]
+struct Revision {
+    source: String,
+    status: String,
+}
+
+/// The lyrics' contributors are accounts only. When they don't add up to the whole song, the rest
+/// is a sync that came from outside Lyssna: Apple Music's, when the song's history has one.
+fn credit_apple_music(client: &Client, lyrics: &mut Lyrics) {
+    let Some(song) = lyrics.song_id.clone() else {
+        return;
+    };
+    let Some(credit) = apple_music_credit(&lyrics.credits) else {
+        return;
+    };
+    let url = format!("{}/v1/songs/{song}/revisions", crate::lyssna_account::API);
+    let Ok(Some(revisions)) = view::<Vec<Revision>>(client, &url) else {
+        return;
+    };
+    if revisions.iter().any(|revision| {
+        revision.source == "apple_music"
+            && matches!(revision.status.as_str(), "approved" | "current")
+    }) {
+        lyrics.credits.push(credit);
+    }
+}
+
+/// Apple Music's share: what the accounts leave over, when that is anything at all.
+fn apple_music_credit(credits: &[Credit]) -> Option<Credit> {
+    let rest = |part: fn(&Credit) -> f64| {
+        (100.0 - credits.iter().map(part).sum::<f64>()).clamp(0.0, 100.0)
+    };
+    let share = rest(|credit| credit.share);
+    (share >= 1.0).then(|| Credit {
+        username: Some("Apple Music".into()),
+        share,
+        text_share: rest(|credit| credit.text_share),
+        timing_share: rest(|credit| credit.timing_share),
+        original: true,
+        source: Some("apple_music".into()),
+        ..Credit::default()
+    })
 }
 
 /// A song marked instrumental that has no lyrics lines shows as instrumental.
@@ -264,6 +312,29 @@ pub fn record_view(client: &Client, song_id: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn apple_music_gets_what_the_accounts_leave() {
+        let person = Credit {
+            username: Some("Someone".into()),
+            share: 13.0,
+            text_share: 0.0,
+            timing_share: 28.0,
+            ..Credit::default()
+        };
+        let apple = apple_music_credit(std::slice::from_ref(&person)).unwrap();
+        assert_eq!(apple.username.as_deref(), Some("Apple Music"));
+        assert_eq!(apple.source.as_deref(), Some("apple_music"));
+        assert_eq!(
+            (apple.share, apple.text_share, apple.timing_share),
+            (87.0, 100.0, 72.0)
+        );
+        let whole = Credit {
+            share: 100.0,
+            ..person
+        };
+        assert!(apple_music_credit(&[whole]).is_none());
+    }
+
     use super::*;
 
     #[test]

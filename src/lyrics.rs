@@ -52,6 +52,9 @@ pub struct Credit {
     pub timing_share: f64,
     #[serde(default)]
     pub original: bool,
+    /// Set for a credit that isn't an account: `apple_music` for Apple Music's original sync.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
