@@ -86,7 +86,7 @@ const SOURCES: Record<string, { name: string; help: string }> = {
   },
   apple: {
     name: "Apple Music",
-    help: "Apple Music lyrics through the Spicy Lyrics provider.",
+    help: "Apple Music lyrics, looked up through Lyssna.",
   },
   spotify: {
     name: "Spotify",

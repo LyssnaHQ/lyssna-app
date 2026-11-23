@@ -1,5 +1,6 @@
-//! Lyssna's own community lyrics from api.lyssna.org: the served TTML, who
-//! made it, and a play count when the lyrics show.
+//! Lyrics from api.lyssna.org: Lyssna's own community lyrics (the served
+//! TTML, who made it, and a play count when the lyrics show), and Apple
+//! Music's lyrics, which Lyssna looks up for the app.
 
 use std::collections::HashMap;
 use std::fs;
@@ -8,9 +9,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use reqwest::{StatusCode, blocking::Client};
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 
-use crate::lyrics::{Credit, Lyrics, parse_ttml};
+use crate::lyrics::{Credit, Lyrics, SourceCredit, parse_ttml};
 use crate::model::Track;
 
 #[derive(Deserialize)]
@@ -26,6 +27,17 @@ struct LyricsView {
 #[derive(Deserialize)]
 struct Song {
     id: String,
+}
+
+/// Apple Music's lyrics as Lyssna serves them: no song, revision or
+/// contributors, since none of them is Lyssna's.
+#[derive(Deserialize)]
+struct AppleView {
+    #[serde(default)]
+    offset_ms: i64,
+    ttml: String,
+    #[serde(default)]
+    credit: Option<SourceCredit>,
 }
 
 pub(crate) fn spotify_id(track: &Track) -> Option<&str> {
@@ -61,39 +73,35 @@ fn recently_changed(id: &str) -> bool {
     })
 }
 
+/// Names the one source asked, since the API otherwise falls back from
+/// Lyssna's lyrics to Apple Music's and each is a source of its own here.
 /// The ISRC rides along, so the server can fall back to it in the same request.
-fn lyrics_url(platform: &str, id: &str, isrc: Option<&str>, fresh: bool) -> String {
-    let mut url = format!("{}/v1/lyrics/{platform}/{id}", crate::lyssna_account::API);
-    let mut separator = '?';
+fn lyrics_url(platform: &str, id: &str, source: &str, isrc: Option<&str>, fresh: bool) -> String {
+    let mut url = format!(
+        "{}/v1/lyrics/{platform}/{id}?source={source}",
+        crate::lyssna_account::API
+    );
     if let Some(isrc) = isrc {
-        url.push_str(&format!("{separator}isrc={isrc}"));
-        separator = '&';
+        url.push_str(&format!("&isrc={isrc}"));
     }
     if fresh {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_nanos());
-        url.push_str(&format!("{separator}fresh={nonce}"));
+        url.push_str(&format!("&fresh={nonce}"));
     }
     url
 }
 
-/// `None` when Lyssna has no lyrics under this platform ID.
-fn view(
-    client: &Client,
-    platform: &str,
-    id: &str,
-    isrc: Option<&str>,
-    fresh: bool,
-) -> Result<Option<LyricsView>> {
-    let url = lyrics_url(platform, id, isrc, fresh);
-    let mut response = crate::lyssna_account::keyed(client.get(&url))
+/// `None` when the source has no lyrics for this song.
+fn view<T: DeserializeOwned>(client: &Client, url: &str) -> Result<Option<T>> {
+    let mut response = crate::lyssna_account::keyed(client.get(url))
         .send()
         .context("Cannot reach Lyssna")?;
     if response.status() == StatusCode::UNAUTHORIZED {
         // the API may have forgotten this install: register a new one and ask again
         crate::lyssna_install::forget();
-        response = crate::lyssna_account::keyed(client.get(&url))
+        response = crate::lyssna_account::keyed(client.get(url))
             .send()
             .context("Cannot reach Lyssna")?;
     }
@@ -119,8 +127,8 @@ pub fn fetch(
     };
     let fresh = recently_changed(id);
     let isrc = isrc().map(|isrc| isrc.trim().to_ascii_uppercase());
-    let found = view(client, "spotify", id, isrc.as_deref(), fresh)?;
-    let Some(view) = found else {
+    let url = lyrics_url("spotify", id, "lyssna", isrc.as_deref(), fresh);
+    let Some(view) = view::<LyricsView>(client, &url)? else {
         bail!("No Lyssna lyrics for this song");
     };
     let mut lyrics = parse_ttml(&view.ttml, track.duration_ms)?;
@@ -128,6 +136,33 @@ pub fn fetch(
     lyrics.source = "lyssna".into();
     lyrics.credits = view.contributors;
     lyrics.song_id = Some(view.song.id);
+    Ok(lyrics)
+}
+
+/// Apple Music's lyrics for the recording, found by its ISRC. A 404, or a
+/// 503 while Apple cannot be asked, leaves the song to the other sources.
+pub fn fetch_apple(
+    client: &Client,
+    isrc: impl FnOnce() -> Option<String>,
+    track: &Track,
+) -> Result<Lyrics> {
+    if spotify_id(track).is_none() {
+        bail!("Apple Music lyrics need a Spotify song");
+    }
+    let Some(isrc) = isrc().map(|isrc| isrc.trim().to_ascii_uppercase()) else {
+        bail!("No ISRC to find Apple Music lyrics with");
+    };
+    if isrc.len() != 12 || !isrc.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        bail!("No ISRC to find Apple Music lyrics with");
+    }
+    let url = lyrics_url("isrc", &isrc, "apple_music", None, false);
+    let Some(view) = view::<AppleView>(client, &url)? else {
+        bail!("No Apple Music lyrics for this song");
+    };
+    let mut lyrics = parse_ttml(&view.ttml, track.duration_ms)?;
+    shift(&mut lyrics, view.offset_ms);
+    lyrics.source = "apple_music".into();
+    lyrics.source_credit = view.credit.filter(|credit| !credit.text.trim().is_empty());
     Ok(lyrics)
 }
 
@@ -225,10 +260,16 @@ mod tests {
             ..Track::default()
         };
         assert!(!recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
-        assert!(!lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, false).contains('?'));
+        assert!(
+            !lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", "lyssna", None, false)
+                .contains("fresh")
+        );
         mark_changed(&track);
         assert!(recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
-        assert!(lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", None, true).contains("?fresh="));
+        assert!(
+            lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", "lyssna", None, true)
+                .contains("&fresh=")
+        );
     }
 
     #[test]
@@ -236,17 +277,44 @@ mod tests {
         let url = lyrics_url(
             "spotify",
             "0VjIjW4GlUZAMYd2vXMi3b",
+            "lyssna",
             Some("USUM71900001"),
             false,
         );
-        assert!(url.ends_with("/v1/lyrics/spotify/0VjIjW4GlUZAMYd2vXMi3b?isrc=USUM71900001"));
+        assert!(url.ends_with(
+            "/v1/lyrics/spotify/0VjIjW4GlUZAMYd2vXMi3b?source=lyssna&isrc=USUM71900001"
+        ));
         let url = lyrics_url(
             "spotify",
             "0VjIjW4GlUZAMYd2vXMi3b",
+            "lyssna",
             Some("USUM71900001"),
             true,
         );
-        assert!(url.contains("?isrc=USUM71900001&fresh="));
+        assert!(url.contains("?source=lyssna&isrc=USUM71900001&fresh="));
+    }
+
+    #[test]
+    fn apple_music_is_asked_by_isrc_alone() {
+        assert!(
+            lyrics_url("isrc", "USUM71900001", "apple_music", None, false)
+                .ends_with("/v1/lyrics/isrc/USUM71900001?source=apple_music")
+        );
+    }
+
+    #[test]
+    fn reads_apple_musics_answer_and_its_credit() {
+        let view: AppleView = serde_json::from_value(serde_json::json!({
+            "source": "apple_music", "apple_id": "1440857781", "timing_kind": "line", "offset_ms": 0,
+            "ttml": "<tt/>",
+            "credit": {"text": "Lyrics provided by Apple Music via Lyssna", "url": "https://lyssna.org"}
+        }))
+        .unwrap();
+        assert_eq!(view.offset_ms, 0);
+        assert_eq!(
+            view.credit.unwrap().text,
+            "Lyrics provided by Apple Music via Lyssna"
+        );
     }
 
     #[test]

@@ -23,6 +23,16 @@ pub struct Lyrics {
     /// The Lyssna song these lyrics belong to, for counting plays.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub song_id: Option<String>,
+    /// The credit line a source asks to be shown with its lyrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_credit: Option<SourceCredit>,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+pub struct SourceCredit {
+    pub text: String,
+    #[serde(default)]
+    pub url: String,
 }
 
 /// A deleted account has no user ID, username or avatar.
@@ -1262,7 +1272,6 @@ fn fetch_from(
     // order wins as soon as it is known, while slower sources finish in the
     // background and keep their own three-day cache.
     let cache = std::sync::Arc::new(SourceCache { root, key, network });
-    // Spicy Lyrics and Apple Music share one provider request.
     // Errors keep whether the provider was unreachable, as text and a flag.
     let provider: std::sync::Arc<std::sync::OnceLock<std::result::Result<Lyrics, (String, bool)>>> =
         Default::default();
@@ -1279,7 +1288,14 @@ fn fetch_from(
     );
     let fetch = move |source: &str| -> Result<Lyrics> {
         match source {
-            "spicy" | "apple" => {
+            "apple" => cache.get("apple-lyssna", &|| {
+                crate::lyssna_lyrics::fetch_apple(
+                    &client,
+                    || native.isrc(&track.uri).ok().flatten(),
+                    &track,
+                )
+            }),
+            "spicy" => {
                 let answer = provider.get_or_init(|| {
                     crate::provider::cache_namespace()
                         .and_then(|namespace| {

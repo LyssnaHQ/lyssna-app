@@ -1419,8 +1419,22 @@ const LyricCredits = memo(function LyricCredits({
     );
   return (
     <div className={`lyric-source ${expanded ? "expanded" : ""}`}>
-      Lyrics provided by:{" "}
-      {lyrics.source === "lrc.red" ? (
+      {lyrics.source_credit ? (
+        <button
+          className="community-profile"
+          onClick={() =>
+            void rpc("open_link", { url: lyrics.source_credit!.url }).catch(
+              () => {},
+            )
+          }
+          disabled={!lyrics.source_credit.url.startsWith("https://")}
+        >
+          {lyrics.source_credit.text}
+        </button>
+      ) : (
+        "Lyrics provided by: "
+      )}
+      {lyrics.source_credit ? null : lyrics.source === "lrc.red" ? (
         <button
           className="community-profile"
           onClick={() =>

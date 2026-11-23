@@ -300,6 +300,8 @@ export interface Lyrics {
   credits?: LyssnaCredit[];
   /** The Lyssna song these lyrics belong to. */
   song_id?: string;
+  /** The credit line a source asks to be shown with its lyrics. */
+  source_credit?: { text: string; url: string };
 }
 /** A deleted account has no user_id, username or avatar_url. */
 export interface LyssnaCredit {

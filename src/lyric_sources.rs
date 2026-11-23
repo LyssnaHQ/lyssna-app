@@ -5,8 +5,10 @@
 //! lrc.red.
 //!
 //! What each source receives:
-//! - Spicy Lyrics / Apple Music: the configured Spicy Lyrics provider (one
-//!   request; Apple Music is its `apple_music`-tagged answer).
+//! - Lyssna: the Spotify track ID and its ISRC (api.lyssna.org).
+//! - Apple Music: the song's ISRC, looked up through Lyssna (api.lyssna.org).
+//! - Spicy Lyrics: the configured Spicy Lyrics provider; its Apple Music
+//!   answers are left to the Apple Music source.
 //! - Musixmatch: title, artists, album, length and Spotify track ID, sent to
 //!   Musixmatch's desktop-app endpoint with the fork's public desktop token.
 //!   This is not an official Musixmatch API and may stop working.
@@ -323,8 +325,8 @@ fn pick_best(
         .ok_or_else(|| failure.unwrap_or_else(|| anyhow!(NO_LYRICS)))
 }
 
-/// Splits the Spicy Lyrics provider's answer: Apple Music lyrics belong to
-/// the Apple Music source, everything else to Spicy Lyrics.
+/// Keeps Apple Music's lyrics out of the Spicy Lyrics provider's answers:
+/// Apple Music is its own source, through Lyssna.
 pub fn split_provider(lyrics: &Lyrics, source: &str) -> Option<Lyrics> {
     let apple = matches!(lyrics.source.as_str(), "apple_music" | "aml");
     (apple == (source == "apple")).then(|| lyrics.clone())
