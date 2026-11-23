@@ -1424,7 +1424,22 @@ const LyricCredits = memo(function LyricCredits({
     );
   return (
     <div className={`lyric-source ${expanded ? "expanded" : ""}`}>
-      {lyrics.source_credit ? (
+      {lyrics.source_credit && lyrics.source === "apple_music" ? (
+        <>
+          {"Lyrics provided by: "}
+          <button
+            className="community-profile"
+            onClick={() =>
+              void rpc("open_link", { url: lyrics.source_credit!.url }).catch(
+                () => {},
+              )
+            }
+            disabled={!lyrics.source_credit.url.startsWith("https://")}
+          >
+            Apple Music (via Lyssna)
+          </button>
+        </>
+      ) : lyrics.source_credit ? (
         <button
           className="community-profile"
           onClick={() =>
