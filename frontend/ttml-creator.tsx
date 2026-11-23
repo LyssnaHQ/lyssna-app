@@ -131,6 +131,7 @@ import { PauseIcon, PlayIcon } from "./player-icons";
 import { TtmlSpectrogram } from "./ttml-spectrogram";
 import { createPortal } from "react-dom";
 import { rpc } from "./bridge";
+import { MarkInstrumental, markedInstrumental } from "./mark-instrumental";
 import { creatorTransport, direct, useCreatorPlayer } from "./creator-player";
 import { SOLOIST_DEVICE } from "./soloist-settings";
 import {
@@ -2510,6 +2511,13 @@ export function TtmlCreator({
               </div>
             )}
           </span>
+          {reviewer && here && (
+            <MarkInstrumental
+              track={track}
+              marked={markedInstrumental(state, track)}
+              notify={notify}
+            />
+          )}
           <button
             onClick={() => void submit()}
             disabled={!done || !submittable || submitting}

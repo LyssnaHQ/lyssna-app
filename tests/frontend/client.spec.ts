@@ -21206,3 +21206,33 @@ test(`credits in view stay whole when a pause's dots open near the end (${room}p
   await page.waitForTimeout(500);
   await expect.poll(overhang).toBeLessThanOrEqual(1);
 });
+
+test("reviewers mark a song without lyrics instrumental", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__lyssnaAccount = { role: "reviewer" };
+  });
+  await startClient(page);
+  await page.getByTitle("Lyrics", { exact: true }).click();
+  await page.evaluate((uri) => {
+    (window as any).__clientTest.emit({
+      type: "lyric_error",
+      uri,
+      message: "No lyrics found for this song",
+    });
+  }, track.uri);
+  const marked = () =>
+    page.evaluate(
+      () =>
+        (window as any).__clientTest.commands
+          .filter((entry: any) => entry.command === "lyssna_mark_instrumental")
+          .map((entry: any) => entry.args.instrumental),
+    );
+  await page.getByRole("button", { name: "Mark instrumental" }).click();
+  await expect.poll(marked).toEqual([true]);
+  await page.getByRole("button", { name: "Open TTML Creator" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "TTML Creator" })
+      .getByRole("button", { name: "Mark instrumental" }),
+  ).toBeVisible();
+});

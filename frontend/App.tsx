@@ -4253,6 +4253,7 @@ function App() {
               onArtist={openArtist}
               onImport={() => setTtmlOpen("load")}
               onRetry={() => void call("retry_lyrics")}
+              onMarked={reviewer ? notify : undefined}
               onCreate={() => {
                 if (!state.settings.ttml_creator)
                   updateSettings({ ttml_creator: true });

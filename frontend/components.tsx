@@ -71,6 +71,7 @@ import type { AppState } from "./state";
 import { formatTime } from "./state";
 import { PlaybackClock } from "./playback-clock";
 import { rpc } from "./bridge";
+import { MarkInstrumental } from "./mark-instrumental";
 import { useMotionCover } from "./motion-cover";
 import { CreditsDialog } from "./credits-dialog";
 import {
@@ -1983,6 +1984,7 @@ function SongLyricsPage({
   onImport,
   onRetry,
   onCreate,
+  onMarked,
   onSave,
   onCanvasActive,
   immersive = false,
@@ -1995,6 +1997,8 @@ function SongLyricsPage({
   onRetry: () => void;
   /** Opens the TTML Creator to sync this song. */
   onCreate?: () => void;
+  /** A Lyssna reviewer can mark the song instrumental from the no lyrics notice. */
+  onMarked?: (message: string, error?: boolean) => void;
   onSave: (track: Track) => void;
   onCanvasActive?: (active: boolean) => void;
   immersive?: boolean;
@@ -2540,6 +2544,19 @@ function SongLyricsPage({
                   <button onClick={onRetry}>Search again</button>
                   <span aria-hidden="true">·</span>
                   <button onClick={onImport}>Import a lyric file</button>
+                  {onMarked &&
+                    state.playback.item?.id &&
+                    !state.playback.item.is_local && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <MarkInstrumental
+                          track={state.playback.item}
+                          marked={false}
+                          notify={onMarked}
+                          plain
+                        />
+                      </>
+                    )}
                 </div>
               </div>
             ) : (

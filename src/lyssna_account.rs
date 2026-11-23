@@ -741,6 +741,37 @@ pub fn review(
     Ok(response.json()?)
 }
 
+/// A reviewer's decision that a song's recordings are instrumental (`true`),
+/// have vocals (`false`), or go back to undecided (`None`). Lyssna then
+/// answers lookups of those ISRCs with its decision.
+pub fn set_instrumental(
+    client: &Client,
+    isrcs: &[String],
+    instrumental: Option<bool>,
+) -> Result<serde_json::Value> {
+    ensure!(!isrcs.is_empty(), "Spotify has no ISRC for this song");
+    let Some(token) = access_token(client)? else {
+        bail!("Sign in to Lyssna in Settings to mark songs instrumental");
+    };
+    let response = keyed(client.put(format!("{API}/v1/instrumental")))
+        .bearer_auth(token)
+        .json(&instrumental_body(isrcs, instrumental))
+        .send()
+        .context("Cannot reach Lyssna")?;
+    if !response.status().is_success() {
+        let rejected = rejection(response);
+        if rejected.code.as_deref() == Some("forbidden") {
+            bail!("Only Lyssna reviewers can mark songs instrumental");
+        }
+        return Err(rejected.into_error());
+    }
+    Ok(response.json()?)
+}
+
+fn instrumental_body(isrcs: &[String], instrumental: Option<bool>) -> serde_json::Value {
+    serde_json::json!({ "instrumental": instrumental, "isrcs": isrcs })
+}
+
 pub fn signed_in() -> bool {
     matches!(load(), Ok(Some(_)))
 }
@@ -920,6 +951,19 @@ mod tests {
         assert!(authored_at("2026-11-19T11:59:30Z", now).is_none());
         assert!(authored_at("2026-11-19T11:58:00Z", now).is_some());
         assert!(authored_at("yesterday", now).is_none());
+    }
+
+    #[test]
+    fn instrumental_marks_name_every_isrc_and_can_be_taken_back() {
+        let isrcs = vec!["USUM71900001".to_owned(), "GBUM71900002".to_owned()];
+        assert_eq!(
+            instrumental_body(&isrcs, Some(true)),
+            serde_json::json!({"instrumental": true, "isrcs": ["USUM71900001", "GBUM71900002"]})
+        );
+        assert_eq!(
+            instrumental_body(&isrcs, None)["instrumental"],
+            serde_json::Value::Null
+        );
     }
 
     #[test]

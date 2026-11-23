@@ -3345,6 +3345,27 @@ fn lyssna_changed(state: &State<'_, Desktop>, track: &Track) {
     }
 }
 #[tauri::command]
+async fn lyssna_mark_instrumental(
+    track: Track,
+    instrumental: Option<bool>,
+    state: State<'_, Desktop>,
+) -> std::result::Result<serde_json::Value, String> {
+    if track.is_local {
+        return Err("Only Spotify songs can be marked instrumental".into());
+    }
+    let controls = state.0.controls.clone();
+    let uri = track.uri.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let isrcs = controls.isrcs(&uri)?;
+        crate::lyssna_account::set_instrumental(&crate::auth::http_client()?, &isrcs, instrumental)
+    })
+    .await
+    .map_err(|_| "Lyssna account worker unavailable".to_owned())?
+    .map_err(error)?;
+    lyssna_changed(&state, &track);
+    Ok(result)
+}
+#[tauri::command]
 fn lyssna_published(track: Track, state: State<'_, Desktop>) {
     lyssna_changed(&state, &track);
 }
@@ -6753,6 +6774,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             lyssna_sign_out,
             lyssna_submit,
             lyssna_review,
+            lyssna_mark_instrumental,
             lyssna_published,
             lyssna_backfill_isrc,
             creator_volume,
