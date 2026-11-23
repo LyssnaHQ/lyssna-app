@@ -96,13 +96,26 @@ fn recently_changed(id: &str) -> bool {
 /// Names the one source asked, since the API otherwise falls back from
 /// Lyssna's lyrics to Apple Music's and each is a source of its own here.
 /// The ISRC rides along, so the server can fall back to it in the same request.
-fn lyrics_url(platform: &str, id: &str, source: &str, isrc: Option<&str>, fresh: bool) -> String {
+/// The track's length lets the server pick the Apple Music recording of that
+/// length when several share an ISRC. It is the track's exact milliseconds
+/// every time, since each distinct URL is cached on its own.
+fn lyrics_url(
+    platform: &str,
+    id: &str,
+    source: &str,
+    isrc: Option<&str>,
+    duration_ms: u64,
+    fresh: bool,
+) -> String {
     let mut url = format!(
         "{}/v1/lyrics/{platform}/{id}?source={source}",
         crate::lyssna_account::API
     );
     if let Some(isrc) = isrc {
         url.push_str(&format!("&isrc={isrc}"));
+    }
+    if (1_000..=3_600_000).contains(&duration_ms) {
+        url.push_str(&format!("&duration_ms={duration_ms}"));
     }
     if fresh {
         let nonce = SystemTime::now()
@@ -147,7 +160,14 @@ pub fn fetch(
     };
     let fresh = recently_changed(id);
     let isrc = isrc().map(|isrc| isrc.trim().to_ascii_uppercase());
-    let url = lyrics_url("spotify", id, "lyssna", isrc.as_deref(), fresh);
+    let url = lyrics_url(
+        "spotify",
+        id,
+        "lyssna",
+        isrc.as_deref(),
+        track.duration_ms,
+        fresh,
+    );
     match view::<LyssnaAnswer>(client, &url)? {
         None => bail!("No Lyssna lyrics for this song"),
         Some(LyssnaAnswer::Lyrics(view)) => {
@@ -242,7 +262,7 @@ pub fn fetch_apple(
     if isrc.len() != 12 || !isrc.bytes().all(|b| b.is_ascii_alphanumeric()) {
         bail!("No ISRC to find Apple Music lyrics with");
     }
-    let url = lyrics_url("isrc", &isrc, "apple_music", None, false);
+    let url = lyrics_url("isrc", &isrc, "apple_music", None, track.duration_ms, false);
     let Some(view) = view::<AppleView>(client, &url)? else {
         bail!("No Apple Music lyrics for this song");
     };
@@ -435,13 +455,20 @@ mod tests {
         };
         assert!(!recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
         assert!(
-            !lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", "lyssna", None, false)
-                .contains("fresh")
+            !lyrics_url(
+                "spotify",
+                "0VjIjW4GlUZAMYd2vXMi3b",
+                "lyssna",
+                None,
+                0,
+                false
+            )
+            .contains("fresh")
         );
         mark_changed(&track);
         assert!(recently_changed("0VjIjW4GlUZAMYd2vXMi3b"));
         assert!(
-            lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", "lyssna", None, true)
+            lyrics_url("spotify", "0VjIjW4GlUZAMYd2vXMi3b", "lyssna", None, 0, true)
                 .contains("&fresh=")
         );
     }
@@ -453,6 +480,7 @@ mod tests {
             "0VjIjW4GlUZAMYd2vXMi3b",
             "lyssna",
             Some("USUM71900001"),
+            0,
             false,
         );
         assert!(url.ends_with(
@@ -463,9 +491,44 @@ mod tests {
             "0VjIjW4GlUZAMYd2vXMi3b",
             "lyssna",
             Some("USUM71900001"),
+            0,
             true,
         );
         assert!(url.contains("?source=lyssna&isrc=USUM71900001&fresh="));
+    }
+
+    #[test]
+    fn the_track_length_picks_the_recording() {
+        let url = lyrics_url(
+            "spotify",
+            "4xanWVQIzdCf51mg8cd1cQ",
+            "lyssna",
+            Some("USRW30200005"),
+            267_973,
+            false,
+        );
+        assert!(url.ends_with("?source=lyssna&isrc=USRW30200005&duration_ms=267973"));
+        let url = lyrics_url("isrc", "USRW30200005", "apple_music", None, 267_973, false);
+        assert!(
+            url.ends_with("/v1/lyrics/isrc/USRW30200005?source=apple_music&duration_ms=267973")
+        );
+        let url = lyrics_url(
+            "spotify",
+            "4xanWVQIzdCf51mg8cd1cQ",
+            "lyssna",
+            None,
+            267_973,
+            true,
+        );
+        assert!(url.contains("?source=lyssna&duration_ms=267973&fresh="));
+        for unknown in [0, 999, 3_600_001] {
+            let url = lyrics_url("isrc", "USRW30200005", "apple_music", None, unknown, false);
+            assert!(!url.contains("duration_ms"));
+        }
+        for edge in [1_000, 3_600_000] {
+            let url = lyrics_url("isrc", "USRW30200005", "apple_music", None, edge, false);
+            assert!(url.ends_with(&format!("&duration_ms={edge}")));
+        }
     }
 
     #[test]
@@ -509,7 +572,7 @@ mod tests {
     #[test]
     fn apple_music_is_asked_by_isrc_alone() {
         assert!(
-            lyrics_url("isrc", "USUM71900001", "apple_music", None, false)
+            lyrics_url("isrc", "USUM71900001", "apple_music", None, 0, false)
                 .ends_with("/v1/lyrics/isrc/USUM71900001?source=apple_music")
         );
     }
