@@ -71,7 +71,7 @@ import type { AppState } from "./state";
 import { formatTime } from "./state";
 import { PlaybackClock } from "./playback-clock";
 import { rpc } from "./bridge";
-import { MarkInstrumental } from "./mark-instrumental";
+import { MarkInstrumental, RequestLyrics } from "./mark-instrumental";
 import { useMotionCover } from "./motion-cover";
 import { CreditsDialog } from "./credits-dialog";
 import {
@@ -1984,7 +1984,8 @@ function SongLyricsPage({
   onImport,
   onRetry,
   onCreate,
-  onMarked,
+  notify,
+  lyssnaSignedIn = false,
   onSave,
   onCanvasActive,
   immersive = false,
@@ -1997,8 +1998,9 @@ function SongLyricsPage({
   onRetry: () => void;
   /** Opens the TTML Creator to sync this song. */
   onCreate?: () => void;
-  /** A Trusted Lyssna member or above can mark the song instrumental from the no lyrics notice. */
-  onMarked?: (message: string, error?: boolean) => void;
+  notify?: (message: string, error?: boolean) => void;
+  /** Signed in to Lyssna, so the song can be sent as instrumental. */
+  lyssnaSignedIn?: boolean;
   onSave: (track: Track) => void;
   onCanvasActive?: (active: boolean) => void;
   immersive?: boolean;
@@ -2544,19 +2546,26 @@ function SongLyricsPage({
                   <button onClick={onRetry}>Search again</button>
                   <span aria-hidden="true">·</span>
                   <button onClick={onImport}>Import a lyric file</button>
-                  {onMarked &&
-                    state.playback.item?.id &&
-                    !state.playback.item.is_local && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <MarkInstrumental
-                          track={state.playback.item}
-                          marked={false}
-                          notify={onMarked}
-                          plain
-                        />
-                      </>
-                    )}
+                  {notify && state.playback.item && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <RequestLyrics
+                        track={state.playback.item}
+                        notify={notify}
+                      />
+                      {lyssnaSignedIn && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <MarkInstrumental
+                            track={state.playback.item}
+                            marked={false}
+                            notify={notify}
+                            plain
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             ) : (

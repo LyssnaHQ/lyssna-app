@@ -300,6 +300,7 @@ export function TtmlCreator({
   onClose,
   reviewer = false,
   marksInstrumental = false,
+  unmarksInstrumental = false,
   reviewPick,
   reviewRestore = 0,
   onReviewOpen,
@@ -327,8 +328,10 @@ export function TtmlCreator({
   onClose?: () => void;
   /** The signed-in Lyssna account may review submissions. */
   reviewer?: boolean;
-  /** The signed-in Lyssna account may mark songs instrumental. */
+  /** Signed in to Lyssna, so the song can be sent as instrumental. */
   marksInstrumental?: boolean;
+  /** Trusted and up may also take an instrumental mark back. */
+  unmarksInstrumental?: boolean;
   /** Picked on the Review page, to open for review here. */
   reviewPick?: ReviewSubmission;
   /** Bumped to bring back the review panel, minimised or not. */
@@ -2518,6 +2521,7 @@ export function TtmlCreator({
             <MarkInstrumental
               track={track}
               marked={markedInstrumental(state, track)}
+              canUnmark={unmarksInstrumental}
               notify={notify}
             />
           )}

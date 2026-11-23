@@ -3295,7 +3295,7 @@ async fn lyssna_review(
 }
 #[tauri::command]
 async fn lyssna_submit(
-    ttml: String,
+    ttml: Option<String>,
     track: Track,
     authored_at: Option<String>,
     state: State<'_, Desktop>,
@@ -3316,7 +3316,7 @@ async fn lyssna_submit(
         };
         crate::lyssna_account::submit(
             &crate::auth::http_client()?,
-            &ttml,
+            ttml.as_deref(),
             &track,
             &isrcs,
             authored_at.as_deref(),
@@ -3364,6 +3364,15 @@ async fn lyssna_mark_instrumental(
     .map_err(error)?;
     lyssna_changed(&state, &track);
     Ok(result)
+}
+#[tauri::command]
+async fn lyssna_request_lyrics(track: Track) -> std::result::Result<i64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::lyssna_account::request_lyrics(&crate::auth::http_client()?, &track)
+    })
+    .await
+    .map_err(|_| "Lyssna account worker unavailable".to_owned())?
+    .map_err(error)
 }
 #[tauri::command]
 fn lyssna_published(track: Track, state: State<'_, Desktop>) {
@@ -6775,6 +6784,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             lyssna_submit,
             lyssna_review,
             lyssna_mark_instrumental,
+            lyssna_request_lyrics,
             lyssna_published,
             lyssna_backfill_isrc,
             creator_volume,

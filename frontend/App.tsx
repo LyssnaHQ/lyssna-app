@@ -4196,7 +4196,8 @@ function App() {
               onSpectrogramBar={setTtmlSpectral}
               onClose={() => setCenter("lyrics")}
               reviewer={reviewer}
-              marksInstrumental={marksInstrumental}
+              marksInstrumental={!!lyssnaRole}
+              unmarksInstrumental={marksInstrumental}
               reviewPick={reviewPick}
               reviewRestore={reviewRestore}
               onReviewOpen={setReviewInCreator}
@@ -4266,7 +4267,8 @@ function App() {
               onArtist={openArtist}
               onImport={() => setTtmlOpen("load")}
               onRetry={() => void call("retry_lyrics")}
-              onMarked={marksInstrumental ? notify : undefined}
+              notify={notify}
+              lyssnaSignedIn={!!lyssnaRole}
               onCreate={() => {
                 if (!state.settings.ttml_creator)
                   updateSettings({ ttml_creator: true });

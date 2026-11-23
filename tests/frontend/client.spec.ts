@@ -21226,28 +21226,42 @@ const noLyricsAs = async (page: Page, account: object) => {
   ).toBeVisible();
 };
 
-test("members below Trusted cannot mark songs instrumental", async ({
+const commandArgs = (page: Page, name: string) =>
+  page.evaluate(
+    (name) =>
+      (window as any).__clientTest.commands
+        .filter((entry: any) => entry.command === name)
+        .map((entry: any) => entry.args),
+    name,
+  );
+
+test("listeners signed out of Lyssna can request lyrics but not mark instrumental", async ({
   page,
 }) => {
-  await noLyricsAs(page, { role: "user", tier: 2 });
+  await noLyricsAs(page, null as any);
   await expect(
     page.getByRole("button", { name: "Mark instrumental" }),
   ).toHaveCount(0);
+  await page.getByRole("button", { name: "Request lyrics" }).click();
+  await expect
+    .poll(async () => (await commandArgs(page, "lyssna_request_lyrics")).length)
+    .toBe(1);
 });
 
-test("Trusted members mark a song without lyrics instrumental", async ({
+test("signed-in members send a song without lyrics as instrumental", async ({
   page,
 }) => {
-  await noLyricsAs(page, { role: "user", tier: 3 });
-  const marked = () =>
-    page.evaluate(
-      () =>
-        (window as any).__clientTest.commands
-          .filter((entry: any) => entry.command === "lyssna_mark_instrumental")
-          .map((entry: any) => entry.args.instrumental),
-    );
+  await noLyricsAs(page, { role: "user", tier: 1 });
   await page.getByRole("button", { name: "Mark instrumental" }).click();
-  await expect.poll(marked).toEqual([true]);
+  await expect
+    .poll(async () =>
+      (await commandArgs(page, "lyssna_submit")).map((args: any) => [
+        args.ttml ?? null,
+        args.track.uri,
+      ]),
+    )
+    .toEqual([[null, track.uri]]);
+  await expect(page.getByText("Sent to Lyssna for review as instrumental.")).toBeVisible();
   await page.getByRole("button", { name: "Open TTML Creator" }).click();
   await expect(
     page
