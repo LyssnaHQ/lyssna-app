@@ -224,7 +224,6 @@ export const emptyState: AppState = {
       "netease",
     ],
     lyrics_sources_disabled: ["lrclib", "netease"],
-    lyrics_prefer_apple: true,
     lyrics_musixmatch_lines_only: false,
     settings_remember_place: true,
     ui_font: "",

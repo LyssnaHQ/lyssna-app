@@ -52,6 +52,8 @@ struct InstrumentalView {
 #[derive(Deserialize)]
 struct AppleView {
     #[serde(default)]
+    apple_id: Option<String>,
+    #[serde(default)]
     offset_ms: i64,
     ttml: String,
     #[serde(default)]
@@ -248,7 +250,19 @@ pub fn fetch_apple(
     shift(&mut lyrics, view.offset_ms);
     lyrics.source = "apple_music".into();
     lyrics.source_credit = view.credit.filter(|credit| !credit.text.trim().is_empty());
+    lyrics.apple_original = apple_original(view.apple_id, &view.ttml);
     Ok(lyrics)
+}
+
+fn apple_original(apple_id: Option<String>, ttml: &str) -> Option<crate::lyrics::AppleOriginal> {
+    use sha2::{Digest, Sha256};
+    let apple_id = apple_id
+        .filter(|id| (1..=15).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_digit()))?;
+    let sha256 = Sha256::digest(ttml.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Some(crate::lyrics::AppleOriginal { apple_id, sha256 })
 }
 
 /// The song's offset for this platform moves every timestamp.
@@ -312,6 +326,18 @@ pub fn record_view(client: &Client, song_id: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn apple_original_names_the_sync_by_id_and_hash() {
+        let original = apple_original(Some("1440857781".into()), "abc").unwrap();
+        assert_eq!(original.apple_id, "1440857781");
+        assert_eq!(
+            original.sha256,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert!(apple_original(Some("not-a-number".into()), "abc").is_none());
+        assert!(apple_original(None, "abc").is_none());
+    }
+
     #[test]
     fn apple_music_gets_what_the_accounts_leave() {
         let person = Credit {

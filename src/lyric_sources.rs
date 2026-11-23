@@ -36,8 +36,8 @@ use crate::model::Track;
 /// Every known source, in default order.
 pub const DEFAULT_ORDER: [&str; 8] = [
     "lyssna",
-    "spicy",
     "apple",
+    "spicy",
     "lrcred",
     "musixmatch",
     "spotify",
@@ -46,12 +46,11 @@ pub const DEFAULT_ORDER: [&str; 8] = [
 ];
 /// Raised when the default layout changes; saved sources older than this
 /// are reset to it once.
-pub const LAYOUT: u32 = 1;
+pub const LAYOUT: u32 = 2;
 /// Sources the fork leaves off until chosen.
 pub const DEFAULT_DISABLED: [&str; 2] = ["lrclib", "netease"];
 
 static ACTIVE: Mutex<Option<Vec<String>>> = Mutex::new(None);
-static PREFER_APPLE: AtomicBool = AtomicBool::new(true);
 static MUSIXMATCH_WORDS: AtomicBool = AtomicBool::new(true);
 
 /// Ignore Musixmatch Word Sync, inverted: whether Musixmatch's word timing
@@ -61,16 +60,6 @@ pub fn set_musixmatch_words(words: bool) {
 }
 pub fn musixmatch_words() -> bool {
     MUSIXMATCH_WORDS.load(Ordering::Relaxed)
-}
-
-/// Prioritize Apple Music Quality, as in the fork: Apple's answer wins
-/// when it scores higher than the pick, or ties and has real gaps between
-/// lines.
-pub fn set_prefer_apple(prefer: bool) {
-    PREFER_APPLE.store(prefer, Ordering::Relaxed);
-}
-pub fn prefer_apple() -> bool {
-    PREFER_APPLE.load(Ordering::Relaxed)
 }
 
 /// Sources added later that join saved orders right after another source
@@ -189,9 +178,10 @@ pub type SourceFetch = Arc<dyn Fn(&str) -> Result<Lyrics> + Send + Sync>;
 /// Queries every enabled source at once, then picks in the chosen order: the
 /// first timed result wins, by line or by word; otherwise the first plain
 /// one. Once a preferred source (Spicy, Musixmatch, Apple) has lyrics,
-/// LRCLIB and Netease are not consulted. With `prefer_apple`, a pick waits
-/// for Apple Music's answer, which wins whenever it is as well timed.
-pub fn fetch_best(sources: &[String], prefer_apple: bool, fetch: SourceFetch) -> Result<Lyrics> {
+/// LRCLIB and Netease are not consulted. Spicy's community syncs count only
+/// when word-synced, and Apple Music and Spicy settle between themselves by
+/// word timing (see `settle`).
+pub fn fetch_best(sources: &[String], fetch: SourceFetch) -> Result<Lyrics> {
     // Answers arrive as each source replies. A pick is made once every
     // source ahead of it has answered, so a slow source further down never
     // holds back lyrics already found; it finishes on its own.
@@ -208,11 +198,11 @@ pub fn fetch_best(sources: &[String], prefer_apple: bool, fetch: SourceFetch) ->
     let mut results: Vec<Option<Result<Lyrics>>> = sources.iter().map(|_| None).collect();
     while let Ok((index, result)) = answers.recv() {
         results[index] = Some(result);
-        if let Some(pick) = early_pick(sources, prefer_apple, &results) {
+        if let Some(pick) = early_pick(sources, &results) {
             return Ok(pick);
         }
     }
-    pick_best(sources, prefer_apple, results)
+    pick_best(sources, &results)
 }
 
 /// Whether the source is one whose lyrics stop LRCLIB and Netease counting.
@@ -226,28 +216,51 @@ fn rank(lyrics: &Lyrics) -> u8 {
     quality(lyrics).min(2)
 }
 
-/// With Apple Music prioritized, its answer replaces any pick it ranks
-/// alongside, except Lyssna's: those were synced by hand for this app, so
-/// they're never swapped for a store's version.
-fn choose(pick: Lyrics, apple: Option<&Lyrics>, prefer_apple: bool) -> Lyrics {
-    match apple {
-        Some(apple) if prefer_apple && pick.source != "lyssna" && rank(apple) >= rank(&pick) => {
-            apple.clone()
-        }
-        _ => pick,
+/// Spicy's community syncs are only worth showing word-synced; by line,
+/// the sources after it do as well or better.
+fn usable(source: &str, lyrics: &Lyrics) -> bool {
+    rank(lyrics) > 0 && (source != "spicy" || quality(lyrics) == 3)
+}
+
+/// The usable lyrics a source answered with: `None` while it hasn't
+/// answered, `Some(None)` when it had none.
+fn answer<'a>(
+    sources: &[String],
+    results: &'a [Option<Result<Lyrics>>],
+    source: &str,
+) -> Option<Option<&'a Lyrics>> {
+    let index = sources.iter().position(|known| known == source)?;
+    let result = results[index].as_ref()?;
+    Some(result.as_ref().ok().filter(|lyrics| usable(source, lyrics)))
+}
+
+/// Apple Music and Spicy's community syncs settle between themselves by
+/// word timing, whichever is listed first: word-synced Apple beats Spicy,
+/// and word-synced Spicy beats Apple timed only by line. `None` while the
+/// other's answer is still to come.
+fn settle<'a>(
+    sources: &[String],
+    results: &'a [Option<Result<Lyrics>>],
+    source: &str,
+    pick: &'a Lyrics,
+) -> Option<&'a Lyrics> {
+    let other = match source {
+        "apple" if quality(pick) < 3 => "spicy",
+        "spicy" => "apple",
+        _ => return Some(pick),
+    };
+    if !sources.iter().any(|known| known == other) {
+        return Some(pick);
     }
+    Some(match answer(sources, results, other)? {
+        Some(lyrics) if quality(lyrics) == 3 => lyrics,
+        _ => pick,
+    })
 }
 
 /// The first timed pick in order, once every answer it depends on is in.
-fn early_pick(
-    sources: &[String],
-    prefer_apple: bool,
-    results: &[Option<Result<Lyrics>>],
-) -> Option<Lyrics> {
-    let apple_listed = prefer_apple && sources.iter().any(|source| source == "apple");
-    let mut apple: Option<&Lyrics> = None;
-    let mut apple_tried = false;
-    let mut best: Option<&Lyrics> = None;
+fn early_pick(sources: &[String], results: &[Option<Result<Lyrics>>]) -> Option<Lyrics> {
+    let mut best: Option<(&str, &Lyrics)> = None;
     let mut preferred = false;
     for (source, result) in sources.iter().zip(results) {
         if preferred && matches!(source.as_str(), "lrclib" | "netease") {
@@ -255,74 +268,63 @@ fn early_pick(
         }
         // An earlier source has not answered yet.
         let result = result.as_ref()?;
-        if source == "apple" {
-            apple_tried = true;
-        }
         let Ok(lyrics) = result else { continue };
-        let score = rank(lyrics);
-        if score == 0 {
+        if !usable(source, lyrics) {
             continue;
-        }
-        if source == "apple" {
-            apple = Some(lyrics);
         }
         if preferred_source(source) {
             preferred = true;
         }
-        if best.is_none_or(|known| score > rank(known)) {
-            best = Some(lyrics);
+        let score = rank(lyrics);
+        if best.is_none_or(|(_, known)| score > rank(known)) {
+            best = Some((source, lyrics));
         }
         if score == 2
-            && (!apple_listed || apple_tried || best.is_some_and(|pick| pick.source == "lyssna"))
-            && let Some(pick) = best
+            && let Some((source, pick)) = best
         {
-            return Some(choose(pick.clone(), apple, prefer_apple));
+            return settle(sources, results, source, pick).cloned();
         }
     }
     None
 }
 
 /// The pick once every source has answered.
-fn pick_best(
-    sources: &[String],
-    prefer_apple: bool,
-    results: Vec<Option<Result<Lyrics>>>,
-) -> Result<Lyrics> {
-    let mut apple: Option<Lyrics> = None;
-    let mut best: Option<Lyrics> = None;
-    let mut failure: Option<anyhow::Error> = None;
+fn pick_best(sources: &[String], results: &[Option<Result<Lyrics>>]) -> Result<Lyrics> {
+    let mut best: Option<(&str, &Lyrics)> = None;
+    let mut failure: Option<String> = None;
     let mut preferred = false;
     for (source, result) in sources.iter().zip(results) {
         if preferred && matches!(source.as_str(), "lrclib" | "netease") {
             continue;
         }
-        let lyrics = match result.unwrap_or_else(|| Err(anyhow!("Lyrics source failed"))) {
-            Ok(lyrics) => lyrics,
-            Err(error) => {
+        let lyrics = match result {
+            Some(Ok(lyrics)) => lyrics,
+            Some(Err(error)) => {
                 // Only an unreachable source is worth reporting; the rest
                 // simply had no lyrics.
-                if unreachable(&error) {
-                    failure = Some(error);
+                if unreachable(error) {
+                    failure = Some(error.to_string());
                 }
                 continue;
             }
+            None => continue,
         };
-        let score = rank(&lyrics);
-        if score == 0 {
+        if !usable(source, lyrics) {
             continue;
-        }
-        if source == "apple" {
-            apple = Some(lyrics.clone());
         }
         if preferred_source(source) {
             preferred = true;
         }
-        if best.as_ref().is_none_or(|known| score > rank(known)) {
-            best = Some(lyrics);
+        if best.is_none_or(|(_, known)| rank(lyrics) > rank(known)) {
+            best = Some((source, lyrics));
         }
     }
-    best.map(|pick| choose(pick, apple.as_ref(), prefer_apple))
-        .ok_or_else(|| failure.unwrap_or_else(|| anyhow!(NO_LYRICS)))
+    best.and_then(|(source, pick)| settle(sources, results, source, pick))
+        .cloned()
+        .ok_or_else(|| match failure {
+            Some(message) => Unreachable(message).into(),
+            None => anyhow!(NO_LYRICS),
+        })
 }
 
 /// Keeps Apple Music's lyrics out of the Spicy Lyrics provider's answers:
@@ -1029,9 +1031,9 @@ mod tests {
             vec![
                 "lyssna",
                 "lrclib",
+                "apple",
                 "spicy",
                 "lrcred",
-                "apple",
                 "musixmatch",
                 "spotify",
                 "netease"
@@ -1070,26 +1072,27 @@ mod tests {
 
     #[test]
     fn first_timed_source_in_order_wins() {
-        let order: Vec<String> = ["spicy", "musixmatch", "lrclib"].map(String::from).to_vec();
-        let pick = |spicy: Lyrics, musixmatch: Lyrics| {
+        let order: Vec<String> = ["lyssna", "musixmatch", "lrclib"]
+            .map(String::from)
+            .to_vec();
+        let pick = |lyssna: Lyrics, musixmatch: Lyrics| {
             fetch_best(
                 &order,
-                false,
                 Arc::new(move |source: &str| match source {
-                    "spicy" => Ok(spicy.clone()),
+                    "lyssna" => Ok(lyssna.clone()),
                     "musixmatch" => Ok(musixmatch.clone()),
                     _ => Ok(timed(true, true)),
                 }),
             )
             .unwrap()
         };
-        // Line-synced Spicy, listed first, beats word-synced Musixmatch.
+        // Line-synced Lyssna, listed first, beats word-synced Musixmatch.
         assert!(
             pick(timed(false, true), timed(true, true)).lines[0]
                 .words
                 .is_empty()
         );
-        // Timed Musixmatch beats plain Spicy.
+        // Timed Musixmatch beats plain Lyssna.
         assert!(pick(timed(false, false), timed(true, true)).synced);
         // A preferred source's answer stops LRCLIB being used.
         assert!(
@@ -1097,7 +1100,7 @@ mod tests {
                 .words
                 .is_empty()
         );
-        let failing = fetch_best(&order, false, Arc::new(|_: &str| Err(anyhow!("down"))));
+        let failing = fetch_best(&order, Arc::new(|_: &str| Err(anyhow!("down"))));
         assert!(failing.is_err());
     }
 
@@ -1107,7 +1110,6 @@ mod tests {
         let started = std::time::Instant::now();
         let pick = fetch_best(
             &order,
-            false,
             Arc::new(|source: &str| {
                 if source == "netease" {
                     std::thread::sleep(std::time::Duration::from_secs(3));
@@ -1154,14 +1156,13 @@ mod tests {
     #[test]
     fn missing_lyrics_differ_from_unreachable_sources() {
         let order: Vec<String> = ["spicy", "musixmatch"].map(String::from).to_vec();
-        let missing = fetch_best(&order, false, Arc::new(|_: &str| Err(anyhow!("No match"))))
+        let missing = fetch_best(&order, Arc::new(|_: &str| Err(anyhow!("No match"))))
             .err()
             .unwrap();
         assert_eq!(missing.to_string(), NO_LYRICS);
         assert!(!unreachable(&missing));
         let offline = fetch_best(
             &order,
-            false,
             Arc::new(|source: &str| match source {
                 "spicy" => Err(Unreachable("Spicy Lyrics is unreachable".into()).into()),
                 _ => Err(anyhow!("No match")),
@@ -1173,38 +1174,68 @@ mod tests {
         assert_eq!(offline.to_string(), "Spicy Lyrics is unreachable");
     }
 
-    #[test]
-    fn prioritized_apple_wins_whenever_timed() {
-        let order: Vec<String> = ["spicy", "apple"].map(String::from).to_vec();
-        let pick = |prefer: bool, apple: Lyrics| {
-            fetch_best(
-                &order,
-                prefer,
-                Arc::new(move |source: &str| match source {
-                    "spicy" => Ok(gapped("spicy", 0)),
-                    _ => Ok(apple.clone()),
-                }),
-            )
-            .unwrap()
-            .source
-        };
-        // Spicy, listed first, waits for Apple, which wins when prioritized.
-        assert_eq!(pick(true, gapped("apple", 400)), "apple");
-        assert_eq!(pick(true, gapped("apple", 0)), "apple");
-        assert_eq!(pick(false, gapped("apple", 400)), "spicy");
-        // Line-synced Apple still beats word-synced Spicy.
-        let mut lines = gapped("apple", 400);
-        lines.lines.iter_mut().for_each(|line| line.words.clear());
-        assert_eq!(pick(true, lines), "apple");
+    fn by_line(source: &str) -> Lyrics {
+        let mut lyrics = gapped(source, 0);
+        lyrics.lines.iter_mut().for_each(|line| line.words.clear());
+        lyrics
+    }
+
+    fn pick_between(order: &[&str], apple: Lyrics, spicy: Lyrics) -> String {
+        let order: Vec<String> = order.iter().map(|id| (*id).to_owned()).collect();
+        fetch_best(
+            &order,
+            Arc::new(move |source: &str| match source {
+                "apple" => Ok(apple.clone()),
+                "spicy" => Ok(spicy.clone()),
+                _ => Ok(by_line(source)),
+            }),
+        )
+        .unwrap()
+        .source
     }
 
     #[test]
-    fn prioritized_apple_never_replaces_lyssna_lyrics() {
+    fn apple_and_spicy_settle_by_word_timing() {
+        let order = ["apple", "spicy", "lrcred"];
+        // Word-synced Apple wins outright.
+        assert_eq!(
+            pick_between(&order, gapped("apple", 0), gapped("spicy", 0)),
+            "apple"
+        );
+        // Apple timed by line gives way to word-synced Spicy.
+        assert_eq!(
+            pick_between(&order, by_line("apple"), gapped("spicy", 0)),
+            "spicy"
+        );
+        // Spicy by line doesn't count, so Apple by line stays.
+        assert_eq!(
+            pick_between(&order, by_line("apple"), by_line("spicy")),
+            "apple"
+        );
+        // Listed first, word-synced Spicy still gives way to word-synced Apple.
+        let spicy_first = ["spicy", "apple", "lrcred"];
+        assert_eq!(
+            pick_between(&spicy_first, gapped("apple", 0), gapped("spicy", 0)),
+            "apple"
+        );
+        assert_eq!(
+            pick_between(&spicy_first, by_line("apple"), gapped("spicy", 0)),
+            "spicy"
+        );
+        // Spicy by line is passed over for the next source.
+        let no_apple = ["spicy", "lrcred"];
+        assert_eq!(
+            pick_between(&no_apple, Lyrics::default(), by_line("spicy")),
+            "lrcred"
+        );
+    }
+
+    #[test]
+    fn apple_never_replaces_lyssna_lyrics() {
         let order: Vec<String> = ["lyssna", "apple"].map(String::from).to_vec();
         let started = std::time::Instant::now();
         let pick = fetch_best(
             &order,
-            true,
             Arc::new(|source: &str| {
                 if source == "apple" {
                     std::thread::sleep(std::time::Duration::from_secs(3));

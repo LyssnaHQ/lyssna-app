@@ -1,5 +1,5 @@
 import type { CreatorLine, MetaEntry } from "./ttml-creator-model";
-import type { Track } from "./types";
+import type { AppleOriginal, Track } from "./types";
 
 // Like amll-ttml-tool's autosave: the latest state per song plus a few dated
 // versions. The latest state stays in localStorage so it is written
@@ -14,6 +14,8 @@ export interface Draft {
   metadata?: MetaEntry[];
   savedAt?: number;
   song?: Track;
+  /** The Apple Music sync the draft started from. */
+  appleOriginal?: AppleOriginal;
 }
 export interface SavedSong {
   uri: string;

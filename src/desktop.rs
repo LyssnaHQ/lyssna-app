@@ -574,7 +574,6 @@ impl Desktop {
             &settings.lyrics_source_order,
             &settings.lyrics_sources_disabled,
         );
-        crate::lyric_sources::set_prefer_apple(settings.lyrics_prefer_apple);
         crate::lyric_sources::set_musixmatch_words(!settings.lyrics_musixmatch_lines_only);
         crate::lyric_sources::load_musixmatch_token();
         apply_quality(&settings);
@@ -3298,6 +3297,7 @@ async fn lyssna_submit(
     ttml: Option<String>,
     track: Track,
     authored_at: Option<String>,
+    apple_original: Option<crate::lyrics::AppleOriginal>,
     state: State<'_, Desktop>,
 ) -> std::result::Result<crate::lyssna_account::Submission, String> {
     let controls = state.0.controls.clone();
@@ -3320,6 +3320,7 @@ async fn lyssna_submit(
             &track,
             &isrcs,
             authored_at.as_deref(),
+            apple_original.as_ref(),
         )
     })
     .await
@@ -3541,7 +3542,6 @@ fn apply_settings(
             || settings.local_sources != snapshot.settings.local_sources;
         let sources_changed = settings.lyrics_source_order != snapshot.settings.lyrics_source_order
             || settings.lyrics_sources_disabled != snapshot.settings.lyrics_sources_disabled
-            || settings.lyrics_prefer_apple != snapshot.settings.lyrics_prefer_apple
             || settings.lyrics_musixmatch_lines_only
                 != snapshot.settings.lyrics_musixmatch_lines_only;
         if output_changed {
@@ -3590,7 +3590,6 @@ fn apply_settings(
             &settings.lyrics_source_order,
             &settings.lyrics_sources_disabled,
         );
-        crate::lyric_sources::set_prefer_apple(settings.lyrics_prefer_apple);
         crate::lyric_sources::set_musixmatch_words(!settings.lyrics_musixmatch_lines_only);
         apply_quality(&settings);
         // Reload the playing song's lyrics so a source change shows at once;

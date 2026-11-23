@@ -222,7 +222,6 @@ export interface Settings {
   lyrics_escape_exits?: boolean;
   lyrics_source_order?: string[];
   lyrics_sources_disabled?: string[];
-  lyrics_prefer_apple?: boolean;
   lyrics_musixmatch_lines_only?: boolean;
   settings_remember_place?: boolean;
   developer_mode?: boolean;
@@ -302,8 +301,14 @@ export interface Lyrics {
   song_id?: string;
   /** The credit line a source asks to be shown with its lyrics. */
   source_credit?: { text: string; url: string };
+  /** Apple Music's own sync these lyrics are, so an edit of it uploads as one. */
+  apple_original?: AppleOriginal;
 }
 /** A deleted account has no user_id, username or avatar_url. */
+export interface AppleOriginal {
+  apple_id: string;
+  sha256: string;
+}
 export interface LyssnaCredit {
   user_id?: string;
   username?: string;

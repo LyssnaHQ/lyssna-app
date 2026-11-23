@@ -47,7 +47,7 @@ import {
 import type { ReviewSubmission } from "./review-api";
 import { Cover, usePlaybackClock } from "./components";
 import type { AppState } from "./state";
-import type { Lyrics, PlayerRequest, Track } from "./types";
+import type { AppleOriginal, Lyrics, PlayerRequest, Track } from "./types";
 import {
   forgetWorking,
   markWorking,
@@ -410,6 +410,9 @@ export function TtmlCreator({
   const isPlaying = local ? own.playing : state.playback.is_playing;
 
   const [savedAt, setSavedAt] = useState<number | undefined>();
+  // Apple Music's sync the draft was seeded from: uploading names it, so
+  // Lyssna keeps Apple's credit for the timing it did.
+  const [appleOriginal, setAppleOriginal] = useState<AppleOriginal>();
   // The content last written for `uri`, so loading or seeding a song is not
   // mistaken for an edit and only real changes get a new save time.
   const [metadata, setMetadata] = useState<MetaEntry[] | undefined>();
@@ -441,6 +444,7 @@ export function TtmlCreator({
     setText(draft?.text ?? "");
     setMetadata(draft?.metadata);
     setSavedAt(draft?.savedAt);
+    setAppleOriginal(draft?.appleOriginal);
     saved.current = {
       uri: track.uri,
       content: contentOf(
@@ -482,6 +486,7 @@ export function TtmlCreator({
     const seeded = joinHyphenated(fromLyrics(lyrics));
     if (!seeded.length) return;
     setLinesRaw(seeded);
+    setAppleOriginal(lyrics.apple_original);
     setCursor(cursorAt(seeded, read()));
     setText(toText(seeded));
     saved.current.content = contentOf(seeded, toText(seeded), metadata);
@@ -512,6 +517,7 @@ export function TtmlCreator({
       writeDraft(track.uri, null);
       forgetWorking(track.uri);
       setSavedAt(undefined);
+      setAppleOriginal(undefined);
       return;
     }
     const now = Date.now();
@@ -521,11 +527,12 @@ export function TtmlCreator({
       metadata,
       savedAt: now,
       song: track,
+      appleOriginal,
     });
     setSavedAt(now);
     markWorking(track.uri);
     snapshot(false);
-  }, [track, lines, text, metadata, snapshot]);
+  }, [track, lines, text, metadata, snapshot, appleOriginal]);
 
   useEffect(() => () => void onSpeed(1), [onSpeed]);
 
@@ -1474,6 +1481,7 @@ export function TtmlCreator({
   const startFromLyrics = () => {
     if (!state.lyrics || !seedable) return;
     const seeded = fromLyrics(state.lyrics);
+    setAppleOriginal(state.lyrics.apple_original);
     setLines(seeded);
     setText(toText(seeded));
     setCursor({ line: 0, unit: 0 });
@@ -2257,6 +2265,7 @@ export function TtmlCreator({
         ttml: ttml(),
         track,
         authoredAt: savedAt ? new Date(savedAt).toISOString() : undefined,
+        appleOriginal,
       });
       notify(
         result.status === "approved"

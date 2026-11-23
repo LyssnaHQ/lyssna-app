@@ -26,6 +26,16 @@ pub struct Lyrics {
     /// The credit line a source asks to be shown with its lyrics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_credit: Option<SourceCredit>,
+    /// Apple Music's own sync, named so an edit of it can be uploaded as one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apple_original: Option<AppleOriginal>,
+}
+
+/// Which Apple Music sync lyrics came from: its ID and the SHA-256 of the TTML as Lyssna served it.
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+pub struct AppleOriginal {
+    pub apple_id: String,
+    pub sha256: String,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
@@ -1284,9 +1294,8 @@ fn fetch_from(
         access_token.to_owned(),
         native.clone(),
     );
-    let (sources, prefer_apple, words) = (
+    let (sources, words) = (
         crate::lyric_sources::enabled(),
-        crate::lyric_sources::prefer_apple(),
         crate::lyric_sources::musixmatch_words(),
     );
     let fetch = move |source: &str| -> Result<Lyrics> {
@@ -1351,7 +1360,7 @@ fn fetch_from(
             _ => Err(anyhow::anyhow!("Unknown lyrics source")),
         }
     };
-    crate::lyric_sources::fetch_best(&sources, prefer_apple, std::sync::Arc::new(fetch))
+    crate::lyric_sources::fetch_best(&sources, std::sync::Arc::new(fetch))
 }
 
 /// One song's per-source lyrics cache.

@@ -14246,28 +14246,6 @@ test("the lyrics cache button follows its chosen action", async ({ page }) => {
   await expect(toolbar.locator('[data-icon="retry"]')).toHaveCount(0);
 });
 
-test("Apple Music quality priority is on until turned off", async ({
-  page,
-}) => {
-  await startClient(page);
-  await openSettings(page, "Sources");
-  const toggle = page.getByRole("switch", {
-    name: "Prioritize Apple Music quality",
-  });
-  await expect(toggle).toBeChecked();
-  await toggle.click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as any).__clientTest.commands
-            .filter((entry: any) => entry.command === "save_settings")
-            .at(-1)?.args.settings.lyrics_prefer_apple,
-      ),
-    )
-    .toBe(false);
-});
-
 test("Musixmatch word sync can be ignored", async ({ page }) => {
   await startClient(page);
   await openSettings(page, "Sources");
@@ -17801,6 +17779,64 @@ test("TTML Creator times words on the playing song, slows it and saves TTML", as
   await expect(page.getByText("ooh", { exact: true })).toBeVisible();
   await banner.getByRole("button", { name: "Original lyrics" }).click();
   await expect(banner).toHaveCount(0);
+});
+
+test("TTML Creator uploads an edit of Apple Music's sync as one", async ({
+  page,
+}) => {
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await page.evaluate(() => {
+    const word = (text: string, start_ms: number) => ({
+      text,
+      start_ms,
+      end_ms: start_ms + 400,
+    });
+    (window as any).__clientTest.emit({
+      type: "lyrics",
+      uri: "spotify:track:0123456789abcdefghijkl",
+      lyrics: {
+        source: "apple_music",
+        synced: true,
+        instrumental: false,
+        apple_original: { apple_id: "1440857781", sha256: "a".repeat(64) },
+        source_credit: { text: "Lyrics provided by Lyssna", url: "https://lyssna.org" },
+        lines: [
+          {
+            text: "Test line one",
+            start_ms: 1000,
+            end_ms: 2200,
+            background: false,
+            opposite: false,
+            words: [word("Test ", 1000), word("line ", 1400), word("one", 1800)],
+            translation: "",
+            romanization: "",
+          },
+        ],
+      },
+    });
+  });
+  await openSettings(page, "Lyrics");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page.locator(".player-extras").getByTitle("TTML Creator", { exact: true }).click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  await expect(creator.locator(".ttml-line").first()).toBeVisible();
+  await creator.getByRole("button", { name: "Start from current lyrics" }).click();
+  await creator.getByRole("button", { name: "Submit to Lyssna" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__clientTest.commands
+            .filter((entry: any) => entry.command === "lyssna_submit")
+            .at(-1)?.args.appleOriginal,
+      ),
+    )
+    .toEqual({ apple_id: "1440857781", sha256: "a".repeat(64) });
 });
 
 test("TTML Creator previews an untouched draft until Show preview is off", async ({

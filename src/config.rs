@@ -339,9 +339,6 @@ pub struct Settings {
     // Absent from older files, so they read as layout 0 and get reset.
     #[serde(default)]
     pub lyrics_sources_layout: u32,
-    /// Prioritize Apple Music Quality: Apple's answer wins higher scores and
-    /// ties with gaps between lines.
-    pub lyrics_prefer_apple: bool,
     /// Ignore Musixmatch Word Sync: use only Musixmatch's line timing.
     pub lyrics_musixmatch_lines_only: bool,
     /// Settings reopens on the tab and scroll position it was closed at.
@@ -493,7 +490,6 @@ impl Default for Settings {
                 .iter()
                 .map(|id| (*id).into())
                 .collect(),
-            lyrics_prefer_apple: true,
             lyrics_musixmatch_lines_only: false,
             lyrics_sources_disabled: crate::lyric_sources::DEFAULT_DISABLED
                 .iter()
@@ -701,12 +697,23 @@ impl Settings {
         }
     }
     fn adopt_source_layout(&mut self) {
-        if self.lyrics_sources_layout < crate::lyric_sources::LAYOUT {
+        if self.lyrics_sources_layout < 1 {
             let fresh = Self::default();
             self.lyrics_source_order = fresh.lyrics_source_order;
             self.lyrics_sources_disabled = fresh.lyrics_sources_disabled;
-            self.lyrics_sources_layout = crate::lyric_sources::LAYOUT;
+        } else if self.lyrics_sources_layout < 2 {
+            // Layout 2 asks Apple Music before Spicy Lyrics; a saved order keeps everything else.
+            let order = &mut self.lyrics_source_order;
+            if let (Some(spicy), Some(apple)) = (
+                order.iter().position(|id| id == "spicy"),
+                order.iter().position(|id| id == "apple"),
+            ) && apple > spicy
+            {
+                let apple = order.remove(apple);
+                order.insert(spicy, apple);
+            }
         }
+        self.lyrics_sources_layout = crate::lyric_sources::LAYOUT;
     }
     pub fn load() -> Result<Self> {
         let path = data_dir()?.join("settings.json");
@@ -810,13 +817,28 @@ mod tests {
             old.lyrics_source_order,
             Settings::default().lyrics_source_order
         );
-        assert_eq!(old.lyrics_source_order[..3], ["lyssna", "spicy", "apple"]);
+        assert_eq!(old.lyrics_source_order[..3], ["lyssna", "apple", "spicy"]);
         assert_eq!(old.lyrics_sources_disabled, ["lrclib", "netease"]);
         old.lyrics_source_order.reverse();
         let mut saved: Settings =
             serde_json::from_str(&serde_json::to_string(&old).unwrap()).unwrap();
         saved.adopt_source_layout();
         assert_eq!(saved.lyrics_source_order, old.lyrics_source_order);
+    }
+
+    #[test]
+    fn layout_two_moves_apple_ahead_of_spicy_and_keeps_the_rest() {
+        let mut saved: Settings = serde_json::from_str(
+            r#"{"lyrics_sources_layout":1,"lyrics_source_order":["musixmatch","spicy","lyssna","apple"],"lyrics_sources_disabled":["netease"]}"#,
+        )
+        .unwrap();
+        saved.adopt_source_layout();
+        assert_eq!(
+            saved.lyrics_source_order,
+            ["musixmatch", "apple", "spicy", "lyssna"]
+        );
+        assert_eq!(saved.lyrics_sources_disabled, ["netease"]);
+        assert_eq!(saved.lyrics_sources_layout, crate::lyric_sources::LAYOUT);
     }
 
     #[test]
@@ -975,7 +997,6 @@ mod tests {
         artist.clean_lyrics_options();
         assert_eq!(artist.lyrics_background, "artist");
         assert!(older.lyrics_cache_button);
-        assert!(older.lyrics_prefer_apple);
         assert!(older.settings_remember_place);
     }
 

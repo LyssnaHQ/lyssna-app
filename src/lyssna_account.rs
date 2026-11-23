@@ -515,8 +515,14 @@ pub fn submit(
     track: &Track,
     isrcs: &[String],
     authored: Option<&str>,
+    apple: Option<&crate::lyrics::AppleOriginal>,
 ) -> Result<Submission> {
-    let body = submission_body(ttml, track, isrcs, authored)?;
+    let mut body = submission_body(ttml, track, isrcs, authored)?;
+    // An edit of Apple Music's sync names it, so Apple keeps the credit for what it timed.
+    if let (Some(apple), Some(_)) = (apple, ttml) {
+        body["apple_original"] =
+            serde_json::json!({ "apple_id": apple.apple_id, "sha256": apple.sha256 });
+    }
     let Some(token) = access_token(client)? else {
         bail!("Sign in to Lyssna in Settings to submit lyrics");
     };
