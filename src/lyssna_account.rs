@@ -446,7 +446,7 @@ fn authored_at(text: &str, now: OffsetDateTime) -> Option<String> {
 fn submission_body(
     ttml: &str,
     track: &Track,
-    isrc: Option<&str>,
+    isrcs: &[String],
     authored: Option<&str>,
 ) -> Result<serde_json::Value> {
     let Some(id) = crate::lyssna_lyrics::spotify_id(track) else {
@@ -455,7 +455,7 @@ fn submission_body(
     // The ISRC leads so the song is keyed to the recording rather than one platform's ID; the
     // Spotify link stays so the app's own lookups still find it.
     let mut links = Vec::new();
-    if let Some(isrc) = isrc {
+    if let Some(isrc) = isrcs.first() {
         links.push(serde_json::json!({ "platform": "isrc", "external_id": isrc }));
     }
     links.push(serde_json::json!({ "platform": "spotify", "external_id": id }));
@@ -465,6 +465,9 @@ fn submission_body(
         "title": track.name,
         "artists": track.artists.iter().map(|artist| &artist.name).collect::<Vec<_>>(),
     });
+    if !isrcs.is_empty() {
+        body["extra_isrcs"] = isrcs.into();
+    }
     if !track.album.name.is_empty() {
         body["album"] = track.album.name.clone().into();
     }
@@ -490,14 +493,15 @@ fn submit_failure(response: reqwest::blocking::Response) -> anyhow::Error {
 }
 
 /// Uploads a TTML for the song, linked by its ISRC when Spotify knows it, and its Spotify ID.
+/// Every ISRC of the recording goes along, so the song is found under any of them.
 pub fn submit(
     client: &Client,
     ttml: &str,
     track: &Track,
-    isrc: Option<&str>,
+    isrcs: &[String],
     authored: Option<&str>,
 ) -> Result<Submission> {
-    let body = submission_body(ttml, track, isrc, authored)?;
+    let body = submission_body(ttml, track, isrcs, authored)?;
     let Some(token) = access_token(client)? else {
         bail!("Sign in to Lyssna in Settings to submit lyrics");
     };
@@ -856,14 +860,25 @@ mod tests {
             }],
             ..Track::default()
         };
-        let body = submission_body("<tt/>", &track, Some("GBAHT0600097"), None).unwrap();
+        let body = submission_body(
+            "<tt/>",
+            &track,
+            &["GBAHT0600097".into(), "GBAHT0600098".into()],
+            None,
+        )
+        .unwrap();
         assert_eq!(body["links"][0]["platform"], "isrc");
         assert_eq!(body["links"][0]["external_id"], "GBAHT0600097");
         assert_eq!(body["links"][1]["platform"], "spotify");
         assert_eq!(body["links"][1]["external_id"], "4cOdK2wGLETKBW3PvgPWqT");
-        let without = submission_body("<tt/>", &track, None, None).unwrap();
+        let without = submission_body("<tt/>", &track, &[], None).unwrap();
         assert_eq!(without["links"][0]["platform"], "spotify");
         assert_eq!(without["links"].as_array().unwrap().len(), 1);
+        assert!(without.get("extra_isrcs").is_none());
+        assert_eq!(
+            body["extra_isrcs"],
+            serde_json::json!(["GBAHT0600097", "GBAHT0600098"])
+        );
         assert_eq!(body["title"], "Uprising");
         assert_eq!(body["artists"][0], "Muse");
         assert!(body.get("album").is_none());
@@ -872,7 +887,7 @@ mod tests {
             is_local: true,
             ..track
         };
-        assert!(submission_body("<tt/>", &local, None, None).is_err());
+        assert!(submission_body("<tt/>", &local, &[], None).is_err());
     }
 
     #[test]
@@ -913,12 +928,11 @@ mod tests {
             id: Some("4cOdK2wGLETKBW3PvgPWqT".into()),
             ..Track::default()
         };
-        let body =
-            submission_body("<tt/>", &track, None, Some("2024-03-01T09:30:00.000Z")).unwrap();
+        let body = submission_body("<tt/>", &track, &[], Some("2024-03-01T09:30:00.000Z")).unwrap();
         assert_eq!(body["authored_at"], "2024-03-01T09:30:00Z");
-        let early = submission_body("<tt/>", &track, None, Some("2001-01-01T00:00:00Z")).unwrap();
+        let early = submission_body("<tt/>", &track, &[], Some("2001-01-01T00:00:00Z")).unwrap();
         assert!(early.get("authored_at").is_none());
-        let none = submission_body("<tt/>", &track, None, None).unwrap();
+        let none = submission_body("<tt/>", &track, &[], None).unwrap();
         assert!(none.get("authored_at").is_none());
     }
 

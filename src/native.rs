@@ -859,18 +859,18 @@ impl NativeControls {
         metadata_track(&track, None).context("Track metadata unavailable")
     }
     pub fn isrc(&self, uri: &str) -> Result<Option<String>> {
+        Ok(self.isrcs(uri)?.into_iter().next())
+    }
+    /// Every ISRC Spotify gives the recording: the track's own first, then
+    /// those of its regional alternatives.
+    pub fn isrcs(&self, uri: &str) -> Result<Vec<String>> {
         use protobuf::Message;
         let bytes = self.metadata(
             uri,
             librespot_protocol::extension_kind::ExtensionKind::TRACK_V4,
         )?;
         let message = librespot_protocol::metadata::Track::parse_from_bytes(&bytes)?;
-        Ok(message
-            .external_id
-            .iter()
-            .find(|id| id.type_().eq_ignore_ascii_case("isrc"))
-            .map(|id| id.id().trim().to_ascii_uppercase())
-            .filter(|id| id.len() == 12 && id.chars().all(|c| c.is_ascii_alphanumeric())))
+        Ok(track_isrcs(&message))
     }
     fn request_metadata(
         &self,
@@ -4727,5 +4727,47 @@ mod tests {
             "different permission failure",
         ));
         assert!(!unrelated.rejected_credentials);
+    }
+}
+
+fn track_isrcs(track: &librespot_protocol::metadata::Track) -> Vec<String> {
+    let mut isrcs: Vec<String> = Vec::new();
+    for id in std::iter::once(track)
+        .chain(&track.alternative)
+        .flat_map(|track| &track.external_id)
+        .filter(|id| id.type_().eq_ignore_ascii_case("isrc"))
+    {
+        let isrc = id.id().trim().to_ascii_uppercase();
+        if isrc.len() == 12
+            && isrc.chars().all(|c| c.is_ascii_alphanumeric())
+            && !isrcs.contains(&isrc)
+        {
+            isrcs.push(isrc);
+        }
+    }
+    isrcs
+}
+
+#[cfg(test)]
+mod isrc_tests {
+    use librespot_protocol::metadata::{ExternalId, Track};
+
+    fn isrc(value: &str) -> ExternalId {
+        let mut id = ExternalId::new();
+        id.set_type("isrc".into());
+        id.set_id(value.into());
+        id
+    }
+
+    #[test]
+    fn a_recordings_isrcs_include_its_alternatives_once() {
+        let mut alternative = Track::new();
+        alternative.external_id.push(isrc("GBAHT0600098"));
+        alternative.external_id.push(isrc("gbaht0600097"));
+        let mut track = Track::new();
+        track.external_id.push(isrc("GBAHT0600097"));
+        track.external_id.push(isrc("bad"));
+        track.alternative.push(alternative);
+        assert_eq!(super::track_isrcs(&track), ["GBAHT0600097", "GBAHT0600098"]);
     }
 }

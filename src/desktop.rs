@@ -3303,22 +3303,22 @@ async fn lyssna_submit(
     let controls = state.0.controls.clone();
     let submitted = track.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let isrc = if track.is_local {
-            None
+        let isrcs = if track.is_local {
+            Vec::new()
         } else {
-            controls.isrc(&track.uri).unwrap_or_else(|failure| {
+            controls.isrcs(&track.uri).unwrap_or_else(|failure| {
                 crate::native::diagnostic(&format!(
                     "isrc lookup {} failed: {failure:#}",
                     track.uri
                 ));
-                None
+                Vec::new()
             })
         };
         crate::lyssna_account::submit(
             &crate::auth::http_client()?,
             &ttml,
             &track,
-            isrc.as_deref(),
+            &isrcs,
             authored_at.as_deref(),
         )
     })
