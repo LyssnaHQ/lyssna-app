@@ -520,11 +520,11 @@ pub enum Added {
 }
 
 /// Songs in each playlist, read for the Add to playlist menu.
-static HOLDING: OnceLock<std::sync::Mutex<HashMap<String, (Instant, HashSet<String>)>>> =
-    OnceLock::new();
+type Holding = std::sync::Mutex<HashMap<String, (Instant, HashSet<String>)>>;
+static HOLDING: OnceLock<Holding> = OnceLock::new();
 const HOLDING_FOR: Duration = Duration::from_secs(120);
 
-fn holding() -> &'static std::sync::Mutex<HashMap<String, (Instant, HashSet<String>)>> {
+fn holding() -> &'static Holding {
     HOLDING.get_or_init(Default::default)
 }
 
