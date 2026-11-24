@@ -3553,6 +3553,12 @@ export function TtmlCreator({
                             // The lit word's own line keeps its steadied pick.
                             (liveWord?.line !== lineIndex &&
                               liveWords.live.has(`${lineIndex}:${unitIndex}`));
+                          // In the romanization view the reading is what's
+                          // on screen, so that's what gets edited.
+                          const editsReading = syncRoman && !!unit.roman;
+                          const shownText = editsReading
+                            ? unit.roman!
+                            : unit.text;
                           if (
                             inline?.line === lineIndex &&
                             inline.unit === unitIndex
@@ -3565,9 +3571,13 @@ export function TtmlCreator({
                                 <TimePill ms={unit.start} />
                                 <input
                                   className="ttml-inline-word"
-                                  aria-label={`Edit ${unit.text}`}
-                                  defaultValue={unit.text}
-                                  size={Math.max(2, unit.text.length + 1)}
+                                  aria-label={
+                                    editsReading
+                                      ? `Edit the reading of ${unit.text}`
+                                      : `Edit ${unit.text}`
+                                  }
+                                  defaultValue={shownText}
+                                  size={Math.max(2, shownText.length + 1)}
                                   spellCheck={false}
                                   autoFocus
                                   onFocus={(event) =>
@@ -3584,14 +3594,16 @@ export function TtmlCreator({
                                     const value =
                                       event.currentTarget.value.trim();
                                     setInline(null);
-                                    if (value !== unit.text)
-                                      commitWord(at, value);
+                                    if (value === shownText) return;
+                                    if (editsReading)
+                                      setLines(setUnitRoman(lines, at, value));
+                                    else commitWord(at, value);
                                   }}
                                   onKeyDown={(event) => {
                                     event.stopPropagation();
                                     if (event.key === "Escape") {
                                       event.preventDefault();
-                                      event.currentTarget.value = unit.text;
+                                      event.currentTarget.value = shownText;
                                       event.currentTarget.blur();
                                     } else if (event.key === "Enter") {
                                       event.preventDefault();
