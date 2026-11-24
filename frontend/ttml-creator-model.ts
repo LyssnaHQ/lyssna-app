@@ -503,6 +503,8 @@ type GeniusWord = {
   group: number;
   /** Starts its Genius line with a capital. */
   capital: boolean;
+  /** Which Genius section it is in, counting headers. */
+  section: number;
 };
 
 /**
@@ -568,7 +570,7 @@ function bracketRuns(
  * background line, even where the draft sings it in the lead line.
  */
 function geniusVoices(
-  tagged: CreatorLine[],
+  placed: CreatorLine[],
   text: string,
   headers: Map<string, { italic?: string; bold?: string }>,
 ): CreatorLine[] {
@@ -576,10 +578,12 @@ function geniusVoices(
   const groupSize = new Map<number, number>();
   const count = { groups: 0 };
   let who: string | undefined;
+  let section = 0;
   for (const raw of balanceStyles(text)) {
     const bare = unmark(raw).trim();
     if (isSectionLine(bare)) {
       who = sectionOf(bare)?.singer;
+      section++;
       continue;
     }
     const voices = voicesOf(who ?? "");
@@ -593,12 +597,13 @@ function geniusVoices(
         voice: styleVoice(token.style, voices, styled),
         group: token.group,
         capital: at === 0 && /^\p{Lu}/u.test(token.text),
+        section,
       });
       if (token.group >= 0)
         groupSize.set(token.group, (groupSize.get(token.group) ?? 0) + 1);
     }
   }
-  const tokensOf = tagged.map((line) =>
+  const tokensOf = placed.map((line) =>
     tokenize(unitChars(line), { groups: 0 }),
   );
   const ours = tokensOf.flat();
@@ -608,6 +613,34 @@ function geniusVoices(
     theirs.map((word) => word.word),
   ))
     match.set(ours[i], theirs[j]);
+
+  // Placing sections skips Genius's bracketed words, so a section whose
+  // first lines the draft sings from them ("Waking something ancient")
+  // started late. It moves back over lead lines Genius has in it.
+  const sectionOfLine = tokensOf.map(
+    (tokens) =>
+      tokens.map((token) => match.get(token)).find(Boolean)?.section,
+  );
+  const tagged = [...placed];
+  tagged.forEach((line, index) => {
+    const at = sectionOfLine[index];
+    if (!line.part || at === undefined) return;
+    let start = index;
+    for (let before = index - 1; before >= 0; before--) {
+      if (tagged[before].part) break;
+      if (tagged[before].background) continue;
+      if (sectionOfLine[before] !== at) break;
+      start = before;
+    }
+    if (start === index) return;
+    const { part, singer, ...rest } = line;
+    tagged[index] = rest;
+    tagged[start] = {
+      ...tagged[start],
+      part,
+      ...(singer !== undefined && { singer }),
+    };
+  });
 
   const voicedLines = tagged.map((original, index) => {
     // A lead line Genius starts with a capital starts with one here too.

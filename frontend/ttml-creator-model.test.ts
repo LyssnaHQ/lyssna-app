@@ -319,6 +319,26 @@ describe("TTML Creator model", () => {
     ]);
   });
 
+  it("starts a section at lines the draft sings from its bracketed words", () => {
+    const lines = timeAll("We fight on\nSomething old\nMake it new\nRise up high");
+    const tagged = applySections(
+      lines,
+      "[Verse: Aiko]\nWe fight on\n[Pre-Chorus: Aiko, Mira]\nAh (Something old), oh (Make it new)\nRise up high",
+    )!;
+    expect(tagged.map((line) => line.part)).toEqual([
+      "Verse",
+      "Pre-Chorus",
+      undefined,
+      undefined,
+    ]);
+    expect(tagged.map((line) => line.sungBy)).toEqual([
+      undefined,
+      "Mira",
+      "Mira",
+      undefined,
+    ]);
+  });
+
   it("keeps the comma after a bracket mid-line on the lead", () => {
     const lines = timeAll("Ah (Something old), oh, whoa (Make it new)");
     const tagged = applySections(
