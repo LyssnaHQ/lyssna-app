@@ -646,7 +646,6 @@ function geniusVoices(
     };
   });
 
-  const first = voicedLines.findIndex((line) => line.units.length);
   return voicedLines.flatMap((line, index) => {
     if (line.background) return [line];
     const runs = bracketRuns(line, tokensOf[index], match, groupSize);
@@ -676,7 +675,9 @@ function geniusVoices(
         units[from - 1] = { ...before, text: before.text + comma };
       if (units[to]) units[to] = { ...units[to], joined: false };
     }
-    const split = splitBrackets({ ...line, units }, index === first);
+    // A draft line that is all one Genius bracket was set apart as a line
+    // on purpose, often a voice sung over the lead, so it stays a lead.
+    const split = splitBrackets({ ...line, units }, true);
     if (split.length === 1 && !split[0].background) return [line];
     const voices = sectionVoices(voicedLines, index);
     const own = line.sungBy ?? voices[0];

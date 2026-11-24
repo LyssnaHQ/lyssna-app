@@ -306,6 +306,19 @@ describe("TTML Creator model", () => {
     expect(echo.units.map((unit) => unit.text)).toEqual(["Watch", "it"]);
   });
 
+  it("keeps a draft line that is all one Genius bracket as a lead", () => {
+    const lines = timeAll("Ah, oh, whoa\nSomething old\nMake it new");
+    const tagged = applySections(
+      lines,
+      "[Chorus: Aiko & Mira]\nAh (Something old), oh, whoa (Make it new)",
+    )!;
+    expect(tagged.map((line) => line.background)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+  });
+
   it("keeps the comma after a bracket mid-line on the lead", () => {
     const lines = timeAll("Ah (Something old), oh, whoa (Make it new)");
     const tagged = applySections(
