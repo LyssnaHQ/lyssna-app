@@ -291,6 +291,16 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.ttml-voice {
+  font-weight: 500;
+}
+.ttml-voice.sung-second {
+  font-style: italic;
+}
+.ttml-voice.sung-third {
+  color: #ffffffd9;
+  font-weight: 800;
+}
 .ttml-card {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;

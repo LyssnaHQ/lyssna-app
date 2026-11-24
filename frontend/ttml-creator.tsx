@@ -1,4 +1,5 @@
 import { clippedTitle } from "./clipped-title";
+import { voicesOf } from "./song-parts";
 import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -3211,9 +3212,22 @@ export function TtmlCreator({
                 <Fragment key={lineIndex}>
                   {line.part && (
                     <p className="ttml-part">
-                      {line.singer
-                        ? `${line.part} - ${line.singer}`
-                        : line.part}
+                      {line.part}
+                      {line.singer && " - "}
+                      {line.singer &&
+                        (voicesOf(line.singer).length > 1
+                          ? // Styled as Genius sets the voices apart.
+                            voicesOf(line.singer).map((voice, index) => (
+                              <Fragment key={index}>
+                                {index > 0 && ", "}
+                                <span
+                                  className={`ttml-voice${WORD_VOICE_CLASS[index] ?? ""}`}
+                                >
+                                  {voice}
+                                </span>
+                              </Fragment>
+                            ))
+                          : line.singer)}
                     </p>
                   )}
                   <div
