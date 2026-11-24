@@ -1288,6 +1288,7 @@ fn fetch_from(
     // Errors keep whether the provider was unreachable, as text and a flag.
     let provider: std::sync::Arc<std::sync::OnceLock<std::result::Result<Lyrics, (String, bool)>>> =
         Default::default();
+    let song_source = crate::lyric_sources::song_source(&track.uri);
     let (client, track, access_token, native) = (
         client.clone(),
         track.clone(),
@@ -1374,7 +1375,15 @@ fn fetch_from(
             _ => Err(anyhow::anyhow!("Unknown lyrics source")),
         }
     };
-    crate::lyric_sources::fetch_best(&sources, std::sync::Arc::new(fetch))
+    let fetch: crate::lyric_sources::SourceFetch = std::sync::Arc::new(fetch);
+    // A source chosen for this song wins whenever it has lyrics; without
+    // them the usual order answers.
+    if let Some(chosen) = song_source
+        && let Ok(lyrics) = crate::lyric_sources::fetch_best(&[chosen], fetch.clone())
+    {
+        return Ok(lyrics);
+    }
+    crate::lyric_sources::fetch_best(&sources, fetch)
 }
 
 /// One song's per-source lyrics cache.

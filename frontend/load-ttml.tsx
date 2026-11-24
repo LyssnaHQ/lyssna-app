@@ -78,7 +78,15 @@ export function LoadTtml({
   initialView = "load",
   reviewer,
   onReviewer,
+  sources,
+  songSource,
+  onSongSource,
 }: {
+  /** Every lyrics source, in the user's order. */
+  sources: { id: string; name: string }[];
+  /** The source chosen for the playing song, or null for the usual order. */
+  songSource: string | null;
+  onSongSource: (source: string | null) => void;
   reviewer: ReviewerMode;
   onReviewer: (mode: ReviewerMode) => void;
   onSubmit: (file: File) => Promise<void>;
@@ -160,6 +168,27 @@ export function LoadTtml({
                   <RotateCcw size={14} />
                   Reset TTML
                 </button>
+                <label
+                  className="load-ttml-source"
+                  title="Show this song's lyrics from one source whenever it has them"
+                >
+                  <span>Source</span>
+                  <select
+                    aria-label="Lyrics source for this song"
+                    value={songSource ?? ""}
+                    disabled={busy}
+                    onChange={(event) =>
+                      onSongSource(event.target.value || null)
+                    }
+                  >
+                    <option value="">Your order</option>
+                    {sources.map((source) => (
+                      <option key={source.id} value={source.id}>
+                        {source.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   title="Load many lyric files at once, each saved for its own song"
                   onClick={() => {

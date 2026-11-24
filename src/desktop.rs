@@ -4068,6 +4068,30 @@ fn parse_lyric_file(
 }
 /// Drop any imported lyrics for the playing song and load the provider's.
 #[tauri::command]
+fn lyrics_song_source(uri: String) -> Option<String> {
+    crate::lyric_sources::song_source(&uri)
+}
+/// Chooses the lyrics source for the playing song, or `None` for the usual
+/// order, and shows its lyrics.
+#[tauri::command]
+fn set_lyrics_song_source(
+    source: Option<String>,
+    state: State<'_, Desktop>,
+) -> std::result::Result<(), String> {
+    let track = lock(&state.0.snapshot)
+        .map_err(error)?
+        .playback
+        .item
+        .clone()
+        .ok_or("Play a track first")?;
+    crate::lyric_sources::set_song_source(&track.uri, source.as_deref()).map_err(error)?;
+    state
+        .0
+        .commands
+        .send(Command::FetchLyrics(track))
+        .map_err(error)
+}
+#[tauri::command]
 fn reset_lyrics(state: State<'_, Desktop>) -> std::result::Result<(), String> {
     let track = lock(&state.0.snapshot)
         .map_err(error)?
@@ -6888,6 +6912,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             lyssna_cancel_sign_in,
             lyssna_sign_out,
             lyssna_act_as,
+            lyrics_song_source,
+            set_lyrics_song_source,
             local_track_isrc,
             local_match_isrc,
             lyssna_act_as_find,

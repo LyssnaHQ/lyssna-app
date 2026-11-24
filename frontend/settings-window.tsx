@@ -55,7 +55,7 @@ import { SettingsTransferControls } from "./settings-transfer-controls";
 import { popPin } from "./pin-pop";
 
 /** Default source order; LRCLIB and Netease start off. */
-const DEFAULT_SOURCES = [
+export const DEFAULT_SOURCES = [
   "lyssna",
   "spicy",
   "apple",
@@ -67,7 +67,7 @@ const DEFAULT_SOURCES = [
 ];
 const DEFAULT_SOURCES_OFF = ["lrclib", "netease"];
 /** Lyric sources Lyssna can use, as listed in Sources. */
-const SOURCES: Record<string, { name: string; help: string }> = {
+export const SOURCES: Record<string, { name: string; help: string }> = {
   lyssna: {
     name: "Lyssna",
     help: "Lyrics made by the Lyssna community. Receives the track ID, a random ID kept on this computer to count plays, and your IP address.",

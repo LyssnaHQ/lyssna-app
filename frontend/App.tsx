@@ -201,8 +201,10 @@ import {
   trackIds,
 } from "./spotify-plus";
 import {
+  DEFAULT_SOURCES,
   lastSettingsTab,
   SettingsWindow,
+  SOURCES,
   type SettingsTab,
 } from "./settings-window";
 import { AppMenu, type AppMenuGroup } from "./app-menu";
@@ -708,6 +710,22 @@ function App() {
   const closeCoverView = useCallback(() => setCoverView(false), []);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [ttmlOpen, setTtmlOpen] = useState<false | "load" | "database">(false);
+  const [songSource, setSongSource] = useState<string | null>(null);
+  const songSourceUri = state.playback.item?.uri;
+  useEffect(() => {
+    setSongSource(null);
+    if (!ttmlOpen || !songSourceUri) return;
+    let active = true;
+    void rpc<string | null>("lyrics_song_source", { uri: songSourceUri }).then(
+      (source) => {
+        if (active) setSongSource(source ?? null);
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [ttmlOpen, songSourceUri]);
   // undefined while checking, null when signed out of Lyssna.
   const [lyssnaRole, setLyssnaRole] = useState<string | null | undefined>();
   const reviewer = canReview(lyssnaRole);
@@ -6649,6 +6667,25 @@ function App() {
           onLoad={(file, mode) => importFile(file, mode)}
           reviewer={state.settings.ttml_reviewer ?? "off"}
           onReviewer={(ttml_reviewer) => updateSettings({ ttml_reviewer })}
+          sources={[
+            ...(state.settings.lyrics_source_order ?? DEFAULT_SOURCES),
+            ...DEFAULT_SOURCES,
+          ]
+            .filter(
+              (id, index, all) => SOURCES[id] && all.indexOf(id) === index,
+            )
+            .map((id) => ({ id, name: SOURCES[id].name }))}
+          songSource={songSource}
+          onSongSource={(source) =>
+            void call("set_lyrics_song_source", { source }).then(() => {
+              setSongSource(source);
+              notify(
+                source
+                  ? `${SOURCES[source]?.name ?? source} lyrics for this song whenever it has them.`
+                  : "This song follows your source order again.",
+              );
+            })
+          }
           onSubmit={(file) =>
             state.playback.item
               ? submitToLyssna(file, state.playback.item)

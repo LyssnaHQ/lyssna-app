@@ -172,6 +172,57 @@ pub fn unreachable(error: &anyhow::Error) -> bool {
     })
 }
 
+const SONG_SOURCES_FILE: &str = "song-sources.json";
+static SONG_SOURCES: Mutex<Option<std::collections::HashMap<String, String>>> = Mutex::new(None);
+
+fn song_sources_path() -> Result<std::path::PathBuf> {
+    Ok(crate::config::data_dir()?
+        .join("lyrics")
+        .join(SONG_SOURCES_FILE))
+}
+
+fn with_song_sources<T>(
+    read: impl FnOnce(&mut std::collections::HashMap<String, String>) -> T,
+) -> T {
+    let mut chosen = SONG_SOURCES
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let chosen = chosen.get_or_insert_with(|| {
+        song_sources_path()
+            .ok()
+            .and_then(|path| std::fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    });
+    read(chosen)
+}
+
+/// The source chosen for one song, asked before the usual order.
+pub fn song_source(uri: &str) -> Option<String> {
+    with_song_sources(|chosen| chosen.get(uri).cloned())
+}
+
+/// Chooses a source for one song, or with `None` goes back to the usual order.
+pub fn set_song_source(uri: &str, source: Option<&str>) -> Result<()> {
+    ensure!(!uri.is_empty(), "No song to choose a source for");
+    if let Some(source) = source {
+        ensure!(DEFAULT_ORDER.contains(&source), "Unknown lyrics source");
+    }
+    let saved = with_song_sources(|chosen| {
+        match source {
+            Some(source) => chosen.insert(uri.to_owned(), source.to_owned()),
+            None => chosen.remove(uri),
+        };
+        serde_json::to_vec_pretty(chosen)
+    })?;
+    let path = song_sources_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, saved)?;
+    Ok(())
+}
+
 /// Asks one lyrics source by name; shared by the threads asking each.
 pub type SourceFetch = Arc<dyn Fn(&str) -> Result<Lyrics> + Send + Sync>;
 
@@ -1001,6 +1052,12 @@ pub fn from_netease(value: &Value, duration_ms: u64) -> Result<Lyrics> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_song_source_must_be_a_known_source() {
+        assert!(set_song_source("spotify:track:x", Some("nowhere")).is_err());
+        assert!(set_song_source("", Some("lyssna")).is_err());
+    }
     use serde_json::json;
 
     fn timed(words: bool, synced: bool) -> Lyrics {

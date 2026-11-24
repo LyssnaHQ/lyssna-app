@@ -21653,3 +21653,29 @@ test("TTML Creator clears the whole draft after a second click", async ({
   await page.waitForTimeout(300);
   await expect(creator.locator(".ttml-card")).toHaveCount(0);
 });
+
+test("Load TTML chooses the lyrics source for the playing song", async ({
+  page,
+}) => {
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await page.evaluate(() => {
+    const test = (window as any).__clientTest;
+    test.answers = { ...test.answers, lyrics_song_source: "apple" };
+  });
+  if (!(await page.locator(".lyrics-page").count()))
+    await page.getByTitle("Lyrics", { exact: true }).click();
+  await page.getByTitle("Load TTML", { exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Load TTML" });
+  const source = dialog.getByRole("combobox", {
+    name: "Lyrics source for this song",
+  });
+  await expect(source).toHaveValue("apple");
+  await source.selectOption("musixmatch");
+  await expect(source).toHaveValue("musixmatch");
+  await source.selectOption("");
+  expect(await commandArgs(page, "set_lyrics_song_source")).toEqual([
+    { source: "musixmatch" },
+    { source: null },
+  ]);
+});
