@@ -36,7 +36,10 @@ use http::{Uri, header::HeaderValue};
 use http_body_util::{BodyExt, Limited};
 use hyper::{
     HeaderMap, Method, Request,
-    header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, HeaderName, LOCATION, RANGE},
+    header::{
+        ACCEPT, ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, HeaderName, LOCATION,
+        RANGE,
+    },
 };
 use hyper_util::client::legacy::ResponseFuture;
 use protobuf::{Enum, EnumOrUnknown, Message, MessageFull};
@@ -504,6 +507,11 @@ impl SpClient {
                 }
             }
 
+            // Without a language Spotify names artists and tracks in their own script
+            // (宝鐘マリン rather than Houshou Marine), unlike its English app.
+            headers_mut
+                .entry(ACCEPT_LANGUAGE)
+                .or_insert(HeaderValue::from_static("en-US"));
             headers_mut.insert(
                 AUTHORIZATION,
                 HeaderValue::from_str(&format!("{} {}", token.token_type, token.access_token,))?,

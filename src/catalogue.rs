@@ -314,6 +314,7 @@ pub(crate) async fn query(
             .bearer_auth(&token.access_token)
             .header("client-token", &client_token)
             .header("app-platform", "WebPlayer")
+            .header(reqwest::header::ACCEPT_LANGUAGE, "en-US")
             .header("spotify-app-version", "896000000")
             .json(&body)
             .send()

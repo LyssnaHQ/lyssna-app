@@ -111,6 +111,7 @@ impl Spotify {
                 .client
                 .request(method.clone(), url.clone())
                 .query(query)
+                .header(reqwest::header::ACCEPT_LANGUAGE, "en-US")
                 .bearer_auth(&self.tokens.access_token);
             if let Some(body) = &body {
                 request = request.json(body);
