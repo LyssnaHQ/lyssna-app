@@ -1478,6 +1478,39 @@ export function TtmlCreator({
       ? "Spicy Lyrics lyrics, and Apple Music lyrics that don't come through Lyssna, can't be used as a starting point"
       : undefined;
   const seedable = here && !!state.lyrics?.lines.length && !seedBlocked;
+  // A second click within a few seconds clears, so one stray click can't.
+  const [clearArmed, setClearArmed] = useState(false);
+  useEffect(() => {
+    if (!clearArmed) return;
+    const timer = window.setTimeout(() => setClearArmed(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [clearArmed]);
+  const clearDraft = () => {
+    if (!clearArmed) {
+      setClearArmed(true);
+      return;
+    }
+    setClearArmed(false);
+    // An empty draft is otherwise filled from the song's lyrics again.
+    if (track) editedFor.current = track.uri;
+    setLines([]);
+    setText("");
+    setMetadata(undefined);
+    setAppleOriginal(undefined);
+    setCursor({ line: 0, unit: 0 });
+    notify("Draft cleared. Earlier saves are still under Saves.");
+  };
+  const clearButton = (
+    <button
+      className={clearArmed ? "danger" : ""}
+      onClick={clearDraft}
+      disabled={!lines.length && !text.trim() && !metadata}
+      title="Remove every line, word and timing from this draft"
+    >
+      <Trash2 size={15} />
+      {clearArmed ? "Click again to clear" : "Clear draft"}
+    </button>
+  );
   const startFromLyrics = () => {
     if (!state.lyrics || !seedable) return;
     const seeded = fromLyrics(state.lyrics);
@@ -2841,6 +2874,7 @@ export function TtmlCreator({
                   <Wand2 size={15} />
                   Start from current lyrics
                 </button>
+                {clearButton}
                 <button onClick={openText}>
                   <Type size={15} />
                   Edit as text
@@ -2958,6 +2992,7 @@ export function TtmlCreator({
                   <Wand2 size={15} />
                   Start from current lyrics
                 </button>
+                {clearButton}
                 <button onClick={openText}>
                   <Type size={15} />
                   Edit as text

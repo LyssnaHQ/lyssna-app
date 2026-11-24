@@ -21627,3 +21627,29 @@ test("TTML Creator matches a local file to an ISRC before it can be submitted", 
   expect(matched).toHaveLength(1);
   expect(matched[0].value).toBe("USAT21811534");
 });
+
+test("TTML Creator clears the whole draft after a second click", async ({
+  page,
+}) => {
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await openSettings(page, "Lyrics");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page
+    .locator(".player-extras")
+    .getByTitle("TTML Creator", { exact: true })
+    .click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  await expect(creator.locator(".ttml-card").first()).toBeVisible();
+  const clear = creator.getByRole("button", { name: "Clear draft" }).first();
+  await clear.click();
+  await expect(creator.locator(".ttml-card").first()).toBeVisible();
+  await creator.getByRole("button", { name: "Click again to clear" }).first().click();
+  await expect(creator.locator(".ttml-card")).toHaveCount(0);
+  await page.waitForTimeout(300);
+  await expect(creator.locator(".ttml-card")).toHaveCount(0);
+});

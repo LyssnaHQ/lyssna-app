@@ -2455,3 +2455,9 @@
 .creator-play-slot {
   display: contents;
 }
+/* Armed: the next click clears the whole draft. */
+.ttml-creator .ttml-write-actions button.danger,
+.ttml-creator .ttml-edit-tools button.danger {
+  background: #e9142940;
+  box-shadow: inset 0 0 0 1px #e91429;
+}
