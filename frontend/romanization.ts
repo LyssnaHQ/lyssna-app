@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { rpc } from "./bridge";
-import type { Lyrics, Word } from "./types";
+import type { Line, Lyrics, Word } from "./types";
 
 /* Romanization runs in the app's Rust core (crates/lyric-romanize), off
  * the UI thread: Japanese through the IPADIC dictionary, Chinese as pinyin,
@@ -120,8 +120,23 @@ const letters = (text: string) =>
     .replace(/[^\p{L}\p{N}]+/gu, "");
 /** A reading that only repeats the line, as Latin lyrics come back, adds
  * nothing under it. */
-const sameReading = (line: string, reading: string) =>
-  letters(line) === letters(reading);
+// Word-timed lines can leave `text` out or word it differently, so their sung words count too.
+const forms = (line: Line) =>
+  [line.text, line.words.map((word) => word.text).join("")]
+    .map(letters)
+    .filter(Boolean);
+// A Latin line with a stray look-alike letter, such as a Cyrillic "е" typed for "e", romanizes to itself.
+const mostlyLatin = (line: Line) => {
+  const all = forms(line)[0] ?? "";
+  const latin = all.match(/\p{Script=Latin}|\p{N}/gu)?.length ?? 0;
+  return all.length > 0 && latin / [...all].length >= 0.9;
+};
+const sameReading = (line: Line, reading: Line) => {
+  const written = forms(line);
+  return (
+    mostlyLatin(line) || forms(reading).some((form) => written.includes(form))
+  );
+};
 const readings = new WeakMap<Lyrics, Lyrics>();
 /** The lyrics as written, each line carrying its romanized reading. */
 export function withReadings(lyrics: Lyrics, romanized: Lyrics): Lyrics {
@@ -132,7 +147,7 @@ export function withReadings(lyrics: Lyrics, romanized: Lyrics): Lyrics {
       ...lyrics,
       lines: lyrics.lines.map((line, index) => {
         const reading = romanized.lines[index];
-        return reading && !sameReading(line.text, reading.text)
+        return reading && !sameReading(line, reading)
           ? { ...line, reading }
           : line;
       }),
