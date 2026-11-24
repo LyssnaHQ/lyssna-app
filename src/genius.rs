@@ -192,17 +192,36 @@ fn decode(text: &str) -> String {
 /// One lyric per line, blank lines dropped. Section headers like [Chorus]
 /// stay on their own lines; the TTML Creator reads them as section names.
 fn clean(text: &str) -> String {
-    text.lines()
+    let lines: Vec<&str> = text
+        .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+        .collect();
+    // Japanese pages open with a title card such as "[宝鐘マリン「曲」歌詞]",
+    // which is neither a lyric nor a section.
+    let skip = usize::from(
+        lines
+            .first()
+            .is_some_and(|line| line.starts_with('[') && line.ends_with("歌詞]")),
+    );
+    lines[skip..].join("\n")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_japanese_title_card_is_left_out() {
+        assert_eq!(
+            clean(
+                "[宝鐘マリン「A Horny Money World ～伝説の夜～」歌詞]\n[Intro]\n金ピカめっちゃちゅきぃ」"
+            ),
+            "[Intro]\n金ピカめっちゃちゅきぃ」"
+        );
+        assert_eq!(clean("[Intro]\nLine"), "[Intro]\nLine");
+    }
 
     #[test]
     fn lyrics_come_from_the_containers_with_section_headers() {
