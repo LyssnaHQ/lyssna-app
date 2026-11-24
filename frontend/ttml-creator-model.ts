@@ -3192,6 +3192,55 @@ export function applyRomanized(
   return changed ? next : lines;
 }
 
+/** The section a line sits in: the nearest section start at or above it. */
+export function sectionStart(lines: CreatorLine[], index: number) {
+  for (let at = index; at >= 0; at--) if (lines[at]?.part) return at;
+  return -1;
+}
+
+/**
+ * Names the section starting at a line, or starts one there that keeps the
+ * singers of the section it splits off from. No name removes the section,
+ * so its lines join the one above.
+ */
+export function setSection(
+  lines: CreatorLine[],
+  index: number,
+  part?: string,
+): CreatorLine[] {
+  const line = lines[index];
+  if (!line) return lines;
+  const name = part?.trim();
+  if (!name) {
+    if (!line.part) return lines;
+    const { part: _part, singer: _singer, ...rest } = line;
+    return lines.map((each, at) => (at === index ? rest : each));
+  }
+  const from = sectionStart(lines, index);
+  const singer = line.part ? line.singer : lines[from]?.singer;
+  return lines.map((each, at) =>
+    at === index
+      ? { ...each, part: name, ...(singer ? { singer } : {}) }
+      : each,
+  );
+}
+
+/** Sets who sings the section starting at a line; blank clears it. */
+export function setSectionSinger(
+  lines: CreatorLine[],
+  index: number,
+  singer: string,
+): CreatorLine[] {
+  const line = lines[index];
+  if (!line?.part) return lines;
+  const name = singer.trim();
+  if ((line.singer ?? "") === name) return lines;
+  const { singer: _singer, ...rest } = line;
+  return lines.map((each, at) =>
+    at === index ? (name ? { ...rest, singer: name } : rest) : each,
+  );
+}
+
 /** The voices the section around a line names; empty when it names fewer than two. */
 export function sectionVoices(lines: CreatorLine[], index: number): string[] {
   for (let at = index; at >= 0; at--) {

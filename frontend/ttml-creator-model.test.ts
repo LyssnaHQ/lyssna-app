@@ -39,6 +39,9 @@ import {
   geniusEchoes,
   geniusMissing,
   fixFromGenius,
+  setSection,
+  setSectionSinger,
+  sectionStart,
   addMissing,
   clearLines,
   removeLines,
@@ -417,6 +420,31 @@ describe("TTML Creator model", () => {
       "Walking sum",
     )!;
     expect(kept.units.map((unit) => unit.text)).toEqual(["Wa", "king", "sum"]);
+  });
+
+  it("starts, renames and removes sections, keeping their singers", () => {
+    let lines = timeAll("one\ntwo\nthree\nfour");
+    lines = lines.map((line, index) =>
+      index === 0
+        ? { ...line, part: "Chorus", singer: "Aiko, Mira, Mira & Aiko" }
+        : line,
+    );
+    lines = setSection(lines, 2, "Bridge");
+    expect([lines[2].part, lines[2].singer]).toEqual([
+      "Bridge",
+      "Aiko, Mira, Mira & Aiko",
+    ]);
+    expect(sectionStart(lines, 3)).toBe(2);
+    lines = setSection(lines, 0, "Verse");
+    expect([lines[0].part, lines[0].singer]).toEqual([
+      "Verse",
+      "Aiko, Mira, Mira & Aiko",
+    ]);
+    lines = setSectionSinger(lines, 2, " Mira ");
+    expect(lines[2].singer).toBe("Mira");
+    lines = setSection(lines, 2);
+    expect([lines[2].part, lines[2].singer]).toEqual([undefined, undefined]);
+    expect(sectionStart(lines, 3)).toBe(0);
   });
 
   it("leaves out of the review what the draft already had", () => {

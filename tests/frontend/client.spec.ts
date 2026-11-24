@@ -17969,6 +17969,34 @@ test("TTML Creator names sections from Genius without touching timings", async (
   await creator.getByRole("button", { name: "Genius", exact: true }).click();
   await creator.getByRole("menuitem", { name: "Sections from Genius" }).click();
   await review.getByRole("button", { name: "Keep" }).click();
+  await expect(review).toHaveCount(0);
+
+  await creator.locator(".ttml-part").first().click({ button: "right" });
+  const sections = page.getByRole("menu", { name: "Section actions" });
+  await sections.getByRole("menuitem", { name: "Intro", exact: true }).click();
+  await expect(creator.locator(".ttml-part").first()).toHaveText("Intro - Someone");
+  await creator.locator(".ttml-line").nth(2).click({ button: "right" });
+  await page
+    .getByRole("menu", { name: "Line actions" })
+    .getByRole("menuitem", { name: "Start a section here…" })
+    .click();
+  await sections.getByRole("menuitem", { name: "Bridge", exact: true }).click();
+  await expect(creator.locator(".ttml-part")).toHaveText([
+    "Intro - Someone",
+    "Chorus",
+    "Bridge",
+  ]);
+  await creator.locator(".ttml-part").nth(2).click({ button: "right" });
+  await sections.getByRole("menuitem", { name: "Edit singers…" }).click();
+  await creator.getByLabel("Section singers").fill("Aiko");
+  await creator.getByLabel("Section singers").press("Enter");
+  await expect(creator.locator(".ttml-part").nth(2)).toHaveText("Bridge - Aiko");
+  await creator.locator(".ttml-part").nth(2).click({ button: "right" });
+  await sections.getByRole("menuitem", { name: "Remove section" }).click();
+  await expect(creator.locator(".ttml-part")).toHaveText([
+    "Intro - Someone",
+    "Chorus",
+  ]);
   await expect(review).toBeHidden();
   await expect(creator.locator(".ttml-part")).toHaveCount(2);
 });

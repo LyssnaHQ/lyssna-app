@@ -136,6 +136,8 @@ import {
   lineVoice,
   unitVoice,
   setLineVoice,
+  setSection,
+  setSectionSinger,
   setUnitVoice,
 } from "./ttml-creator-model";
 import { romanizeLyrics } from "./romanization";
@@ -304,6 +306,57 @@ function TimePill({ ms, end }: { ms?: number; end?: boolean }) {
 const rememberedEdit: {
   current?: { id: string; uri: string; baseline?: string };
 } = {};
+
+/** Section names offered when naming a section; any other can be typed. */
+const SECTION_NAMES = [
+  "Intro",
+  "Verse",
+  "Pre-Chorus",
+  "Chorus",
+  "Post-Chorus",
+  "Hook",
+  "Bridge",
+  "Breakdown",
+  "Interlude",
+  "Instrumental",
+  "Drop",
+  "Outro",
+];
+
+/** Edits a section header's name or singers in place; Escape keeps it. */
+function SectionField({
+  label,
+  value,
+  onDone,
+}: {
+  label: string;
+  value: string;
+  onDone: (value: string | null) => void;
+}) {
+  const done = useRef(false);
+  const finish = (next: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(next);
+  };
+  return (
+    <input
+      className="ttml-part-field"
+      aria-label={label}
+      defaultValue={value}
+      size={Math.max(8, value.length + 2)}
+      spellCheck={false}
+      autoFocus
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") finish(event.currentTarget.value);
+        else if (event.key === "Escape") finish(null);
+      }}
+      onBlur={(event) => finish(event.currentTarget.value)}
+    />
+  );
+}
 
 /** "Differs from Genius" items waved off, where Genius has it wrong. */
 const IGNORED_GENIUS = "lyssna.ttml.genius-ignored";
@@ -1062,6 +1115,15 @@ export function TtmlCreator({
     at: Cursor;
     line?: boolean;
   } | null>(null);
+  const [sectionMenu, setSectionMenu] = useState<{
+    x: number;
+    y: number;
+    line: number;
+  } | null>(null);
+  const [editingSection, setEditingSection] = useState<{
+    line: number;
+    field: "part" | "singer";
+  } | null>(null);
   const [splitting, setSplitting] = useState<Cursor | null>(null);
   const [splittingReading, setSplittingReading] = useState<Cursor | null>(
     null,
@@ -1365,6 +1427,41 @@ export function TtmlCreator({
       })),
     ];
   };
+  const sectionMenuGroups = (index: number): MenuAction[][] => {
+    const line = lines[index];
+    if (!line) return [];
+    return [
+      SECTION_NAMES.map((name) => ({
+        label: name,
+        checked: line.part === name,
+        run: () => setLines(setSection(lines, index, name)),
+      })),
+      [
+        {
+          label: "Other name…",
+          run: () => setEditingSection({ line: index, field: "part" }),
+        },
+        ...(line.part
+          ? [
+              {
+                label: "Edit singers…",
+                run: () => setEditingSection({ line: index, field: "singer" }),
+              },
+            ]
+          : []),
+      ],
+      ...(line.part
+        ? [
+            [
+              {
+                label: "Remove section",
+                run: () => setLines(setSection(lines, index)),
+              },
+            ],
+          ]
+        : []),
+    ];
+  };
   const lineMenuGroups = (index: number): MenuAction[][] => {
     const line = lines[index];
     if (!line) return [];
@@ -1400,6 +1497,13 @@ export function TtmlCreator({
             ]),
       ],
       ...voiceGroup(index),
+      [
+        {
+          label: line.part ? "Edit section…" : "Start a section here…",
+          run: () =>
+            menu && setSectionMenu({ x: menu.x, y: menu.y, line: index }),
+        },
+      ],
       [
         {
           label: "Play from this line",
@@ -3284,11 +3388,51 @@ export function TtmlCreator({
               );
               return (
                 <Fragment key={lineIndex}>
-                  {line.part && (
-                    <p className="ttml-part">
-                      {line.part}
-                      {line.singer && " - "}
-                      {line.singer &&
+                  {(line.part || editingSection?.line === lineIndex) && (
+                    <p
+                      className="ttml-part"
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setSectionMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          line: lineIndex,
+                        });
+                      }}
+                    >
+                      {editingSection?.line === lineIndex &&
+                      editingSection.field === "part" ? (
+                        <SectionField
+                          label="Section name"
+                          value={line.part ?? ""}
+                          onDone={(value) => {
+                            setEditingSection(null);
+                            if (value !== null)
+                              setLines(setSection(lines, lineIndex, value));
+                          }}
+                        />
+                      ) : (
+                        line.part
+                      )}
+                      {(line.singer ||
+                        (editingSection?.line === lineIndex &&
+                          editingSection.field === "singer")) &&
+                        " - "}
+                      {editingSection?.line === lineIndex &&
+                      editingSection.field === "singer" ? (
+                        <SectionField
+                          label="Section singers"
+                          value={line.singer ?? ""}
+                          onDone={(value) => {
+                            setEditingSection(null);
+                            if (value !== null)
+                              setLines(
+                                setSectionSinger(lines, lineIndex, value),
+                              );
+                          }}
+                        />
+                      ) : (
+                        line.singer &&
                         (voicesOf(line.singer).length > 1
                           ? // Styled as Genius sets the voices apart.
                             voicesOf(line.singer).map((voice, index) => (
@@ -3301,7 +3445,8 @@ export function TtmlCreator({
                                 </span>
                               </Fragment>
                             ))
-                          : line.singer)}
+                          : line.singer)
+                      )}
                     </p>
                   )}
                   <div
@@ -3863,6 +4008,15 @@ export function TtmlCreator({
             <p className="ttml-issues">{issues.join(" ")}</p>
           )}
         </>
+      )}
+      {sectionMenu && lines[sectionMenu.line] && (
+        <WordMenu
+          x={sectionMenu.x}
+          y={sectionMenu.y}
+          groups={sectionMenuGroups(sectionMenu.line)}
+          label="Section actions"
+          onClose={() => setSectionMenu(null)}
+        />
       )}
       {menu && (
         <WordMenu
