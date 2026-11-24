@@ -2302,6 +2302,16 @@ export function applyRomanized(
     const units = line.units.map((unit, index) => {
       const reading = words[index].text.trim();
       const spaced = index > 0 && /^\s/.test(words[index].text);
+      // A typed reading stays, but learns where its word starts.
+      if (
+        unit.roman &&
+        !unit.romanAuto &&
+        unit.romanSpaced === undefined &&
+        asked[index].text.trim() === unit.text
+      ) {
+        changed = true;
+        return { ...unit, romanSpaced: spaced };
+      }
       if (
         (unit.roman && !unit.romanAuto) ||
         !reading ||
