@@ -824,7 +824,12 @@ function geniusVoices(
     };
   });
 
-  const voicedLines = tagged.map((original, index) => {
+  const voicedLines = tagged.map((unpunctuated, index) => {
+    // Genius ends a line where a draft split it after a comma ("廻れ、").
+    const original = {
+      ...unpunctuated,
+      units: dropEndComma(unpunctuated.units),
+    };
     // A lead line Genius starts with a capital starts with one here too.
     const opening = tokensOf[index][0];
     const line =
@@ -941,6 +946,8 @@ export interface GeniusChanges {
   echoes: { line: number; text: string }[];
   /** What Genius sings that the draft leaves out. */
   missing: MissingLine[];
+  /** Lines that lost a comma left at their end. */
+  commas: number[];
 }
 
 const textOf = (line: CreatorLine) =>
@@ -969,7 +976,14 @@ export function geniusChanges(
     leads: leads.map((line) => ({ line, text: textOf(after[line]) })),
     echoes: bracketed.map((line) => ({ line, text: textOf(after[line]) })),
     missing: genius ? geniusMissing(after, genius) : [],
+    commas: [],
   };
+  const trimmed = new Map<string, number>();
+  for (const line of before) {
+    const text = textOf(line);
+    const bare = text.replace(/[,，、]+$/u, "");
+    if (bare !== text) trimmed.set(bare, (trimmed.get(bare) ?? 0) + 1);
+  }
   after.forEach((line, index) => {
     if (line.part) changes.sections.push({ line: index, part: line.part });
     if (line.background) {
@@ -986,6 +1000,11 @@ export function geniusChanges(
       group.lines.push(index);
     }
     if (line.units.some((unit) => unit.sungBy)) changes.mixed.push(index);
+    const left = trimmed.get(textOf(line)) ?? 0;
+    if (left) {
+      trimmed.set(textOf(line), left - 1);
+      changes.commas.push(index);
+    }
   });
   return changes;
 }

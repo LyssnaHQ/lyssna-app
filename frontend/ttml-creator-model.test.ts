@@ -367,6 +367,16 @@ describe("TTML Creator model", () => {
     ).toEqual([1]);
   });
 
+  it("drops a comma Sections from Genius finds at the end of a line", () => {
+    const lines = timeAll("I'm lost, 運命廻れ、\n悠久");
+    const tagged = applySections(
+      lines,
+      "[Verse: Aiko, Mira]\nI'm lost, 運命廻れ\n悠久",
+    )!;
+    expect(tagged[0].units.at(-1)!.text).toBe("れ");
+    expect(geniusChanges(lines, tagged).commas).toEqual([0]);
+  });
+
   it("points out lead lines Genius has all in brackets", () => {
     const lines = timeAll(
       "Giga yeah\nAh\nSomething old\nOh whoa\nMake it new",
@@ -417,6 +427,7 @@ describe("TTML Creator model", () => {
       leads: [],
       echoes: [],
       missing: [],
+      commas: [],
     });
   });
 

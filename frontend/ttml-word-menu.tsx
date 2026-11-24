@@ -584,6 +584,14 @@ export function GeniusReview({
           </button>
         </section>
       )}
+      {changes.commas.length > 0 && (
+        <section>
+          <h4>Removed a comma left at the end of the line</h4>
+          <div className="ttml-review-chips">
+            {changes.commas.map((line) => go(line, `${line + 1}`, line))}
+          </div>
+        </section>
+      )}
       {changes.mixed.length > 0 && (
         <section>
           <h4>Words sung by another voice</h4>
