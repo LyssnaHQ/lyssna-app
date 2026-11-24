@@ -3042,7 +3042,12 @@ export function TtmlCreator({
                   key={`reading:${cursor.line}:${cursor.unit}:${selectedUnit?.roman ?? ""}`}
                   aria-label="Reading of the selected word"
                   defaultValue={selectedUnit?.roman ?? ""}
-                  placeholder={selectedUnit ? "e.g. i|no|chi" : "–"}
+                  placeholder={
+                    selectedUnit &&
+                    /[^\p{Script=Latin}\P{L}]/u.test(selectedUnit.text)
+                      ? "e.g. i|no|chi"
+                      : "–"
+                  }
                   title="Split a reading with | to time each piece, like i|no|chi"
                   disabled={!selectedUnit}
                   spellCheck={false}
