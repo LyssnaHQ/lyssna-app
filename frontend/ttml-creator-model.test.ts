@@ -390,11 +390,51 @@ describe("TTML Creator model", () => {
     expect(fixed.units.at(-1)!.start).toBe(tagged[1].units.at(-1)!.start);
   });
 
-  it("counts spellings of the same word as the same against Genius", () => {
-    const lines = timeAll("Start here\nWow, oh, whoa\n1, 2, 3, 4");
-    const genius = "[Outro]\nStart here\nWow, oh, woah\nOne, two, three, four";
+  it("swaps whole words for Genius's but leaves split words alone", () => {
+    const line = parseText("Break my neck, in-can-ta-tion, chess board")[0];
+    const units = line.units.map((unit, index) => ({
+      ...unit,
+      start: index * 100,
+      joined: index === 4 || index === 5,
+    }));
+    const fixed = fixFromGenius(
+      { ...line, units },
+      "Break neck incantation, chessboard, I",
+    );
+    expect(fixed).toBeUndefined();
+    const same = fixFromGenius(
+      { ...line, units: units.slice(0, 2) },
+      "Brake my",
+    )!;
+    expect(same.units.map((unit) => unit.text)).toEqual(["Brake", "my"]);
+    expect(same.units[0].start).toBe(0);
+    const split = parseText("Wa king some")[0].units.map((unit, index) => ({
+      ...unit,
+      joined: index === 1,
+    }));
+    const kept = fixFromGenius(
+      { ...line, units: split },
+      "Walking sum",
+    )!;
+    expect(kept.units.map((unit) => unit.text)).toEqual(["Wa", "king", "sum"]);
+  });
+
+  it("fixes Genius's spellings but counts numbers either way the same", () => {
+    const lines = timeAll("Start here\nWow, oh, whoa\n1, 2, 3, 4\n影 Whoa");
+    const genius =
+      "[Outro]\nStart here\nWow, oh, woah\nOne, two, three, four\n影 woah";
     const tagged = applySections(lines, genius)!;
-    expect(geniusChanges(lines, tagged, genius).differs).toEqual([]);
+    const { differs } = geniusChanges(lines, tagged, genius);
+    expect(differs.map((each) => [each.line, each.fixable])).toEqual([
+      [1, true],
+      [3, true],
+    ]);
+    expect(
+      fixFromGenius(tagged[1], "Wow, oh, woah")!.units.map((unit) => unit.text),
+    ).toEqual(["Wow,", "oh,", "woah"]);
+    expect(
+      fixFromGenius(tagged[3], "影 woah")!.units.map((unit) => unit.text),
+    ).toEqual(["影", "Woah"]);
   });
 
   it("points out lead lines Genius has all in brackets", () => {

@@ -643,22 +643,77 @@ const NUMBERS = [
   "nine",
   "ten",
 ];
-// Interjections are spelled every which way ("whoa", "woah") and numbers
-// written either way ("4", "four"); neither is a real difference.
-const loose = (word: string) => {
+// Numbers written either way ("4", "four") aren't a real difference.
+const asNumber = (word: string) => {
   const number = NUMBERS.indexOf(word);
-  if (number >= 0) return String(number);
-  return word.length <= 5 ? word.replace(/h/g, "") : word;
+  return number >= 0 ? String(number) : word;
 };
 const looseWord = (a: string, b: string) =>
-  sameWord(a, b) || loose(a) === loose(b);
+  sameWord(a, b) || asNumber(a) === asNumber(b);
 
 /**
- * The line with characters Genius has that it lacks put in, when that's
- * all that differs ("パレー" against "パレード"): each goes into the word
- * after the character before it, so timings stay. Undefined otherwise.
+ * The line brought in line with Genius without touching its timings:
+ * characters it lacks put into their word ("パレー" to "パレード"), or
+ * whole words swapped for Genius's where both have as many words. A word
+ * split into syllables is left alone, since there's no telling where its
+ * new spelling would split. Undefined when nothing can be fixed.
  */
 export function fixFromGenius(
+  line: CreatorLine,
+  genius: string,
+): CreatorLine | undefined {
+  return addCharacters(line, genius) ?? swapWords(line, genius);
+}
+
+function swapWords(
+  line: CreatorLine,
+  genius: string,
+): CreatorLine | undefined {
+  const core = (text: string) =>
+    text.match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}'’-]*/u)?.[0] ?? "";
+  const words: number[][] = [];
+  line.units.forEach((unit, index) => {
+    if (unit.joined && words.length) words[words.length - 1].push(index);
+    else words.push([index]);
+  });
+  const latin = (text: string) => !!text && !OWN_WORD.test(text);
+  const ours = words.filter((units) =>
+    latin(core(units.map((index) => line.units[index].text).join(""))),
+  );
+  const theirs = unmark(genius)
+    .split(/\s+/)
+    .map(core)
+    .filter(latin);
+  // Japanese and the like must already match; only Latin words swap.
+  const own = (text: string) =>
+    Array.from(text)
+      .filter((char) => OWN_WORD.test(char))
+      .join("");
+  if (
+    ours.length !== theirs.length ||
+    own(line.units.map((unit) => unit.text).join("")) !== own(unmark(genius))
+  )
+    return;
+  const units = [...line.units];
+  let changed = false;
+  ours.forEach((group, at) => {
+    const text = group.map((index) => line.units[index].text).join("");
+    const mine = core(text);
+    let wanted = theirs[at];
+    if (looseWord(wordOf(mine), wordOf(wanted)) || group.length > 1) return;
+    // Keep the draft's capitalisation of the word's first letter.
+    if (mine[0] !== mine[0].toLowerCase())
+      wanted = wanted[0].toUpperCase() + wanted.slice(1);
+    else if (wanted[0] !== wanted[0].toLowerCase() && at > 0)
+      wanted = wanted[0].toLowerCase() + wanted.slice(1);
+    const unit = units[group[0]];
+    units[group[0]] = { ...unit, text: unit.text.replace(mine, wanted) };
+    changed = true;
+  });
+  return changed ? { ...line, units } : undefined;
+}
+
+function addCharacters(
   line: CreatorLine,
   genius: string,
 ): CreatorLine | undefined {
