@@ -203,6 +203,19 @@ describe("TTML Creator model", () => {
     expect(applySections(lines, "[Chorus]\nnothing alike")).toBeUndefined();
   });
 
+  it("places a Genius section of nothing but bracketed ad-libs", () => {
+    const lines = timeAll("Giga, TeddyLoid\nTransforming the pain\nI'm lost");
+    const tagged = applySections(
+      lines,
+      "[Intro]\n(Giga, TeddyLoid)\n\n[Verse 1]\nTransforming the pain\nI'm lost (oh)",
+    )!;
+    expect(tagged.map((line) => line.part)).toEqual([
+      "Intro",
+      "Verse",
+      undefined,
+    ]);
+  });
+
   it("places Genius sections when Genius breaks lines elsewhere", () => {
     const lines = timeAll(
       "alpha river runs\nbravo stones under, charlie lantern\ndelta window\necho meadow foxtrot\ngolf tower",
@@ -319,19 +332,6 @@ describe("TTML Creator model", () => {
     ]);
   });
 
-  it("keeps a supplied reading per syllable", () => {
-    const lyrics: Lyrics = {
-      source: "x",
-      instrumental: false,
-      synced: true,
-      lines: [
-        {
-          start_ms: 0,
-          end_ms: 1000,
-          text: "未完成 の",
-          translation: "",
-          romanization: "mikansei no",
-          romanization_syllables: ["mi", "kan", "sei", " no"],
   it("moves bracketed words of a line-timed line to a background line", () => {
     const lyrics: Lyrics = {
       source: "x",
@@ -362,6 +362,19 @@ describe("TTML Creator model", () => {
     expect(lines[0].units[2].end).toBe(1000);
   });
 
+  it("keeps a supplied reading per syllable", () => {
+    const lyrics: Lyrics = {
+      source: "x",
+      instrumental: false,
+      synced: true,
+      lines: [
+        {
+          start_ms: 0,
+          end_ms: 1000,
+          text: "未完成 の",
+          translation: "",
+          romanization: "mikansei no",
+          romanization_syllables: ["mi", "kan", "sei", " no"],
           background: false,
           opposite: false,
           words: [

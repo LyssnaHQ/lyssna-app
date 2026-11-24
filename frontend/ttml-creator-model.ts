@@ -276,15 +276,25 @@ export function applySections(
     }
   });
 
-  const named = parseText(geniusBackgrounds(text)).filter(
-    (line) => !line.background,
-  );
+  // Backing vocals don't line up with the draft's leads, unless they are
+  // all a section has: Genius writes an intro of ad-libs as "(Giga)".
+  const parsed = parseText(geniusBackgrounds(text));
+  const isLead = (line: CreatorLine) =>
+    !line.background && lineWords(line).length > 0;
+  const sectionHasLead = (index: number) => {
+    let from = index;
+    while (from > 0 && !sectionFrom(parsed[from])) from--;
+    let to = index + 1;
+    while (to < parsed.length && !sectionFrom(parsed[to])) to++;
+    return parsed.slice(from, to).some(isLead);
+  };
   const theirs: string[] = [];
   const lineStart: number[] = [];
   const sections: { section: SongSection; from: number; to: number }[] = [];
   let pending: SongSection | undefined;
-  for (const line of named) {
+  for (const [index, line] of parsed.entries()) {
     pending = sectionFrom(line) ?? pending;
+    if (line.background && sectionHasLead(index)) continue;
     const found = lineWords(line);
     if (!found.length) continue;
     if (pending)
@@ -478,16 +488,6 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
         !lyrics.estimated_words &&
         line.words.length > 0 &&
         line.words.every((word) => !word.estimated);
-      const units: CreatorUnit[] = authored
-        ? line.words
-            .filter((word) => word.text.trim())
-            .map((word, index) => {
-              const sungBy = voiceFor(word.sung_by);
-              return {
-                text: word.text.trim(),
-                joined: index > 0 && !/^\s/.test(word.text),
-                start: word.start_ms,
-                end: word.end_ms,
       // Untimed words in brackets are backing vocals: they move to
       // background lines of their own after the line.
       const split = authored
@@ -500,6 +500,16 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
               .filter((each) => each.background)
               .map((each) => ({ ...each, opposite: line.opposite }))
           : [];
+      const units: CreatorUnit[] = authored
+        ? line.words
+            .filter((word) => word.text.trim())
+            .map((word, index) => {
+              const sungBy = voiceFor(word.sung_by);
+              return {
+                text: word.text.trim(),
+                joined: index > 0 && !/^\s/.test(word.text),
+                start: word.start_ms,
+                end: word.end_ms,
                 ...(sungBy && { sungBy }),
               };
             })
@@ -536,6 +546,7 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
         ...(line.section && line.section_singer && { singer: line.section_singer }),
         ...(voiceFor(line.sung_by) && { sungBy: voiceFor(line.sung_by) }),
       };
+      return [lead, ...echoes];
     })
     .filter((line) => line.units.length > 0);
 }
@@ -546,7 +557,6 @@ export const timed = (unit: CreatorUnit) =>
 export function progress(lines: CreatorLine[]) {
   let done = 0,
     total = 0;
-      return [lead, ...echoes];
   for (const line of lines)
     for (const unit of line.units) {
       total++;
