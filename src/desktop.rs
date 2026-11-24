@@ -3322,6 +3322,31 @@ fn lyssna_act_as_clear() {
     crate::lyssna_account::clear_act_as();
 }
 #[tauri::command]
+async fn local_track_isrc(track: Track) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::local_isrc::isrc(&crate::auth::http_client().ok()?, &track)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+#[tauri::command]
+async fn local_match_isrc(
+    track: Track,
+    value: String,
+    state: State<'_, Desktop>,
+) -> std::result::Result<String, String> {
+    let matched = track.clone();
+    let isrc = tauri::async_runtime::spawn_blocking(move || {
+        crate::local_isrc::match_by_hand(&crate::auth::http_client()?, &matched, &value)
+    })
+    .await
+    .map_err(|_| "Lyssna account worker unavailable".to_owned())?
+    .map_err(error)?;
+    lyssna_changed(&state, &track);
+    Ok(isrc)
+}
+#[tauri::command]
 async fn lyssna_review(
     method: crate::lyssna_account::ReviewMethod,
     path: String,
@@ -3346,7 +3371,9 @@ async fn lyssna_submit(
     let submitted = track.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let isrcs = if track.is_local {
-            Vec::new()
+            crate::local_isrc::isrc(&crate::auth::http_client()?, &track)
+                .into_iter()
+                .collect()
         } else {
             controls.isrcs(&track.uri).unwrap_or_else(|failure| {
                 crate::native::diagnostic(&format!(
@@ -6861,6 +6888,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             lyssna_cancel_sign_in,
             lyssna_sign_out,
             lyssna_act_as,
+            local_track_isrc,
+            local_match_isrc,
             lyssna_act_as_find,
             lyssna_act_as_set,
             lyssna_act_as_clear,

@@ -113,6 +113,21 @@
 .ttml-banner span {
   flex: 1 1 260px;
 }
+.ttml-isrc-match input {
+  flex: 0 1 220px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #f5b40055;
+  border-radius: 8px;
+  outline: 0;
+  background: #00000029;
+  font: inherit;
+  color: inherit;
+}
+.ttml-isrc-match input:focus-visible {
+  border-color: #f5b400;
+}
 .ttml-hint,
 .ttml-issues {
   margin: 0;

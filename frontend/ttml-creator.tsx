@@ -2256,7 +2256,43 @@ export function TtmlCreator({
     void onApply(fileName(meta(track)), ttml());
   };
   const [submitting, setSubmitting] = useState(false);
-  const submittable = !!track && !track.is_local && !!track.id;
+  // A local file goes to Lyssna under its recording's ISRC, from its tag, a
+  // search by title, artist and length, or a match made here by hand.
+  const [localIsrc, setLocalIsrc] = useState<string | null>(null);
+  const [isrcInput, setIsrcInput] = useState("");
+  const [matching, setMatching] = useState(false);
+  useEffect(() => {
+    setLocalIsrc(null);
+    if (!track?.is_local) return;
+    let active = true;
+    void rpc<string | null>("local_track_isrc", { track }).then(
+      (isrc) => {
+        if (active) setLocalIsrc(isrc ?? null);
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [track]);
+  const matchIsrc = async () => {
+    if (!track || matching || !isrcInput.trim()) return;
+    setMatching(true);
+    try {
+      const isrc = await rpc<string>("local_match_isrc", {
+        track,
+        value: isrcInput,
+      });
+      setLocalIsrc(isrc);
+      setIsrcInput("");
+      notify(`Matched this file to ${isrc}.`);
+    } catch (error) {
+      notify(String(error), true);
+    } finally {
+      setMatching(false);
+    }
+  };
+  const submittable = !!track && (track.is_local ? !!localIsrc : !!track.id);
   const submit = async () => {
     if (!track || submitting) return;
     setSubmitting(true);
@@ -2547,7 +2583,9 @@ export function TtmlCreator({
             title={
               submittable
                 ? "Send these lyrics to Lyssna so everyone gets them"
-                : "Only Spotify songs can be sent to Lyssna"
+                : track?.is_local
+                  ? "Match this local file to an ISRC first"
+                  : "Only Spotify songs can be sent to Lyssna"
             }
           >
             <Send size={15} />
@@ -2569,6 +2607,32 @@ export function TtmlCreator({
         </div>
       </header>
 
+      {track?.is_local && !localIsrc && (
+        <form
+          className="ttml-banner ttml-isrc-match"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void matchIsrc();
+          }}
+        >
+          <span>
+            Lyssna knows songs by their ISRC, and this file's couldn't be found.
+            Paste its ISRC or the song's Spotify link to match it.
+          </span>
+          <input
+            type="text"
+            aria-label="ISRC or Spotify link"
+            placeholder="ISRC or Spotify link"
+            spellCheck={false}
+            autoComplete="off"
+            value={isrcInput}
+            onChange={(event) => setIsrcInput(event.target.value)}
+          />
+          <button type="submit" disabled={matching || !isrcInput.trim()}>
+            {matching ? "Checking…" : "Match"}
+          </button>
+        </form>
+      )}
       {!here && (
         <div className="ttml-banner" role="status">
           <span>

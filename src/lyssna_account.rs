@@ -456,16 +456,24 @@ fn submission_body(
     isrcs: &[String],
     authored: Option<&str>,
 ) -> Result<serde_json::Value> {
-    let Some(id) = crate::lyssna_lyrics::spotify_id(track) else {
-        bail!("Only Spotify songs can be submitted to Lyssna");
-    };
+    let id = crate::lyssna_lyrics::spotify_id(track);
+    ensure!(
+        id.is_some() || !isrcs.is_empty(),
+        if track.is_local {
+            "Match this local file to an ISRC before submitting lyrics"
+        } else {
+            "Only Spotify songs can be submitted to Lyssna"
+        }
+    );
     // The ISRC leads so the song is keyed to the recording rather than one platform's ID; the
     // Spotify link stays so the app's own lookups still find it.
     let mut links = Vec::new();
     if let Some(isrc) = isrcs.first() {
         links.push(serde_json::json!({ "platform": "isrc", "external_id": isrc }));
     }
-    links.push(serde_json::json!({ "platform": "spotify", "external_id": id }));
+    if let Some(id) = id {
+        links.push(serde_json::json!({ "platform": "spotify", "external_id": id }));
+    }
     let mut body = serde_json::json!({
         "links": links,
         "title": track.name,

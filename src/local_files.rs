@@ -33,7 +33,7 @@ const FOLDER_COVERS: [&str; 4] = ["cover", "folder", "front", "album"];
 const COVER_LIMIT: usize = 16 * 1024 * 1024;
 /// Saved scan results; renamed when what a scan keeps changes, so every
 /// file is read again once.
-const INDEX_FILE: &str = "index-2.json";
+const INDEX_FILE: &str = "index-3.json";
 /// Spotify's songs play at their mastered level, commonly near this, so
 /// quieter local files are raised to it.
 const TARGET_LUFS: f64 = -10.0;
@@ -467,6 +467,7 @@ fn read(path: &Path) -> Result<(Track, Option<String>)> {
     let artist = tag(StandardTagKey::Artist).unwrap_or_default();
     let album = tag(StandardTagKey::Album).unwrap_or_default();
     let album_artist = tag(StandardTagKey::AlbumArtist).unwrap_or_else(|| artist.clone());
+    let isrc = tag(StandardTagKey::IdentIsrc).and_then(|isrc| crate::local_isrc::normalize(&isrc));
 
     let duration_ms = {
         let track = probed
@@ -522,6 +523,7 @@ fn read(path: &Path) -> Result<(Track, Option<String>)> {
             duration_ms,
             is_local: true,
             on_disk: true,
+            isrc,
             album: Album {
                 name: album,
                 artists: split_artists(&album_artist),

@@ -31,6 +31,7 @@ pub mod library_cache;
 pub mod library_items;
 pub mod links;
 pub mod local_files;
+pub mod local_isrc;
 pub mod lyric_bulk;
 pub mod lyric_sources;
 pub mod lyrics;

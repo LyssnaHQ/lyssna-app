@@ -21567,3 +21567,63 @@ test("admins can choose an account to upload lyrics as", async ({ page }) => {
   await expect(dialog.getByText("Upload as another account", { exact: true }).first()).toBeVisible();
   expect(await commandArgs(page, "lyssna_act_as_clear")).toHaveLength(1);
 });
+
+test("TTML Creator matches a local file to an ISRC before it can be submitted", async ({
+  page,
+}) => {
+  await startClient(page);
+  await page.evaluate(() => {
+    const test = (window as any).__clientTest;
+    test.answers = {
+      ...test.answers,
+      local_track_isrc: null,
+      local_match_isrc: "USAT21811534",
+    };
+  });
+  await openSettings(page, "Lyrics");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page.evaluate(
+    ({ track, playback }) => {
+      (window as any).__clientTest.emit({
+        type: "playback",
+        playback: {
+          ...playback,
+          item: {
+            ...track,
+            id: undefined,
+            uri: "spotify:local:Panic:Pray:The+Greatest+Show:174",
+            name: "The Greatest Show",
+            artists: [{ name: "Panic! At The Disco", uri: "" }],
+            is_local: true,
+            on_disk: true,
+          },
+          is_playing: true,
+        },
+        observed_at: Date.now(),
+        changed: true,
+      });
+    },
+    { track, playback: emptyState.playback },
+  );
+  await page
+    .locator(".player-extras")
+    .getByTitle("TTML Creator", { exact: true })
+    .click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  const submit = creator.getByRole("button", { name: /Submit to Lyssna/ });
+  await expect(submit).toHaveAttribute("title", "Match this local file to an ISRC first");
+  await creator.getByLabel("ISRC or Spotify link").fill("USAT21811534");
+  await creator.getByRole("button", { name: "Match", exact: true }).click();
+  await expect(creator.getByLabel("ISRC or Spotify link")).toHaveCount(0);
+  await expect(submit).toHaveAttribute(
+    "title",
+    "Send these lyrics to Lyssna so everyone gets them",
+  );
+  const matched = await commandArgs(page, "local_match_isrc");
+  expect(matched).toHaveLength(1);
+  expect(matched[0].value).toBe("USAT21811534");
+});

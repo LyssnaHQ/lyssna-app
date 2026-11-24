@@ -1303,7 +1303,15 @@ fn fetch_from(
             "apple" => cache.get("apple-lyssna-2", &|| {
                 crate::lyssna_lyrics::fetch_apple(
                     &client,
-                    || native.isrcs(&track.uri).unwrap_or_default(),
+                    || {
+                        if track.is_local {
+                            crate::local_isrc::isrc(&client, &track)
+                                .into_iter()
+                                .collect()
+                        } else {
+                            native.isrcs(&track.uri).unwrap_or_default()
+                        }
+                    },
                     &track,
                 )
             }),
@@ -1346,7 +1354,13 @@ fn fetch_from(
             "lyssna" => cache.get("lyssna-2", &|| {
                 crate::lyssna_lyrics::fetch(
                     &client,
-                    || native.isrc(&track.uri).ok().flatten(),
+                    || {
+                        if track.is_local {
+                            crate::local_isrc::isrc(&client, &track)
+                        } else {
+                            native.isrc(&track.uri).ok().flatten()
+                        }
+                    },
                     &track,
                 )
             }),

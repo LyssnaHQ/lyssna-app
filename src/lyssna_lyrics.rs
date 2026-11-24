@@ -188,19 +188,19 @@ pub fn fetch(
     isrc: impl FnOnce() -> Option<String>,
     track: &Track,
 ) -> Result<Lyrics> {
-    let Some(id) = spotify_id(track) else {
-        bail!("Lyssna has no lyrics for local songs");
-    };
-    let fresh = recently_changed(id);
     let isrc = isrc().map(|isrc| isrc.trim().to_ascii_uppercase());
-    let url = lyrics_url(
-        "spotify",
-        id,
-        "lyssna",
-        isrc.as_deref(),
-        track.duration_ms,
-        fresh,
-    );
+    let url = match (spotify_id(track), isrc.as_deref()) {
+        (Some(id), isrc) => lyrics_url(
+            "spotify",
+            id,
+            "lyssna",
+            isrc,
+            track.duration_ms,
+            recently_changed(id),
+        ),
+        (None, Some(isrc)) => lyrics_url("isrc", isrc, "lyssna", None, track.duration_ms, false),
+        (None, None) => bail!("Lyssna needs this local file's ISRC to find its lyrics"),
+    };
     match view::<LyssnaAnswer>(client, &url)? {
         None => bail!("No Lyssna lyrics for this song"),
         Some(LyssnaAnswer::Lyrics(view)) => {

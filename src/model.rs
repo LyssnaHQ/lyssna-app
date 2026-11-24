@@ -96,6 +96,9 @@ pub struct Track {
     /// A local song found in a Local Files folder, so it can play.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub on_disk: bool,
+    /// A local file's own ISRC tag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isrc: Option<String>,
     /// Context (album, playlist, artist) a recently played track came from.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub played_context: String,
