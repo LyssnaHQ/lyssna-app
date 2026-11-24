@@ -1294,6 +1294,14 @@ export function splitMatching(
   }));
 }
 
+/** A line split in two ends where a comma stood; the comma goes. */
+function dropEndComma(units: CreatorUnit[]): CreatorUnit[] {
+  const last = units[units.length - 1];
+  const text = last?.text.replace(/[,，、]+$/u, "");
+  if (!last || !text || text === last.text) return units;
+  return [...units.slice(0, -1), { ...last, text }];
+}
+
 export function breakLine(
   lines: CreatorLine[],
   at: Cursor,
@@ -1333,9 +1341,9 @@ export function breakLine(
     );
   return [
     ...lines.slice(0, at.line),
-    { ...line, units: fresh(stay) },
+    { ...line, units: dropEndComma(fresh(stay)) },
     {
-      units: fresh(moved),
+      units: dropEndComma(fresh(moved)),
       background: line.background,
       opposite: line.opposite,
     },
@@ -1363,12 +1371,15 @@ function picksToNewLine(
     const units = without(line.units, taken);
     if (units[0]?.joined) units[0] = { ...units[0], joined: false };
     recase(line.units, units, -1, moved);
-    const kept = units.length || !line.units.length ? [{ ...line, units }] : [];
+    const kept =
+      units.length || !line.units.length
+        ? [{ ...line, units: units.length < line.units.length ? dropEndComma(units) : units }]
+        : [];
     return index === after
       ? [
           ...kept,
           {
-            units: fresh,
+            units: dropEndComma(fresh),
             background: line.background,
             opposite: line.opposite,
           },

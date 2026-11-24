@@ -204,6 +204,15 @@ describe("TTML Creator model", () => {
     expect(applySections(lines, "[Chorus]\nnothing alike")).toBeUndefined();
   });
 
+  it("drops the comma left at the end of a line split in two", () => {
+    const lines = parseText("Die and I reboot, everything I do, for you");
+    const split = breakLine(lines, { line: 0, unit: 4 }, false);
+    expect(split.map((line) => line.units.map((unit) => unit.text))).toEqual([
+      ["Die", "and", "I", "reboot"],
+      ["Everything", "I", "do,", "for", "you"],
+    ]);
+  });
+
   it("sets who sings from Genius's italic and bold", () => {
     const lines = timeAll(
       "Transforming the pain\nZero modori\nI'm lost unmei mawa re\nYuukyuu no",
