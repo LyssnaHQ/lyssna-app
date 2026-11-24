@@ -586,14 +586,80 @@ pub fn submit(
         bail!("Sign in to Lyssna in Settings to submit lyrics");
     };
     let response = keyed(client.post(submissions_url()))
-        .bearer_auth(token)
+        .bearer_auth(&token)
         .json(&body)
         .send()
         .context("Cannot reach Lyssna")?;
     if !response.status().is_success() {
         return Err(submit_failure(response));
     }
-    Ok(response.json()?)
+    let text = response.text()?;
+    let submission: Submission = serde_json::from_str(&text)?;
+    // A song with no Spotify link may have no cover anywhere we can look: the one in the file's tags is sent
+    // along. It is a favour to the song's page and never part of the submission, so nothing here can fail it.
+    if let Some((bytes, mime)) = local_cover(track)
+        && let Some(song) = serde_json::from_str::<SubmittedSong>(&text)
+            .ok()
+            .and_then(|sent| sent.song_id)
+    {
+        let sent = keyed(cover_request(client, &token, &song, bytes, mime)).send();
+        match sent {
+            Ok(response) if response.status().is_success() => {}
+            Ok(response) => crate::native::diagnostic(&format!(
+                "cover for {song} not accepted: {}",
+                response.status()
+            )),
+            Err(error) => {
+                crate::native::diagnostic(&format!("cover for {song} not sent: {error}"));
+            }
+        }
+    }
+    Ok(submission)
+}
+
+/// The part of a submission's answer the cover needs.
+#[derive(Deserialize)]
+struct SubmittedSong {
+    song_id: Option<String>,
+}
+
+/// The cover to send for a song with no Spotify link: the picture from the local file's tags, which the
+/// local files scan already saved, shrunk, under a hash. Songs on Spotify use Spotify's artwork, so they send none.
+fn local_cover(track: &Track) -> Option<(Vec<u8>, &'static str)> {
+    if !(track.is_local || track.id.is_none()) {
+        return None;
+    }
+    let name = cover_name(&track.album.images.first()?.url)?;
+    crate::local_files::cover(name)
+}
+
+/// The saved cover's file name in the address the interface shows it by
+/// (`http://localcover.localhost/<hash>.jpg` or `localcover://localhost/<hash>.jpg`).
+fn cover_name(url: &str) -> Option<&str> {
+    let rest = url
+        .strip_prefix("http://localcover.localhost/")
+        .or_else(|| url.strip_prefix("localcover://localhost/"))?;
+    let name = rest.split(['?', '#']).next()?;
+    (!name.is_empty() && !name.contains('/')).then_some(name)
+}
+
+/// `PUT /v1/songs/{id}/cover` with the picture as the body, run as whoever the submission went to.
+fn cover_request(
+    client: &Client,
+    token: &str,
+    song_id: &str,
+    bytes: Vec<u8>,
+    mime: &str,
+) -> RequestBuilder {
+    let url = match act_as() {
+        Some(who) => format!("{API}/v1/songs/{song_id}/cover?as={}", who.id),
+        None => format!("{API}/v1/songs/{song_id}/cover"),
+    };
+    client
+        .put(url)
+        .bearer_auth(token)
+        .header("Content-Type", mime)
+        .body(bytes)
 }
 
 /// Tally of an ISRC backfill over every song on Lyssna.
@@ -835,6 +901,83 @@ mod tests {
             ..track
         };
         assert!(submission_body("<tt/>", &local, None, None).is_err());
+    }
+
+    #[test]
+    fn a_local_cover_is_found_by_its_saved_name_only() {
+        let hash = "a".repeat(64);
+        assert_eq!(
+            cover_name(&format!("http://localcover.localhost/{hash}.jpg")),
+            Some(format!("{hash}.jpg").as_str())
+        );
+        assert_eq!(
+            cover_name(&format!("localcover://localhost/{hash}.png?x=1")),
+            Some(format!("{hash}.png").as_str())
+        );
+        // anything else is not one of ours: a Spotify picture, a path out of the folder, nothing
+        assert_eq!(
+            cover_name("https://i.scdn.co/image/ab67616d0000b273abc"),
+            None
+        );
+        assert_eq!(cover_name("http://localcover.localhost/../secret"), None);
+        assert_eq!(cover_name("http://localcover.localhost/"), None);
+    }
+
+    #[test]
+    fn songs_on_spotify_send_no_cover() {
+        let on_spotify = Track {
+            id: Some("4cOdK2wGLETKBW3PvgPWqT".into()),
+            album: crate::model::Album {
+                images: vec![crate::model::Artwork {
+                    url: format!("http://localcover.localhost/{}.jpg", "b".repeat(64)),
+                    width: None,
+                }],
+                ..Default::default()
+            },
+            ..Track::default()
+        };
+        assert!(local_cover(&on_spotify).is_none());
+        // a local file whose cover was never saved has nothing to send either
+        let local = Track {
+            is_local: true,
+            ..on_spotify
+        };
+        assert!(local_cover(&local).is_none());
+    }
+
+    #[test]
+    fn the_cover_goes_up_as_the_body_of_a_put_for_the_song() {
+        clear_act_as();
+        let client = Client::new();
+        let request = cover_request(&client, "tok", "song-1", vec![1, 2, 3], "image/jpeg")
+            .build()
+            .unwrap();
+        assert_eq!(request.method(), reqwest::Method::PUT);
+        assert_eq!(
+            request.url().as_str(),
+            format!("{API}/v1/songs/song-1/cover")
+        );
+        assert_eq!(request.headers()["content-type"], "image/jpeg");
+        assert_eq!(request.headers()["authorization"], "Bearer tok");
+        assert_eq!(
+            request.body().and_then(|b| b.as_bytes()),
+            Some(&[1u8, 2, 3][..])
+        );
+        // sent as the account the submission went to
+        let id = "01a20aef-4fbc-7e68-9ead-a6f4acbf9fc8";
+        set_act_as(Reserved {
+            id: id.into(),
+            username: "Waiting".into(),
+        })
+        .unwrap();
+        let acting = cover_request(&client, "tok", "song-1", vec![], "image/png")
+            .build()
+            .unwrap();
+        assert_eq!(
+            acting.url().as_str(),
+            format!("{API}/v1/songs/song-1/cover?as={id}")
+        );
+        clear_act_as();
     }
 
     #[test]
