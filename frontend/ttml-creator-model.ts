@@ -680,9 +680,20 @@ function geniusVoices(
   });
 
   return voicedLines.flatMap((line, index) => {
-    if (line.background) return [line];
     const runs = bracketRuns(line, tokensOf[index], match, groupSize);
     if (!runs.length) return [line];
+    // A background line Genius brackets only part of holds a lead too
+    // ("この刻が say my name"): the rest goes back to the lead, when
+    // several of its words are ones Genius sings outside brackets.
+    if (line.background) {
+      const inRun = (unit: number) =>
+        runs.some(([from, to]) => unit >= from && unit < to);
+      const lead = tokensOf[index].filter(
+        (token) => !token.units.some(inRun),
+      );
+      const sung = lead.filter((token) => match.get(token)?.group === -1);
+      if (sung.length < 2 || sung.length * 2 < lead.length) return [line];
+    }
     const units = [...line.units];
     const inRun = (at: number) =>
       runs.some(([from, to]) => at >= from && at < to);
@@ -710,7 +721,10 @@ function geniusVoices(
     }
     // A draft line that is all one Genius bracket was set apart as a line
     // on purpose, often a voice sung over the lead, so it stays a lead.
-    const split = splitBrackets({ ...line, units }, true);
+    const split = splitBrackets(
+      { ...line, units, background: false },
+      true,
+    );
     if (split.length === 1 && !split[0].background) return [line];
     const voices = sectionVoices(voicedLines, index);
     const own = line.sungBy ?? voices[0];

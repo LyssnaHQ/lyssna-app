@@ -354,6 +354,28 @@ describe("TTML Creator model", () => {
     });
   });
 
+  it("gives a background line back its lead when Genius brackets only part", () => {
+    const lines = timeAll("Start here\nあの星が tell me where to go\nOh whoa").map(
+      (line, index) => ({ ...line, background: index > 0 }),
+    );
+    const tagged = applySections(
+      lines,
+      "[Chorus: Aiko, Mira]\nStart here\n(あの星が) Tell me where to go\nOh, whoa",
+    )!;
+    expect(
+      tagged.map((line) => [
+        line.units.map((unit) => unit.text).join(" "),
+        line.background,
+        line.sungBy,
+      ]),
+    ).toEqual([
+      ["Start here", false, undefined],
+      ["Tell me where to go", false, "Mira"],
+      ["あ の 星 が", true, undefined],
+      ["Oh whoa", true, undefined],
+    ]);
+  });
+
   it("keeps the comma after a bracket mid-line on the lead", () => {
     const lines = timeAll("Ah (Something old), oh, whoa (Make it new)");
     const tagged = applySections(
