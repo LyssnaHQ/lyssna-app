@@ -112,6 +112,8 @@ pub enum Command {
     /// Look up saved status for these items and report it.
     SavedStatus(Vec<String>),
     FetchLyrics(Track),
+    /// The best source lyrics for a track, passing over loaded ones.
+    SourceLyrics(Track, mpsc::Sender<Result<lyrics::Lyrics>>),
     RetryAudio,
     EnsureAudio,
     BrowseInfo {
@@ -253,6 +255,7 @@ pub enum LyricCommand {
     /// Fetch an upcoming song's lyrics into the cache without showing them.
     Prefetch(Track, String),
     Fetch(Track, String),
+    Source(Track, String, mpsc::Sender<Result<lyrics::Lyrics>>),
     /// Ask again for the playing song's lyrics after Apple Music could not
     /// be asked; shown only when Apple's lyrics win this time.
     RetryApple(Track, String),
@@ -576,6 +579,14 @@ impl Worker {
                             });
                         }
                         (track, result)
+                    }
+                    LyricCommand::Source(track, token, reply) => {
+                        let (client, native) = (client.clone(), lyric_native.clone());
+                        thread::spawn(move || {
+                            let _ =
+                                reply.send(lyrics::from_sources(&client, &track, &token, &native));
+                        });
+                        continue;
                     }
                     LyricCommand::RetryApple(track, token) => {
                         if !current.lock().is_ok_and(|uri| *uri == track.uri) {
@@ -1676,6 +1687,14 @@ impl Backend {
                     String::new()
                 };
                 let _ = self.lyrics.send(LyricCommand::Fetch(track, token));
+            }
+            Command::SourceLyrics(track, reply) => {
+                let token = if crate::provider::requires_spotify_token() {
+                    self.api()?.provider_token()?
+                } else {
+                    String::new()
+                };
+                let _ = self.lyrics.send(LyricCommand::Source(track, token, reply));
             }
             Command::RetryAudio => self.start_audio()?,
             Command::EnsureAudio => {

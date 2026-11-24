@@ -21664,3 +21664,53 @@ test("backing vocals get their word layers before they start", async ({
       .evaluate((node) => getComputedStyle(node).willChange),
   ).toBe("transform");
 });
+
+test("TTML Creator resets a draft to source lyrics and labels its buttons when wide", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await openSettings(page, "Lyrics");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page.evaluate(() => {
+    const test = (window as any).__clientTest;
+    const line = (text: string, start: number) => ({
+      text,
+      start_ms: start,
+      end_ms: start + 1000,
+      translation: "",
+      romanization: "",
+      background: false,
+      opposite: false,
+      words: [{ text, start_ms: start, end_ms: start + 1000 }],
+    });
+    test.answers = {
+      ...test.answers,
+      source_lyrics: {
+        source: "Apple Music",
+        synced: true,
+        instrumental: false,
+        lines: [line("One", 0), line("Two", 1000), line("Three", 2000)],
+      },
+    };
+  });
+  await page
+    .locator(".player-extras")
+    .getByTitle("TTML Creator", { exact: true })
+    .click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  await expect(creator.locator(".ttml-card").first()).toBeVisible();
+  const saves = creator.getByTitle("Saves and earlier versions");
+  await expect(saves.locator(".ttml-label")).toBeVisible();
+  await creator.getByRole("button", { name: "Reset to source" }).click();
+  await expect(creator.locator(".ttml-card")).toHaveCount(3);
+  expect(await commandArgs(page, "source_lyrics")).toHaveLength(1);
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expect(saves.locator(".ttml-label")).toBeHidden();
+  await expect(saves).toBeVisible();
+});

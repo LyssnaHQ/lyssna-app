@@ -97,7 +97,25 @@
 }
 .ttml-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
+}
+.ttml-creator {
+  container: ttml-creator / inline-size;
+}
+/* Labels go first on buttons with a clear icon and a tooltip, then on the
+   rest, so the bars stay on as few rows as they can. */
+@container ttml-creator (max-width: 1400px) {
+  .ttml-actions > button:not(.primary) .ttml-label,
+  .ttml-actions > span > button .ttml-label {
+    display: none;
+  }
+}
+@container ttml-creator (max-width: 1000px) {
+  .ttml-creator button .ttml-label {
+    display: none;
+  }
 }
 .ttml-banner {
   display: flex;

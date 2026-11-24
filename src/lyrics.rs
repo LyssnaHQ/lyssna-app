@@ -1281,6 +1281,38 @@ fn fetch_from(
     {
         return Ok(lyrics);
     }
+    fetch_sources(client, track, access_token, native, root, key, network)
+}
+
+/// The best lyrics from the sources, passing over lyrics loaded or saved
+/// for the song.
+pub fn from_sources(
+    client: &Client,
+    track: &Track,
+    access_token: &str,
+    native: &crate::native::NativeControls,
+) -> Result<Lyrics> {
+    let root = data_dir()?.join("lyrics");
+    fetch_sources(
+        client,
+        track,
+        access_token,
+        native,
+        root,
+        track_key(track),
+        true,
+    )
+}
+
+fn fetch_sources(
+    client: &Client,
+    track: &Track,
+    access_token: &str,
+    native: &crate::native::NativeControls,
+    root: std::path::PathBuf,
+    key: String,
+    network: bool,
+) -> Result<Lyrics> {
     // Every enabled source is asked at once; the best answer in the chosen
     // order wins as soon as it is known, while slower sources finish in the
     // background and keep their own three-day cache.

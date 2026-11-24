@@ -4043,6 +4043,28 @@ fn parse_lyric_file(
     .map_err(|problem| format!("{problem:#}"))
 }
 /// Drop any imported lyrics for the playing song and load the provider's.
+/// The best lyrics from the sources for a track, for the TTML Creator's
+/// Reset to source.
+#[tauri::command]
+async fn source_lyrics(
+    track: Track,
+    state: State<'_, Desktop>,
+) -> std::result::Result<crate::lyrics::Lyrics, String> {
+    let (reply, answer) = std::sync::mpsc::channel();
+    state
+        .0
+        .commands
+        .send(Command::SourceLyrics(track, reply))
+        .map_err(error)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        answer
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .map_err(|_| "No lyrics source answered".to_owned())?
+            .map_err(error)
+    })
+    .await
+    .map_err(|_| "Lyrics worker unavailable".to_owned())?
+}
 #[tauri::command]
 fn lyrics_song_source(uri: String) -> Option<String> {
     crate::lyric_sources::song_source(&uri)
@@ -6889,6 +6911,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             lyssna_sign_out,
             lyssna_act_as,
             lyrics_song_source,
+            source_lyrics,
             set_lyrics_song_source,
             local_track_isrc,
             local_match_isrc,

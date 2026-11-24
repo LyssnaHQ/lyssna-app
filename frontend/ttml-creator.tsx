@@ -16,6 +16,7 @@ import {
   Copy,
   Download,
   Eye,
+  FileInput,
   EyeOff,
   History,
   ClipboardCheck,
@@ -784,7 +785,9 @@ export function TtmlCreator({
         title="Lyrics or sections from Genius. Sends the title and artist to Genius."
       >
         <Globe size={15} />
-        {fetching ? "Asking Genius…" : "Genius"}
+        <span className="ttml-label">
+          {fetching ? "Asking Genius…" : "Genius"}
+        </span>
       </button>
       {geniusOpen && (
         <div className="ttml-meta-menu" role="menu">
@@ -1511,6 +1514,33 @@ export function TtmlCreator({
       {clearArmed ? "Click again to clear" : "Clear draft"}
     </button>
   );
+  const [resettingSource, setResettingSource] = useState(false);
+  const resetToSource = async () => {
+    if (!track || !here || resettingSource) return;
+    const uri = track.uri;
+    setResettingSource(true);
+    try {
+      const lyrics = await rpc<Lyrics>("source_lyrics", { track });
+      if (current.current.uri !== uri) return;
+      const seeded = lyrics?.lines.length ? fromLyrics(lyrics) : [];
+      if (!seeded.length) {
+        notify("No source lyrics found for this song.");
+        return;
+      }
+      editedFor.current = uri;
+      setLines(seeded);
+      setText(toText(seeded));
+      setMetadata(undefined);
+      setAppleOriginal(lyrics.apple_original);
+      setCursor(cursorAt(seeded, read()));
+      notify(`Reset to ${lyrics.source}. ${MODIFIER}+Z brings the lines back.`);
+    } catch {
+      if (current.current.uri === uri)
+        notify("Couldn't load source lyrics. Try again.");
+    } finally {
+      setResettingSource(false);
+    }
+  };
   const startFromLyrics = () => {
     if (!state.lyrics || !seedable) return;
     const seeded = fromLyrics(state.lyrics);
@@ -2160,6 +2190,7 @@ export function TtmlCreator({
       aria-pressed={reviewing}
     >
       <ClipboardCheck size={15} />
+      <span className="ttml-label">Review</span>
     </button>
   );
   const reviewPanel = reviewer && reviewing && (
@@ -2556,16 +2587,20 @@ export function TtmlCreator({
           </span>
           <button onClick={openSaves} title="Saves and earlier versions">
             <History size={15} />
+            <span className="ttml-label">Saves</span>
           </button>
           {reviewButton}
           <button onClick={() => setEditingKeys(true)} title="Controls">
             <Settings size={15} />
+            <span className="ttml-label">Controls</span>
           </button>
           <button onClick={() => setEditingMeta(true)} title="Metadata">
             <Tags size={15} />
+            <span className="ttml-label">Metadata</span>
           </button>
           <button onClick={copy} disabled={!done} title="Copy TTML">
             <Copy size={15} />
+            <span className="ttml-label">Copy</span>
           </button>
           {geniusMenu}
           <button
@@ -2573,6 +2608,7 @@ export function TtmlCreator({
             title="Import lyrics file (TTML, LRC, QRC, YRC, Lyricify Syllable or ESLyric)"
           >
             <Upload size={15} />
+            <span className="ttml-label">Import</span>
           </button>
           {importInput}
           <span className="ttml-export">
@@ -2583,6 +2619,7 @@ export function TtmlCreator({
               aria-expanded={exporting}
             >
               <Download size={15} />
+              <span className="ttml-label">Export</span>
             </button>
             {exporting && (
               <div className="ttml-meta-menu" role="menu">
@@ -2622,7 +2659,7 @@ export function TtmlCreator({
             }
           >
             <Send size={15} />
-            Submit to Lyssna
+            <span className="ttml-label">Submit to Lyssna</span>
           </button>
           <button
             className="primary"
@@ -2842,6 +2879,7 @@ export function TtmlCreator({
                 aria-label="Undo"
               >
                 <Undo2 size={15} />
+                <span className="ttml-label">Undo</span>
               </button>
               <button
                 onClick={redo}
@@ -2849,6 +2887,7 @@ export function TtmlCreator({
                 aria-label="Redo"
               >
                 <Redo2 size={15} />
+                <span className="ttml-label">Redo</span>
               </button>
               <button
                 onClick={() => setLines(clearAll(lines))}
@@ -2857,6 +2896,18 @@ export function TtmlCreator({
                 aria-label="Clear every timing"
               >
                 <RotateCcw size={15} />
+                <span className="ttml-label">Clear timings</span>
+              </button>
+              <button
+                onClick={() => void resetToSource()}
+                disabled={!here || resettingSource}
+                aria-busy={resettingSource}
+                title="Replace this draft with the best lyrics from your sources"
+              >
+                <FileInput size={15} />
+                <span className="ttml-label">
+                  {resettingSource ? "Finding source…" : "Reset to source"}
+                </span>
               </button>
             </div>
           )}
