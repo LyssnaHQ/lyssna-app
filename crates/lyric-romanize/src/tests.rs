@@ -38,10 +38,10 @@ fn romanized(line: Line) -> Option<RomanizedLine> {
 }
 
 #[test]
-fn a_word_split_across_syllables_keeps_its_reading() {
+fn a_word_split_across_syllables_shares_its_reading() {
     assert_eq!(
         romanize_pieces(&["一", "緒", "に"], japanese(true)),
-        ["Issho", "", " ni"]
+        ["I", "ssho", " ni"]
     );
     assert_eq!(
         joined(&["怒り", "抱", "い", "て", "も"], japanese(true)),
