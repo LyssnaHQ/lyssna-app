@@ -495,11 +495,16 @@ export function GeniusReview({
   );
   const plural = (count: number, one: string, many: string) =>
     `${count} ${count === 1 ? one : many}`;
+  const [showEarlier, setShowEarlier] = useState(false);
   return (
     <div className="ttml-dialog ttml-review" role="dialog" aria-label="Changes from Genius">
       <h3>Changes from Genius</h3>
       <section>
-        <h4>{plural(changes.sections.length, "section", "sections")}</h4>
+        <h4>
+          {changes.sections.length
+            ? plural(changes.sections.length, "section", "sections")
+            : "No new sections"}
+        </h4>
         <div className="ttml-review-chips">
           {changes.sections.map((each, index) =>
             go(each.line, `${each.line + 1} · ${each.part}`, index),
@@ -622,6 +627,25 @@ export function GeniusReview({
           <div className="ttml-review-chips">
             {changes.mixed.map((line) => go(line, `${line + 1}`, line))}
           </div>
+        </section>
+      )}
+      {changes.earlier.length > 0 && (
+        <section>
+          <button
+            className="ttml-review-action"
+            aria-expanded={showEarlier}
+            onClick={() => setShowEarlier(!showEarlier)}
+          >
+            {showEarlier ? "Hide" : "Show"} what was already there (
+            {changes.earlier.length})
+          </button>
+          {showEarlier && (
+            <div className="ttml-review-chips">
+              {changes.earlier.map((each, index) =>
+                go(each.line, `${each.line + 1} · ${each.label}`, index),
+              )}
+            </div>
+          )}
         </section>
       )}
       <div className="ttml-dialog-row end">

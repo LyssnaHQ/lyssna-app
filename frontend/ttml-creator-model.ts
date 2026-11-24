@@ -1111,6 +1111,8 @@ export interface GeniusChanges {
   commas: number[];
   /** Draft lines missing some of what Genius has there. */
   differs: { line: number; genius: string; fixable: boolean }[];
+  /** Sections, backing vocals and singers the draft already had. */
+  earlier: { line: number; label: string }[];
 }
 
 const textOf = (line: CreatorLine) =>
@@ -1127,10 +1129,35 @@ export function geniusChanges(
   const { leads, echoes: bracketed } = genius
     ? geniusDisputes(after, genius)
     : { leads: [], echoes: [] };
-  const echoes = new Map<string, number>();
-  for (const line of before)
-    if (line.background)
-      echoes.set(textOf(line), (echoes.get(textOf(line)) ?? 0) + 1);
+  // What the draft already had isn't a change: each line's state before,
+  // counted so a repeated chorus line matches once per copy.
+  const had = (key: (line: CreatorLine) => string | undefined) => {
+    const left = new Map<string, number>();
+    for (const line of before) {
+      const each = key(line);
+      if (each !== undefined) left.set(each, (left.get(each) ?? 0) + 1);
+    }
+    return (line: CreatorLine) => {
+      const each = key(line);
+      const count = each === undefined ? 0 : (left.get(each) ?? 0);
+      if (count) left.set(each!, count - 1);
+      return count > 0;
+    };
+  };
+  const hadSection = had((line) =>
+    line.part ? `${textOf(line)}\u0000${line.part}` : undefined,
+  );
+  const hadBackground = had((line) =>
+    line.background ? textOf(line) : undefined,
+  );
+  const hadSinger = had((line) =>
+    line.sungBy ? `${textOf(line)}\u0000${line.sungBy}` : undefined,
+  );
+  const hadMixed = had((line) =>
+    line.units.some((unit) => unit.sungBy)
+      ? line.units.map((unit) => `${unit.text}\u0000${unit.sungBy ?? ""}`).join("\u0001")
+      : undefined,
+  );
   const changes: GeniusChanges = {
     sections: [],
     backgrounds: [],
@@ -1142,7 +1169,10 @@ export function geniusChanges(
       ? geniusGaps(after, genius)
       : { missing: [], differs: [] }),
     commas: [],
+    earlier: [],
   };
+  const earlier = (line: number, label: string) =>
+    changes.earlier.push({ line, label });
   const trimmed = new Map<string, number>();
   for (const line of before) {
     const text = textOf(line);
@@ -1150,13 +1180,19 @@ export function geniusChanges(
     if (bare !== text) trimmed.set(bare, (trimmed.get(bare) ?? 0) + 1);
   }
   after.forEach((line, index) => {
-    if (line.part) changes.sections.push({ line: index, part: line.part });
-    if (line.background) {
-      const left = echoes.get(textOf(line)) ?? 0;
-      if (left) echoes.set(textOf(line), left - 1);
-      else changes.backgrounds.push({ line: index, text: textOf(line) });
+    if (line.part) {
+      if (!hadSection(line))
+        changes.sections.push({ line: index, part: line.part });
+      else earlier(index, line.part);
     }
-    if (line.sungBy) {
+    if (line.background) {
+      if (!hadBackground(line))
+        changes.backgrounds.push({ line: index, text: textOf(line) });
+      else earlier(index, `(${textOf(line)})`);
+    }
+    if (line.sungBy && hadSinger(line))
+      earlier(index, `Sung by ${line.sungBy}`);
+    else if (line.sungBy) {
       let group = changes.singers.find((each) => each.voice === line.sungBy);
       if (!group) {
         group = { voice: line.sungBy, lines: [] };
@@ -1164,7 +1200,10 @@ export function geniusChanges(
       }
       group.lines.push(index);
     }
-    if (line.units.some((unit) => unit.sungBy)) changes.mixed.push(index);
+    if (line.units.some((unit) => unit.sungBy)) {
+      if (!hadMixed(line)) changes.mixed.push(index);
+      else earlier(index, "Words sung by another voice");
+    }
     const left = trimmed.get(textOf(line)) ?? 0;
     if (left) {
       trimmed.set(textOf(line), left - 1);

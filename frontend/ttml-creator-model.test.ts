@@ -419,6 +419,22 @@ describe("TTML Creator model", () => {
     expect(kept.units.map((unit) => unit.text)).toEqual(["Wa", "king", "sum"]);
   });
 
+  it("leaves out of the review what the draft already had", () => {
+    const lines = timeAll("Start here\nGo on\nGo on");
+    const genius = "[Verse: Aiko & Mira]\nStart here\n[Chorus: Mira]\nGo on\nGo on";
+    const once = applySections(lines, genius)!;
+    expect(geniusChanges(lines, once).sections.length).toBe(2);
+    const again = applySections(once, genius)!;
+    const changes = geniusChanges(once, again);
+    expect(changes.sections).toEqual([]);
+    expect(changes.singers).toEqual([]);
+    expect(changes.backgrounds).toEqual([]);
+    expect(changes.earlier.map((each) => each.label)).toEqual([
+      "Verse",
+      "Chorus",
+    ]);
+  });
+
   it("fixes Genius's spellings but counts numbers either way the same", () => {
     const lines = timeAll("Start here\nWow, oh, whoa\n1, 2, 3, 4\n影 Whoa");
     const genius =
@@ -489,6 +505,7 @@ describe("TTML Creator model", () => {
       missing: [],
       commas: [],
       differs: [],
+      earlier: [],
     });
   });
 
