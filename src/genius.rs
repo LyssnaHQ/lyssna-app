@@ -7,6 +7,20 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 
 pub fn lyrics(client: &Client, track: &Track) -> Result<String> {
+    fetch(client, track, "", pick)
+}
+
+/// The song's lyrics as Genius Romanizations writes them out in Latin letters.
+pub fn romanized(client: &Client, track: &Track) -> Result<String> {
+    fetch(client, track, " romanized", pick_romanized)
+}
+
+fn fetch(
+    client: &Client,
+    track: &Track,
+    extra: &str,
+    pick: fn(&Value, &str, &str) -> Option<String>,
+) -> Result<String> {
     let artist = track
         .artists
         .first()
@@ -16,7 +30,7 @@ pub fn lyrics(client: &Client, track: &Track) -> Result<String> {
     let found: Value = client
         .get("https://genius.com/api/search/song")
         .query(&[
-            ("q", format!("{} {artist}", track.name)),
+            ("q", format!("{} {artist}{extra}", track.name)),
             ("per_page", "10".into()),
         ])
         .send()
@@ -58,9 +72,7 @@ fn names(artist: &str) -> Vec<String> {
     names
 }
 
-/// The hit whose title and main artist match; otherwise the first by the
-/// artist. Only genius.com song pages are followed.
-fn pick(found: &Value, title: &str, artist: &str) -> Option<String> {
+fn genius_hits(found: &Value) -> Option<Vec<&Value>> {
     let hits: Vec<&Value> = found["response"]["sections"]
         .as_array()?
         .iter()
@@ -73,6 +85,13 @@ fn pick(found: &Value, title: &str, artist: &str) -> Option<String> {
                 .is_some_and(|url| url.scheme() == "https" && url.host_str() == Some("genius.com"))
         })
         .collect();
+    Some(hits)
+}
+
+/// The hit whose title and main artist match; otherwise the first by the
+/// artist. Only genius.com song pages are followed.
+fn pick(found: &Value, title: &str, artist: &str) -> Option<String> {
+    let hits = genius_hits(found)?;
     let (title, artist) = (normalize(title), normalize(artist));
     let by_artist = |result: &Value| {
         artist.is_empty()
@@ -88,6 +107,36 @@ fn pick(found: &Value, title: &str, artist: &str) -> Option<String> {
             by_artist(result) && normalize(result["title"].as_str().unwrap_or_default()) == title
         })
         .or_else(|| hits.iter().find(|result| by_artist(result)))
+        .and_then(|result| result["url"].as_str())
+        .map(str::to_owned)
+}
+
+/// Genius Romanizations titles its pages "Artist - Title ft. Guest (Romanized)".
+fn pick_romanized(found: &Value, title: &str, artist: &str) -> Option<String> {
+    let letters = |text: &str| -> String {
+        text.chars()
+            .filter(|character| character.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    let (title, artist) = (normalize(title), letters(artist));
+    genius_hits(found)?
+        .into_iter()
+        .find(|result| {
+            let Some((by, song)) = result["title"]
+                .as_str()
+                .and_then(|name| name.strip_suffix(" (Romanized)"))
+                .and_then(|name| name.split_once(" - "))
+            else {
+                return false;
+            };
+            let song = [" ft. ", " feat. ", " (ft. ", " (feat. "]
+                .iter()
+                .fold(song, |song, mark| song.split(mark).next().unwrap_or(song));
+            result["primary_artist"]["name"] == "Genius Romanizations"
+                && normalize(song) == title
+                && (artist.is_empty() || letters(by).contains(&artist))
+        })
         .and_then(|result| result["url"].as_str())
         .map(str::to_owned)
 }
@@ -262,6 +311,23 @@ mod tests {
                 Some("https://genius.com/marine")
             );
         }
+    }
+
+    #[test]
+    fn the_romanized_page_is_picked_by_title_and_either_artist_name() {
+        let found = json!({"response":{"sections":[{"hits":[
+            {"result":{"title":"Recollect","primary_artist":{"name":"鈴木このみ (Konomi Suzuki)"},"url":"https://genius.com/original"}},
+            {"result":{"title":"鈴木このみ (Konomi Suzuki) - Recollect ft. Ashnikko (English Translation)","primary_artist":{"name":"Genius English Translations"},"url":"https://genius.com/english"}},
+            {"result":{"title":"鈴木このみ (Konomi Suzuki) - Recollect ft. Ashnikko (Romanized)","primary_artist":{"name":"Genius Romanizations"},"url":"https://genius.com/romanized"}}
+        ]}]}});
+        for artist in ["Konomi Suzuki", "鈴木このみ"] {
+            assert_eq!(
+                pick_romanized(&found, "Recollect", artist).as_deref(),
+                Some("https://genius.com/romanized")
+            );
+        }
+        assert_eq!(pick_romanized(&found, "Recollect", "Someone Else"), None);
+        assert_eq!(pick_romanized(&found, "Other Song", "Konomi Suzuki"), None);
     }
 
     /// Live check: `cargo test genius_live -- --ignored --nocapture`.

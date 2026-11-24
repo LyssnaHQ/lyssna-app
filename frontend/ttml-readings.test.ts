@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { splitBrackets, type CreatorLine } from "./ttml-creator-model";
+import {
+  readingsFrom,
+  splitBrackets,
+  type CreatorLine,
+} from "./ttml-creator-model";
 import type { Lyrics } from "./types";
 
 const lyricsOf = (lines: string[][]): Lyrics => ({
@@ -16,6 +20,32 @@ const lyricsOf = (lines: string[][]): Lyrics => ({
     opposite: false,
     words: words.map((text) => ({ start_ms: 0, end_ms: 0, text })),
   })),
+});
+
+describe("readingsFrom", () => {
+  it("spreads a romanized line over the syllables", () => {
+    const request = lyricsOf([
+      ["濁", "る", "呼", "吸", "の", "奥", "で"],
+      ["金", "輪", "際", " big", " juicer,"],
+      ["Hello", " there"],
+    ]);
+    const ours = lyricsOf([
+      ["Nigo", "ru", " ko", "kyuu", " no", " oku", " de"],
+      ["Kon", "rin", "zai", " big", " juicer,"],
+      ["Hello", " there"],
+    ]);
+    const genius =
+      "[Verse 2]\nNigoru kokyū no oku de\n(Konrinzai) Big juicer, and I'm ready to crush\nHello there";
+    const { lyrics, matched } = readingsFrom(request, ours, genius);
+    expect(matched).toBe(2);
+    expect(
+      lyrics.lines.map((line) => line.words.map((word) => word.text)),
+    ).toEqual([
+      ["Nigo", "ru", " ko", "kyū", " no", " oku", " de"],
+      ["Kon", "rin", "zai", " big", " juicer,"],
+      ["Hello", " there"],
+    ]);
+  });
 });
 
 const lineOf = (words: string[]): CreatorLine => ({

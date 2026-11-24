@@ -80,6 +80,7 @@ import {
   fromLyrics,
   geniusBackgrounds,
   bracketsToBackground,
+  readingsFrom,
   insertBlankLine,
   joinHyphenated,
   cursorAt,
@@ -1158,12 +1159,23 @@ export function TtmlCreator({
     const job = ++romanJob.current;
     setRomanNote("Romanizing…");
     const request = romanizeRequest(lines);
-    const result = await romanizeLyrics(request).catch(() => null);
+    // Genius Romanizations, written by people, beats Lyssna's own reading
+    // wherever one of its lines matches.
+    const [ours, genius] = await Promise.all([
+      romanizeLyrics(request).catch(() => null),
+      track
+        ? rpc<string>("genius_romanized", { track }).catch(() => "")
+        : Promise.resolve(""),
+    ]);
     if (job !== romanJob.current) return;
-    if (!result) {
+    if (!ours) {
       setRomanNote("Romanization failed.");
       return;
     }
+    const fromGenius = genius
+      ? readingsFrom(request, ours, genius)
+      : { lyrics: ours, matched: 0 };
+    const result = fromGenius.lyrics;
     // The worker hands back a copy, so compare readings rather than objects.
     const found = result.lines.some((line, lineIndex) =>
       line.words.some(
@@ -1179,6 +1191,10 @@ export function TtmlCreator({
     );
     if (!found) return;
     setLines((current) => applyRomanized(current, request, result));
+    if (fromGenius.matched)
+      notify(
+        `Romanized ${fromGenius.matched} ${fromGenius.matched === 1 ? "line" : "lines"} from Genius; Lyssna read the rest.`,
+      );
   };
   const [drag, setDrag] = useState<Drag | null>(null);
   const [drop, setDrop] = useState("");
@@ -2968,7 +2984,7 @@ export function TtmlCreator({
                 <button
                   onClick={() => void autoRomanize()}
                   disabled={romanNote === "Romanizing…"}
-                  title="Fill empty word readings for lyrics in any non-Latin script."
+                  title="Fill empty word readings for lyrics in any non-Latin script. Uses Genius's romanized lyrics when it has them, which sends the title and artist to Genius."
                 >
                   <Languages size={15} />
                   Auto romanize
@@ -3076,7 +3092,7 @@ export function TtmlCreator({
                 <button
                   onClick={() => void autoRomanize()}
                   disabled={romanNote === "Romanizing…"}
-                  title="Fill empty word readings for lyrics in any non-Latin script."
+                  title="Fill empty word readings for lyrics in any non-Latin script. Uses Genius's romanized lyrics when it has them, which sends the title and artist to Genius."
                 >
                   <Languages size={15} />
                   Auto romanize

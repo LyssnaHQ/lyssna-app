@@ -1787,6 +1787,131 @@ export function romanizeRequest(lines: CreatorLine[]): Lyrics {
   };
 }
 
+/** The letters of a text, with where each sits in it. */
+function lettersOf(text: string) {
+  const chars = Array.from(text);
+  const letters: string[] = [];
+  const at: number[] = [];
+  chars.forEach((char, index) => {
+    if (/[\p{L}\p{N}]/u.test(char)) {
+      letters.push(char.toLowerCase());
+      at.push(index);
+    }
+  });
+  return { chars, letters, at };
+}
+
+/**
+ * Lines `ours` up inside `theirs`, which may run longer at either end.
+ * For each position in `ours`, the position in `theirs` it falls at.
+ */
+function fitLetters(ours: string[], theirs: string[]) {
+  const width = theirs.length + 1;
+  const cost = new Uint16Array((ours.length + 1) * width);
+  for (let i = 1; i <= ours.length; i++) {
+    cost[i * width] = i;
+    for (let j = 1; j <= theirs.length; j++)
+      cost[i * width + j] = Math.min(
+        cost[(i - 1) * width + j - 1] + (ours[i - 1] === theirs[j - 1] ? 0 : 1),
+        cost[(i - 1) * width + j] + 1,
+        cost[i * width + j - 1] + 1,
+      );
+  }
+  const last = ours.length * width;
+  let end = 0;
+  for (let j = 1; j <= theirs.length; j++)
+    if (cost[last + j] < cost[last + end]) end = j;
+  const at = new Array<number>(ours.length + 1);
+  let i = ours.length;
+  let j = end;
+  at[i] = j;
+  while (i > 0) {
+    const here = cost[i * width + j];
+    if (
+      j > 0 &&
+      here ===
+        cost[(i - 1) * width + j - 1] + (ours[i - 1] === theirs[j - 1] ? 0 : 1)
+    )
+      j--;
+    else if (here !== cost[(i - 1) * width + j] + 1) {
+      j--;
+      continue;
+    }
+    i--;
+    at[i] = j;
+  }
+  return { cost: cost[last + end], at };
+}
+
+/**
+ * Swaps Lyssna's readings for the ones in a romanized copy of the lyrics
+ * (Genius Romanizations), where a line of it matches. Each syllable takes
+ * the stretch of that line its own reading lines up with; words that were
+ * already in Latin letters stay as they are.
+ */
+export function readingsFrom(
+  request: Lyrics,
+  romanized: Lyrics,
+  text: string,
+): { lyrics: Lyrics; matched: number } {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !isSectionLine(line));
+  const candidates = [
+    ...lines,
+    ...lines.slice(1).map((line, index) => `${lines[index]} ${line}`),
+  ].map(lettersOf);
+  let matched = 0;
+  const out = romanized.lines.map((line, lineIndex) => {
+    const asked = request.lines[lineIndex]?.words;
+    const read = (index: number) =>
+      line.words[index].text.trim() !== asked?.[index]?.text.trim();
+    if (asked?.length !== line.words.length || !line.words.some((_, index) => read(index)))
+      return line;
+    const ours: string[] = [];
+    const starts = line.words.map((word) => {
+      const start = ours.length;
+      ours.push(...lettersOf(word.text).letters);
+      return start;
+    });
+    if (ours.length < 2) return line;
+    let best: { theirs: ReturnType<typeof lettersOf>; at: number[] } | undefined;
+    let bestCost = Math.floor(ours.length * 0.3) + 1;
+    for (const theirs of candidates) {
+      if (theirs.letters.length < ours.length / 2) continue;
+      const fit = fitLetters(ours, theirs.letters);
+      if (fit.cost < bestCost) {
+        bestCost = fit.cost;
+        best = { theirs, at: fit.at };
+      }
+    }
+    if (!best) return line;
+    const { theirs, at } = best;
+    matched++;
+    const words = line.words.map((word, index) => {
+      if (!read(index)) return word;
+      const from = at[starts[index]];
+      const to = index + 1 < starts.length ? at[starts[index + 1]] : at[ours.length];
+      if (from >= to) return word;
+      const end =
+        to < theirs.at.length ? theirs.at[to] : theirs.at[theirs.at.length - 1] + 1;
+      let stop = end;
+      if (to >= theirs.at.length)
+        while (stop < theirs.chars.length && !/[\s()]/.test(theirs.chars[stop])) stop++;
+      const reading = theirs.chars
+        .slice(theirs.at[from], stop)
+        .join("")
+        .replace(/[()]/g, "")
+        .trim();
+      if (!reading) return word;
+      return { ...word, text: /^\s/.test(word.text) ? ` ${reading}` : reading };
+    });
+    return { ...line, words, text: words.map((word) => word.text).join("") };
+  });
+  return { lyrics: { ...romanized, lines: out }, matched };
+}
+
 /** Fills only empty readings, so hand-typed ones survive. */
 export function applyRomanized(
   lines: CreatorLine[],

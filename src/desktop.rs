@@ -3489,6 +3489,15 @@ async fn genius_lyrics(track: Track) -> std::result::Result<String, String> {
     .map_err(error)
 }
 #[tauri::command]
+async fn genius_romanized(track: Track) -> std::result::Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::genius::romanized(&crate::auth::http_client()?, &track)
+    })
+    .await
+    .map_err(|_| "Genius lookup unavailable".to_owned())?
+    .map_err(error)
+}
+#[tauri::command]
 fn creator_volume(volume: u8) {
     crate::creator_stream::set_volume(volume);
 }
@@ -6917,6 +6926,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             creator_play,
             creator_prepare,
             genius_lyrics,
+            genius_romanized,
             lyssna_account,
             lyssna_sign_in,
             lyssna_cancel_sign_in,
