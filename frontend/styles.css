@@ -3934,9 +3934,20 @@ small {
 .lyric-line:is(.active, [data-settling]) .lyric-letter {
   will-change: transform;
 }
+/* A background line turns active only as it starts, unlike lead lines, and
+   moving its words onto their own layer then redraws them a fraction of a
+   pixel off. They get the layer while the line before it is sung instead. */
+.lyric-line.active + .lyric-line.background-vocal .lyric-syllable,
+.lyric-line.active + .lyric-line.background-vocal .lyric-letter {
+  will-change: transform;
+}
 /* Avoid retaining one compositing layer per animated glyph over live video. */
 .application.macos
   .lyric-line:is(.active, [data-settling])
+  :is(.lyric-syllable, .lyric-letter),
+.application.macos
+  .lyric-line.active
+  + .lyric-line.background-vocal
   :is(.lyric-syllable, .lyric-letter) {
   will-change: auto;
 }

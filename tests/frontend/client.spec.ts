@@ -21679,3 +21679,49 @@ test("Load TTML chooses the lyrics source for the playing song", async ({
     { source: null },
   ]);
 });
+
+test("backing vocals get their word layers before they start", async ({
+  page,
+}) => {
+  await startClient(page);
+  await page.evaluate(
+    ({ uri, track, playback }) => {
+      const host = (window as any).__clientTest;
+      const line = (text: string, start: number, background: boolean) => ({
+        text,
+        start_ms: start,
+        end_ms: 60_000,
+        background,
+        opposite: false,
+        words: [{ text, start_ms: start, end_ms: 60_000 }],
+      });
+      host.emit({
+        type: "lyrics",
+        uri,
+        lyrics: {
+          source: "test",
+          synced: true,
+          instrumental: false,
+          lines: [line("Lead", 0, false), line("Backing", 40_000, true)],
+        },
+      });
+      host.emit({
+        type: "playback",
+        playback: { ...playback, item: track, is_playing: false, progress_ms: 5000 },
+        observed_at: Date.now(),
+        changed: false,
+      });
+    },
+    { uri: track.uri, track, playback: emptyState.playback },
+  );
+  await page.getByTitle("Lyrics", { exact: true }).click();
+  const backing = page.locator(".lyrics-page .lyric-line.background-vocal");
+  await expect(page.locator(".lyrics-page .lyric-line.active")).toHaveCount(1);
+  await expect(backing).not.toHaveClass(/active/);
+  expect(
+    await backing
+      .locator(".lyric-syllable")
+      .first()
+      .evaluate((node) => getComputedStyle(node).willChange),
+  ).toBe("transform");
+});
