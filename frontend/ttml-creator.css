@@ -538,9 +538,9 @@
 }
 .ttml-pieces.large .ttml-piece {
   font-size: 17px;
-  /* The chip spills past the word's 1.2 line, so its text lines up with
-     the plain words beside it and the time pills stay put. */
-  margin-block: -0.15em;
+  /* As tall as the word's 1.2 line, so its text lines up with the plain
+     words beside it and the chip keeps clear of the time pills. */
+  height: 1.2em;
 }
 .ttml-piece.live {
   background: #1ed76066;
