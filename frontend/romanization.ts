@@ -35,6 +35,7 @@ export async function romanizeLyrics(
     lines: lyrics.lines.map((line) => ({
       text: line.text,
       romanization: line.romanization,
+      romanization_syllables: line.romanization_syllables ?? [],
       words: line.words.map(({ text, start_ms, end_ms }) => ({
         text,
         start_ms,
@@ -61,7 +62,13 @@ export async function romanizeLyrics(
         };
       },
     );
-    return { ...line, text: out.text, words, romanization: "" };
+    return {
+      ...line,
+      text: out.text,
+      words,
+      romanization: "",
+      romanization_syllables: undefined,
+    };
   });
   return changed ? { ...lyrics, lines, estimated_words: estimated } : lyrics;
 }

@@ -503,9 +503,12 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
         const last = units.length - 1;
         units[last] = { ...units[last], end: line.end_ms };
       }
-      const readings = line.romanization.trim().split(/\s+/);
+      const syllables = line.romanization_syllables?.map((text) => text.trim());
+      const timed = authored && syllables?.length === units.length;
+      const readings = timed ? syllables! : line.romanization.trim().split(/\s+/);
       const perWord =
-        authored && units.length > 1 && readings.length === units.length;
+        timed ||
+        (authored && units.length > 1 && readings.length === units.length);
       return {
         units: perWord
           ? units.map((unit, index) => ({ ...unit, roman: readings[index] }))

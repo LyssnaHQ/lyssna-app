@@ -96,6 +96,10 @@ pub struct Line {
     pub text: String,
     pub translation: String,
     pub romanization: String,
+    /// The supplied romanization split like `words`, one reading per
+    /// syllable, each with the spaces before it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub romanization_syllables: Vec<String>,
     pub words: Vec<Word>,
     pub background: bool,
     pub opposite: bool,
@@ -597,6 +601,75 @@ pub fn order_with_background(mut lines: Vec<(u64, Line)>) -> Vec<Line> {
     lines.into_iter().map(|(_, line)| line).collect()
 }
 
+/// The timed spans of a head transliteration, each with the spaces before it.
+fn timed_syllables(text: roxmltree::Node) -> Vec<(u64, String)> {
+    let mut syllables: Vec<(u64, String)> = Vec::new();
+    let mut spaced = false;
+    for child in text.children() {
+        if child.is_text() {
+            spaced |= child
+                .text()
+                .is_some_and(|between| between.chars().any(char::is_whitespace));
+            continue;
+        }
+        let Some(begin) = child
+            .has_tag_name("span")
+            .then(|| attribute(child, "begin").and_then(timestamp))
+            .flatten()
+        else {
+            continue;
+        };
+        let mut syllable = node_text(child, true);
+        if syllable.trim().is_empty() {
+            continue;
+        }
+        if spaced && !syllables.is_empty() && !syllable.starts_with(char::is_whitespace) {
+            syllable.insert(0, ' ');
+        }
+        spaced = false;
+        syllables.push((begin, syllable));
+    }
+    syllables
+}
+
+/// One reading per word, matched by start time. A word the transliteration
+/// leaves out keeps its own text when it is already Latin; otherwise the
+/// readings can't be lined up and none are kept.
+fn syllables_for_words(words: &[Word], syllables: &[(u64, String)]) -> Vec<String> {
+    let mut out = Vec::with_capacity(words.len());
+    let mut used = 0;
+    for word in words {
+        if let Some((_, syllable)) = syllables
+            .get(used)
+            .filter(|(begin, _)| begin.abs_diff(word.start_ms) <= 1)
+        {
+            used += 1;
+            let spaced = word.text.starts_with(char::is_whitespace) && !out.is_empty();
+            let reading = syllable.trim_start();
+            out.push(
+                if spaced || (syllable.starts_with(char::is_whitespace) && !out.is_empty()) {
+                    format!(" {reading}")
+                } else {
+                    reading.to_owned()
+                },
+            );
+        } else if word
+            .text
+            .chars()
+            .all(|c| !c.is_alphabetic() || c.is_ascii())
+        {
+            out.push(word.text.clone());
+        } else {
+            return Vec::new();
+        }
+    }
+    if used == syllables.len() {
+        out
+    } else {
+        Vec::new()
+    }
+}
+
 pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
     let document = roxmltree::Document::parse(source).context("Invalid TTML XML")?;
     // Duets: the first `person` agent declared in the head is the lead (else
@@ -610,6 +683,7 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
     // Apple-style heads carry per-line romanization and translation keyed by
     // the paragraph's `itunes:key`.
     let mut head_romanization = HashMap::new();
+    let mut head_syllables = HashMap::new();
     let mut head_translation = HashMap::new();
     for text in document
         .descendants()
@@ -626,7 +700,10 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
                 "translation" => Some(false),
                 _ => None,
             }) {
-            Some(true) => head_romanization.insert(key, value),
+            Some(true) => {
+                head_syllables.insert(key, timed_syllables(text));
+                head_romanization.insert(key, value)
+            }
             Some(false) => head_translation.insert(key, value),
             None => None,
         };
@@ -809,6 +886,9 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
                 && let Some(text) = head_romanization.get(key)
             {
                 line.romanization = text.clone();
+                if let Some(syllables) = head_syllables.get(key) {
+                    line.romanization_syllables = syllables_for_words(&line.words, syllables);
+                }
             }
             if line.translation.is_empty()
                 && let Some(text) = head_translation.get(key)
@@ -1787,6 +1867,28 @@ mod tests {
         assert_eq!(lyrics.lines.len(), 1);
         assert_eq!(lyrics.lines[0].text, "未完成");
         assert_eq!(lyrics.lines[0].romanization, "mikan sei");
+        assert!(lyrics.lines[0].romanization_syllables.is_empty());
+    }
+
+    #[test]
+    fn ttml_keeps_head_transliteration_syllables_that_match_the_words() {
+        let text = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"><head><metadata><ttm:agent type="person" xml:id="v1"/><iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal"><transliterations><transliteration><text for="L1"><span begin="00:01.000" end="00:01.300">mi</span><span begin="00:01.300" end="00:01.600">kan</span><span begin="00:01.600" end="00:02.000">sei</span> <span begin="00:02.000" end="00:02.500">no</span></text></transliteration></transliterations></iTunesMetadata></metadata></head><body><div><p begin="00:01.000" end="00:02.500" ttm:agent="v1" itunes:key="L1"><span begin="00:01.000" end="00:01.300">未</span><span begin="00:01.300" end="00:01.600">完</span><span begin="00:01.600" end="00:02.000">成</span> <span begin="00:02.000" end="00:02.500">の</span></p></div></body></tt>"#;
+        let lyrics = parse_ttml(text, 5_000).unwrap();
+        assert_eq!(lyrics.lines[0].romanization, "mikansei no");
+        assert_eq!(
+            lyrics.lines[0].romanization_syllables,
+            ["mi", "kan", "sei", " no"]
+        );
+    }
+
+    #[test]
+    fn ttml_lines_up_head_syllables_that_leave_latin_words_out() {
+        let text = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"><head><metadata><ttm:agent type="person" xml:id="v1"/><iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal"><transliterations><transliteration><text for="L1"><span begin="00:01.000" end="00:01.500">sa</span><span begin="00:01.500" end="00:02.000">bi</span></text></transliteration></transliterations></iTunesMetadata></metadata></head><body><div><p begin="00:01.000" end="00:04.000" ttm:agent="v1" itunes:key="L1"><span begin="00:01.000" end="00:01.500">寂</span><span begin="00:01.500" end="00:02.000">し</span> <span begin="00:03.000" end="00:03.500">ah-</span><span begin="00:03.500" end="00:04.000">ah</span></p></div></body></tt>"#;
+        let lyrics = parse_ttml(text, 5_000).unwrap();
+        assert_eq!(
+            lyrics.lines[0].romanization_syllables,
+            ["sa", "bi", " ah-", "ah"]
+        );
     }
 
     /// Parses a local corpus of real AMLL/Apple-style TTML files when present

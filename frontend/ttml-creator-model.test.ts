@@ -319,6 +319,40 @@ describe("TTML Creator model", () => {
     ]);
   });
 
+  it("keeps a supplied reading per syllable", () => {
+    const lyrics: Lyrics = {
+      source: "x",
+      instrumental: false,
+      synced: true,
+      lines: [
+        {
+          start_ms: 0,
+          end_ms: 1000,
+          text: "未完成 の",
+          translation: "",
+          romanization: "mikansei no",
+          romanization_syllables: ["mi", "kan", "sei", " no"],
+          background: false,
+          opposite: false,
+          words: [
+            { start_ms: 0, end_ms: 200, text: "未" },
+            { start_ms: 200, end_ms: 500, text: "完" },
+            { start_ms: 500, end_ms: 800, text: "成" },
+            { start_ms: 800, end_ms: 1000, text: " の" },
+          ],
+        },
+      ],
+    };
+    const [line] = fromLyrics(lyrics);
+    expect(line.units.map((unit) => unit.roman)).toEqual([
+      "mi",
+      "kan",
+      "sei",
+      "no",
+    ]);
+    expect(line.romanization).toBeUndefined();
+  });
+
   it("keeps real line times on a line's edges and leaves static lyrics untimed", () => {
     const line = {
       start_ms: 2000,

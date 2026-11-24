@@ -16,6 +16,7 @@ fn line(text: &str, romanization: &str) -> Line {
     Line {
         text: text.into(),
         romanization: romanization.into(),
+        romanization_syllables: Vec::new(),
         words: vec![Word {
             text: text.into(),
             start_ms: 1000.0,
@@ -302,4 +303,35 @@ fn spaces_and_quotes_keep_words_in_place() {
     };
     assert_eq!(read("\"きっと\" 今も"), "\"Kitto\" ima mo");
     assert_eq!(read("「きっと」今も"), "\"Kitto\" ima mo");
+}
+
+#[test]
+fn readings_timed_per_syllable_keep_each_syllables_timing() {
+    let line = Line {
+        text: "未完成 の".into(),
+        romanization: "mikansei no".into(),
+        romanization_syllables: vec!["mi".into(), "kan".into(), "sei".into(), " no".into()],
+        words: vec![
+            word("未", 1000.0, 1300.0),
+            word("完", 1300.0, 1600.0),
+            word("成", 1600.0, 2000.0),
+            word(" の", 2000.0, 2500.0),
+        ],
+    };
+    let out = romanized(line).unwrap();
+    assert_eq!(out.text, "mikansei no");
+    let timed: Vec<(&str, f64)> = out
+        .words
+        .iter()
+        .map(|word| (word.text.as_str(), word.start_ms))
+        .collect();
+    assert_eq!(
+        timed,
+        [
+            ("mi", 1000.0),
+            ("kan", 1300.0),
+            ("sei", 1600.0),
+            (" no", 2000.0)
+        ]
+    );
 }
