@@ -22,20 +22,27 @@ pub fn active_lines(lines: &[Line], time: f64) -> Vec<usize> {
         .collect()
 }
 
-/// The line the view centres: a cued line, else the first lead line being
-/// sung, else the last lead line already reached.
+/// The line the view centres: a cued line, else a backing vocal sung ahead
+/// of its own lead line, else the first lead line being sung, else the last
+/// lead line already reached. A backing vocal follows its lead in the list,
+/// so the view drops to it early and comes back up when the lead starts.
 pub fn primary_line(lines: &[Line], time: f64, cued: Option<usize>) -> usize {
-    cued.or_else(|| {
-        active_lines(lines, time)
-            .into_iter()
-            .find(|&index| !lines[index].background)
-    })
-    .unwrap_or_else(|| {
-        lines
-            .iter()
-            .rposition(|line| line.start <= time && !line.background)
-            .unwrap_or(0)
-    })
+    let active = active_lines(lines, time);
+    let ahead = active.iter().rev().copied().find(|&index| {
+        lines[index].background
+            && lines[..index]
+                .iter()
+                .rposition(|line| !line.background)
+                .is_some_and(|lead| lines[lead].start > time)
+    });
+    cued.or(ahead)
+        .or_else(|| active.into_iter().find(|&index| !lines[index].background))
+        .unwrap_or_else(|| {
+            lines
+                .iter()
+                .rposition(|line| line.start <= time && !line.background)
+                .unwrap_or(0)
+        })
 }
 
 pub fn jumped(last: f64, now: f64) -> bool {
@@ -248,6 +255,17 @@ mod tests {
         assert_eq!(primary_line(&lines, 3500.0, None), 2);
         assert_eq!(primary_line(&lines, 3500.0, Some(1)), 1);
         assert_eq!(primary_line(&lines, -10.0, None), 0);
+    }
+
+    #[test]
+    fn backing_vocal_sung_before_its_lead_takes_the_view_until_the_lead() {
+        let lines = [
+            line(0.0, 1000.0, false),
+            line(3000.0, 5000.0, false),
+            line(2000.0, 4000.0, true),
+        ];
+        assert_eq!(primary_line(&lines, 2500.0, None), 2);
+        assert_eq!(primary_line(&lines, 3500.0, None), 1);
     }
 
     #[test]
