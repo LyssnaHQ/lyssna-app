@@ -29,7 +29,7 @@ A Spotify client written in Rust. It streams through [librespot](https://github.
 
 | Feature | What you get |
 | --- | --- |
-| **Lyrics** | Word- and syllable-synced lyrics from six sources (Spicy Lyrics, Musixmatch, Apple Music, Spotify, LRCLIB, Netease), the Spicy Lyrics animator, Space Gravity, full screen (F11), your own LRC and TTML files, and community credits |
+| **Lyrics** | Word- and syllable-synced lyrics from seven sources (Lyssna, Apple Music, Spicy Lyrics, lrc.red, Spotify, LRCLIB, Netease), the Spicy Lyrics animator, Space Gravity, full screen (F11), your own LRC and TTML files, and community credits |
 | **Canvas** | The song's Spotify Canvas beside the lyrics, tinting the background and the Now Playing panel |
 | **Listening** | Gapless playback, crossfade from 1 to 12 seconds, media keys, Spotify Connect, and optional playback from the tray after closing the window |
 | **Library** | Every playlist and Spotify folder, plus saved albums and followed artists, in Spotify's Recents order |

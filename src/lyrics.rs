@@ -1295,10 +1295,7 @@ fn fetch_from(
         access_token.to_owned(),
         native.clone(),
     );
-    let (sources, words) = (
-        crate::lyric_sources::enabled(),
-        crate::lyric_sources::musixmatch_words(),
-    );
+    let sources = crate::lyric_sources::enabled();
     let fetch = move |source: &str| -> Result<Lyrics> {
         match source {
             "apple" => cache.get("apple-lyssna-2", &|| {
@@ -1338,15 +1335,6 @@ fn fetch_from(
                 crate::lyric_sources::split_provider(lyrics, source)
                     .with_context(|| format!("No {source} lyrics from the provider"))
             }
-            // Line-only answers are cached apart, so switching shows the other.
-            "musixmatch" => cache.get(
-                if words {
-                    "musixmatch"
-                } else {
-                    "musixmatch-lines"
-                },
-                &|| crate::lyric_sources::musixmatch(&client, &track, words),
-            ),
             "spotify" => cache.get("spotify", &|| {
                 crate::lyric_sources::spotify(&native, &track)
             }),

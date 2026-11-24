@@ -222,7 +222,6 @@ export interface Settings {
   lyrics_escape_exits?: boolean;
   lyrics_source_order?: string[];
   lyrics_sources_disabled?: string[];
-  lyrics_musixmatch_lines_only?: boolean;
   settings_remember_place?: boolean;
   developer_mode?: boolean;
   settings_allow_hiding?: boolean;

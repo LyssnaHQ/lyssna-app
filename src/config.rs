@@ -339,8 +339,6 @@ pub struct Settings {
     // Absent from older files, so they read as layout 0 and get reset.
     #[serde(default)]
     pub lyrics_sources_layout: u32,
-    /// Ignore Musixmatch Word Sync: use only Musixmatch's line timing.
-    pub lyrics_musixmatch_lines_only: bool,
     /// Settings reopens on the tab and scroll position it was closed at.
     pub settings_remember_place: bool,
     /// Developer mode: F12 and Settings > Advanced open the WebView's
@@ -490,7 +488,6 @@ impl Default for Settings {
                 .iter()
                 .map(|id| (*id).into())
                 .collect(),
-            lyrics_musixmatch_lines_only: false,
             lyrics_sources_disabled: crate::lyric_sources::DEFAULT_DISABLED
                 .iter()
                 .map(|id| (*id).into())

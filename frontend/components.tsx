@@ -1319,7 +1319,6 @@ const LyricCredits = memo(function LyricCredits({
         spicy_lyrics: "Spicy Lyrics",
         apple_music: "Apple Music",
         spotify: "Spotify",
-        musixmatch: "Musixmatch",
       } as Record<string, string>
     )[lyrics.source] ?? lyrics.source;
   const openCreator = useCreatorProfile();

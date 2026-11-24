@@ -586,8 +586,7 @@ impl Desktop {
             &settings.lyrics_source_order,
             &settings.lyrics_sources_disabled,
         );
-        crate::lyric_sources::set_musixmatch_words(!settings.lyrics_musixmatch_lines_only);
-        crate::lyric_sources::load_musixmatch_token();
+        crate::lyric_sources::forget_musixmatch_token();
         apply_quality(&settings);
         updater::set_channel(&settings.update_channel);
         let scanned = app.clone();
@@ -3610,9 +3609,7 @@ fn apply_settings(
         let local_changed = settings.show_local_files != snapshot.settings.show_local_files
             || settings.local_sources != snapshot.settings.local_sources;
         let sources_changed = settings.lyrics_source_order != snapshot.settings.lyrics_source_order
-            || settings.lyrics_sources_disabled != snapshot.settings.lyrics_sources_disabled
-            || settings.lyrics_musixmatch_lines_only
-                != snapshot.settings.lyrics_musixmatch_lines_only;
+            || settings.lyrics_sources_disabled != snapshot.settings.lyrics_sources_disabled;
         if output_changed {
             ensure!(snapshot.profile.is_some(), "Sign in first");
             ensure!(
@@ -3659,7 +3656,6 @@ fn apply_settings(
             &settings.lyrics_source_order,
             &settings.lyrics_sources_disabled,
         );
-        crate::lyric_sources::set_musixmatch_words(!settings.lyrics_musixmatch_lines_only);
         apply_quality(&settings);
         // Reload the playing song's lyrics so a source change shows at once;
         // each source keeps its own cache, so this is cheap.
@@ -3852,26 +3848,6 @@ fn refresh_lyrics(
         .commands
         .send(Command::FetchLyrics(track))
         .map_err(error)
-}
-/// Whether the user's own Musixmatch token is saved. The token itself never
-/// leaves the backend.
-#[tauri::command]
-fn musixmatch_token_saved() -> bool {
-    crate::lyric_sources::musixmatch_token_saved()
-}
-#[tauri::command]
-fn save_musixmatch_token(token: String) -> std::result::Result<(), String> {
-    crate::lyric_sources::save_musixmatch_token(&token).map_err(error)
-}
-#[tauri::command]
-async fn renew_musixmatch_token() -> std::result::Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let client = crate::auth::http_client()?;
-        crate::lyric_sources::renew_musixmatch_token(&client).map(|()| true)
-    })
-    .await
-    .map_err(|_| "Musixmatch token worker unavailable".to_owned())?
-    .map_err(error)
 }
 #[tauri::command]
 fn clear_lyrics_cache(state: State<'_, Desktop>) -> std::result::Result<(), String> {
@@ -6946,9 +6922,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             library_items,
             clear_lyrics_cache,
             open_devtools,
-            musixmatch_token_saved,
-            save_musixmatch_token,
-            renew_musixmatch_token,
             import_lyrics,
             parse_lyric_file,
             reset_lyrics,

@@ -90,7 +90,7 @@ const DIRECT_FIELDS = [
   ["showScrollToActiveButton", "lyrics_follow_button"],
   ["releaseYearPosition", "lyrics_year_position"], ["disableNpvLyrics", "lyrics_hide_npv"],
   ["hideNpvLyricsWhenUnavailable", "lyrics_hide_npv_empty"], ["staticBackgroundBlur", "lyrics_background_blur"],
-  ["animateFullscreenClose", "fullscreen_animate_close"], ["ignoreMusixmatchWordSync", "lyrics_musixmatch_lines_only"],
+  ["animateFullscreenClose", "fullscreen_animate_close"],
   ["rememberSettingsMenuLocation", "settings_remember_place"],
   ["developerMode", "developer_mode"], ["allowHidingSettings", "settings_allow_hiding"],
   ["discordCreditUsernames", "lyrics_discord_usernames"], ["discordLookupEndpoint", "discord_lookup_url"],

@@ -9,9 +9,6 @@
 //! - Apple Music: the song's ISRC, looked up through Lyssna (api.lyssna.org).
 //! - Spicy Lyrics: the configured Spicy Lyrics provider; its Apple Music
 //!   answers are left to the Apple Music source.
-//! - Musixmatch: title, artists, album, length and Spotify track ID, sent to
-//!   Musixmatch's desktop-app endpoint with the fork's public desktop token.
-//!   This is not an official Musixmatch API and may stop working.
 //! - Spotify: the track ID, through the signed-in native Spotify session.
 //! - LRCLIB: title, artist, album and length (lrclib.net).
 //! - Netease: title and artist, through the third-party proxy the fork uses.
@@ -20,29 +17,19 @@
 //!
 //! No source receives Spotify access or refresh tokens.
 
-use std::sync::{
-    Arc, Mutex, OnceLock,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use reqwest::blocking::Client;
 use serde_json::Value;
 
 use crate::credential as keyring;
-use crate::lyrics::{Line, Lyrics, Word};
+use crate::lyrics::{Line, Lyrics};
 use crate::model::Track;
 
 /// Every known source, in default order.
-pub const DEFAULT_ORDER: [&str; 8] = [
-    "lyssna",
-    "apple",
-    "spicy",
-    "lrcred",
-    "musixmatch",
-    "spotify",
-    "lrclib",
-    "netease",
+pub const DEFAULT_ORDER: [&str; 7] = [
+    "lyssna", "apple", "spicy", "lrcred", "spotify", "lrclib", "netease",
 ];
 /// Raised when the default layout changes; saved sources older than this
 /// are reset to it once.
@@ -51,16 +38,6 @@ pub const LAYOUT: u32 = 2;
 pub const DEFAULT_DISABLED: [&str; 2] = ["lrclib", "netease"];
 
 static ACTIVE: Mutex<Option<Vec<String>>> = Mutex::new(None);
-static MUSIXMATCH_WORDS: AtomicBool = AtomicBool::new(true);
-
-/// Ignore Musixmatch Word Sync, inverted: whether Musixmatch's word timing
-/// (richsync) is used, or only its line timing.
-pub fn set_musixmatch_words(words: bool) {
-    MUSIXMATCH_WORDS.store(words, Ordering::Relaxed);
-}
-pub fn musixmatch_words() -> bool {
-    MUSIXMATCH_WORDS.load(Ordering::Relaxed)
-}
 
 /// Sources added later that join saved orders right after another source
 /// rather than at the end.
@@ -228,7 +205,7 @@ pub type SourceFetch = Arc<dyn Fn(&str) -> Result<Lyrics> + Send + Sync>;
 
 /// Queries every enabled source at once, then picks in the chosen order: the
 /// first timed result wins, by line or by word; otherwise the first plain
-/// one. Once a preferred source (Spicy, Musixmatch, Apple) has lyrics,
+/// one. Once a preferred source (Lyssna, Spicy, Apple) has lyrics,
 /// LRCLIB and Netease are not consulted. Spicy's community syncs count only
 /// when word-synced, and Apple Music and Spicy settle between themselves by
 /// word timing (see `settle`).
@@ -258,7 +235,7 @@ pub fn fetch_best(sources: &[String], fetch: SourceFetch) -> Result<Lyrics> {
 
 /// Whether the source is one whose lyrics stop LRCLIB and Netease counting.
 fn preferred_source(source: &str) -> bool {
-    matches!(source, "lyssna" | "spicy" | "musixmatch" | "apple")
+    matches!(source, "lyssna" | "spicy" | "apple")
 }
 
 /// Timed lyrics, by line or by word, rank alike, so the source order
@@ -565,353 +542,11 @@ pub fn spotify(native: &crate::native::NativeControls, track: &Track) -> Result<
     from_spotify(&value, track.duration_ms)
 }
 
-// ----------------------------------------------------------- Musixmatch
-
-/// The Musixmatch desktop app's public token, as used by the fork.
-const MUSIXMATCH_TOKEN: &str = "21051986b9886beabe1ce01c3ce94c96319411f8f2c122676365e3";
-const MUSIXMATCH: &str = "https://apic-desktop.musixmatch.com/ws/1.1/";
-
-static MUSIXMATCH_USER: OnceLock<Mutex<String>> = OnceLock::new();
-/// Whether the token in use is the user's own, saved in the credential
-/// store. Their token is never replaced by an automatic one.
-static MUSIXMATCH_OWN: AtomicBool = AtomicBool::new(false);
-const MUSIXMATCH_SERVICE: &str = "Lyssna/Musixmatch";
-const MUSIXMATCH_ACCOUNT: &str = "user-token";
-
-fn use_musixmatch_token(token: &str) {
-    if let Ok(mut current) = MUSIXMATCH_USER
-        .get_or_init(|| Mutex::new(MUSIXMATCH_TOKEN.into()))
-        .lock()
-    {
-        *current = token.to_owned();
+/// Musixmatch is no longer a source; a token saved for it is removed.
+pub fn forget_musixmatch_token() {
+    if let Ok(entry) = keyring::Entry::new("Lyssna/Musixmatch", "user-token") {
+        let _ = entry.delete_credential();
     }
-}
-
-/// Musixmatch user tokens are letters and digits, like the desktop app's.
-pub fn valid_musixmatch_token(token: &str) -> bool {
-    (20..=200).contains(&token.len()) && token.bytes().all(|byte| byte.is_ascii_alphanumeric())
-}
-
-/// Starts with the user's own token when one is saved.
-pub fn load_musixmatch_token() {
-    if let Ok(token) = keyring::Entry::new(MUSIXMATCH_SERVICE, MUSIXMATCH_ACCOUNT)
-        .and_then(|entry| entry.get_password())
-        && valid_musixmatch_token(&token)
-    {
-        use_musixmatch_token(&token);
-        MUSIXMATCH_OWN.store(true, Ordering::Relaxed);
-    }
-}
-
-/// Saves the user's own Musixmatch token in the credential store, or with
-/// an empty token goes back to automatic tokens.
-pub fn save_musixmatch_token(token: &str) -> Result<()> {
-    let token = token.trim();
-    let entry = keyring::Entry::new(MUSIXMATCH_SERVICE, MUSIXMATCH_ACCOUNT)
-        .map_err(|_| anyhow!("Cannot open the credential store"))?;
-    if token.is_empty() {
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
-            Err(_) => anyhow::bail!("Cannot remove the saved Musixmatch token"),
-        }
-        MUSIXMATCH_OWN.store(false, Ordering::Relaxed);
-        use_musixmatch_token(MUSIXMATCH_TOKEN);
-        return Ok(());
-    }
-    ensure!(
-        valid_musixmatch_token(token),
-        "A Musixmatch token is 20 to 200 letters and digits"
-    );
-    entry
-        .set_password(token)
-        .map_err(|_| anyhow!("Cannot store the Musixmatch token"))?;
-    use_musixmatch_token(token);
-    MUSIXMATCH_OWN.store(true, Ordering::Relaxed);
-    Ok(())
-}
-
-pub fn musixmatch_token_saved() -> bool {
-    MUSIXMATCH_OWN.load(Ordering::Relaxed)
-}
-
-/// Asks Musixmatch for a new automatic token now.
-pub fn renew_musixmatch_token(client: &Client) -> Result<()> {
-    ensure!(
-        !musixmatch_token_saved(),
-        "Your own Musixmatch token is in use; remove it to use automatic tokens"
-    );
-    refresh_musixmatch_token(client)
-        .map(|_| ())
-        .context("Musixmatch did not issue a new token")
-}
-
-fn musixmatch_token() -> String {
-    MUSIXMATCH_USER
-        .get_or_init(|| Mutex::new(MUSIXMATCH_TOKEN.into()))
-        .lock()
-        .map(|token| token.clone())
-        .unwrap_or_else(|_| MUSIXMATCH_TOKEN.into())
-}
-
-/// Asks Musixmatch for a fresh desktop token after a 401. Placeholder
-/// (all-zero) tokens are ignored.
-fn refresh_musixmatch_token(client: &Client) -> Option<String> {
-    let value: Value = client
-        .get(format!("{MUSIXMATCH}token.get"))
-        .query(&[("app_id", "web-desktop-app-v1.0")])
-        .header("cookie", "x-mxm-token-guid=")
-        .send()
-        .ok()?
-        .json()
-        .ok()?;
-    let token = value["message"]["body"]["user_token"]
-        .as_str()
-        .filter(|token| !token.trim().is_empty() && token.chars().any(|char| char != '0'))?
-        .to_owned();
-    use_musixmatch_token(&token);
-    Some(token)
-}
-
-fn musixmatch_get(client: &Client, method: &str, query: &[(&str, String)]) -> Result<Value> {
-    let request = |token: String| -> Result<Value> {
-        let mut query = query.to_vec();
-        query.push(("app_id", "web-desktop-app-v1.0".into()));
-        query.push(("format", "json".into()));
-        query.push(("usertoken", token));
-        client
-            .get(format!("{MUSIXMATCH}{method}"))
-            .query(&query)
-            .header("cookie", "x-mxm-token-guid=")
-            .send()
-            .context("Musixmatch is unreachable")?
-            .json()
-            .context("Musixmatch returned invalid data")
-    };
-    let value = request(musixmatch_token())?;
-    if value["message"]["header"]["status_code"].as_u64() == Some(401)
-        && !musixmatch_token_saved()
-        && let Some(token) = refresh_musixmatch_token(client)
-    {
-        return request(token);
-    }
-    Ok(value)
-}
-
-/// Looks the song up on Musixmatch: word-synced first (unless `words` is
-/// off), then line-synced, then plain lyrics.
-pub fn musixmatch(client: &Client, track: &Track, words: bool) -> Result<Lyrics> {
-    let artist = track
-        .artists
-        .iter()
-        .map(|artist| artist.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    ensure!(
-        !track.name.is_empty() && !artist.is_empty(),
-        "Musixmatch needs a title and artist"
-    );
-    let seconds = track.duration_ms / 1000;
-    let macros = musixmatch_get(
-        client,
-        "macro.subtitles.get",
-        &[
-            ("namespace", "lyrics_richsynched".into()),
-            ("subtitle_format", "mxm".into()),
-            ("q_album", track.album.name.clone()),
-            ("q_artist", first_artist(track).into()),
-            ("q_artists", artist),
-            ("q_track", track.name.clone()),
-            ("track_spotify_id", track.uri.clone()),
-            (
-                "q_duration",
-                format!("{:.3}", track.duration_ms as f64 / 1000.0),
-            ),
-            ("f_subtitle_length", seconds.to_string()),
-            (
-                "part",
-                "track_lyrics_translation_status,track_structure,track_performer_tagging".into(),
-            ),
-        ],
-    )?;
-    let calls = &macros["message"]["body"]["macro_calls"];
-    let matcher = &calls["matcher.track.get"]["message"];
-    ensure!(
-        matcher["header"]["status_code"].as_u64() == Some(200),
-        "Musixmatch has no match for this song"
-    );
-    ensure!(
-        calls["track.lyrics.get"]["message"]["body"]["lyrics"]["restricted"].as_u64() != Some(1)
-            && calls["track.lyrics.get"]["message"]["body"]["lyrics"]["restricted"].as_bool()
-                != Some(true),
-        "Musixmatch lyrics are restricted for this song"
-    );
-    let meta = &matcher["body"]["track"];
-    let (expected, found) = (
-        title_key(&track.name),
-        title_key(meta["track_name"].as_str().unwrap_or_default()),
-    );
-    // The matcher can return a different song; only accept a title match.
-    ensure!(
-        !expected.is_empty()
-            && !found.is_empty()
-            && (expected.contains(&found) || found.contains(&expected)),
-        "Musixmatch matched a different song"
-    );
-    let flag = |key: &str| meta[key].as_u64() == Some(1) || meta[key].as_bool() == Some(true);
-    if flag("instrumental") {
-        return Ok(Lyrics {
-            instrumental: true,
-            source: "Musixmatch".into(),
-            ..Lyrics::default()
-        });
-    }
-    if words
-        && flag("has_richsync")
-        && let Some(common) = meta["commontrack_id"].as_u64()
-        && let Ok(rich) = musixmatch_get(
-            client,
-            "track.richsync.get",
-            &[
-                ("subtitle_format", "mxm".into()),
-                ("commontrack_id", common.to_string()),
-                ("q_duration", meta["track_length"].to_string()),
-                ("f_subtitle_length", meta["track_length"].to_string()),
-            ],
-        )
-        && let Some(body) = rich["message"]["body"]["richsync"]["richsync_body"].as_str()
-        && let Ok(value) = serde_json::from_str::<Value>(body)
-        && let Some(lyrics) = from_musixmatch_richsync(&value)
-    {
-        return Ok(lyrics);
-    }
-    if flag("has_subtitles")
-        && let Some(body) = calls["track.subtitles.get"]["message"]["body"]["subtitle_list"][0]
-            ["subtitle"]["subtitle_body"]
-            .as_str()
-        && let Ok(value) = serde_json::from_str::<Value>(body)
-        && let Some(lyrics) = from_musixmatch_subtitles(&value, track.duration_ms)
-    {
-        return Ok(lyrics);
-    }
-    let plain = calls["track.lyrics.get"]["message"]["body"]["lyrics"]["lyrics_body"]
-        .as_str()
-        .unwrap_or_default();
-    let lines: Vec<Line> = plain_lines(
-        plain
-            .lines()
-            .filter(|line| !line.contains("This Lyrics is NOT for Commercial use"))
-            .filter(|line| !line.trim_start().starts_with("***")),
-    );
-    ensure!(!lines.is_empty(), "Musixmatch has no lyrics for this song");
-    Ok(Lyrics {
-        lines,
-        source: "Musixmatch".into(),
-        synced: false,
-        ..Lyrics::default()
-    })
-}
-
-fn joins_next(current: &str, next: &str) -> bool {
-    let (current, next) = (current.trim(), next.trim());
-    !current.is_empty()
-        && !next.is_empty()
-        && (next.starts_with(|char: char| "'’-–—/.,!?;:%)]}".contains(char))
-            || current.ends_with(|char: char| "([{'\"“‘-–—/".contains(char)))
-}
-
-/// Musixmatch richsync: lines of `{ts, te, l: [{c, o}]}`, word offsets in
-/// seconds from the line start.
-pub fn from_musixmatch_richsync(value: &Value) -> Option<Lyrics> {
-    let mut lines = Vec::new();
-    for row in value.as_array()?.iter().take(2_000) {
-        let start = (row["ts"].as_f64().unwrap_or(0.0) * 1000.0).round() as u64;
-        let end = (row["te"].as_f64().unwrap_or(0.0) * 1000.0).round() as u64;
-        let tokens: Vec<(&str, f64)> = row["l"]
-            .as_array()
-            .map(|tokens| {
-                tokens
-                    .iter()
-                    .map(|token| {
-                        (
-                            token["c"].as_str().unwrap_or_default(),
-                            token["o"].as_f64().unwrap_or(0.0),
-                        )
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let mut words: Vec<Word> = Vec::new();
-        let mut join = false;
-        for (index, (text, offset)) in tokens.iter().enumerate() {
-            let clean = text.trim();
-            if clean.is_empty() || is_note_only(clean) {
-                continue;
-            }
-            let word_start = start + (offset * 1000.0).round() as u64;
-            let word_end = tokens
-                .get(index + 1)
-                .map(|(_, next)| start + (next * 1000.0).round() as u64)
-                .unwrap_or(end)
-                .max(word_start);
-            let next_text = tokens.get(index + 1).map(|(text, _)| *text).unwrap_or("");
-            words.push(Word {
-                start_ms: word_start,
-                end_ms: word_end,
-                text: format!("{}{clean}", if words.is_empty() || join { "" } else { " " }),
-                sung_by: None,
-            });
-            join = joins_next(text, next_text);
-        }
-        if words.is_empty() {
-            continue;
-        }
-        lines.push(Line {
-            start_ms: words[0].start_ms,
-            end_ms: end.max(words.last()?.end_ms),
-            text: words.iter().map(|word| word.text.as_str()).collect(),
-            words,
-            ..Line::default()
-        });
-    }
-    (!lines.is_empty()).then(|| Lyrics {
-        lines,
-        source: "Musixmatch".into(),
-        synced: true,
-        ..Lyrics::default()
-    })
-}
-
-/// Musixmatch line-synced subtitles: `[{text, time: {total}}]`.
-pub fn from_musixmatch_subtitles(value: &Value, duration_ms: u64) -> Option<Lyrics> {
-    let mut lines: Vec<Line> = Vec::new();
-    for row in value.as_array()?.iter().take(2_000) {
-        let text = row["text"].as_str().unwrap_or_default().trim();
-        let start = (row["time"]["total"].as_f64().unwrap_or(0.0) * 1000.0).round() as u64;
-        if text.is_empty() || is_note_only(text) {
-            // Instrumental markers end the line before them.
-            if let Some(last) = lines.last_mut()
-                && last.end_ms == 0
-            {
-                last.end_ms = start;
-            }
-            continue;
-        }
-        lines.push(Line {
-            start_ms: start,
-            text: text.chars().take(500).collect(),
-            ..Line::default()
-        });
-    }
-    if lines.is_empty() {
-        return None;
-    }
-    close_lines(&mut lines, duration_ms);
-    Some(Lyrics {
-        lines,
-        source: "Musixmatch".into(),
-        synced: true,
-        ..Lyrics::default()
-    })
 }
 
 // ------------------------------------------------------------- Netease
@@ -1052,6 +687,7 @@ pub fn from_netease(value: &Value, duration_ms: u64) -> Result<Lyrics> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lyrics::Word;
 
     #[test]
     fn a_song_source_must_be_a_known_source() {
@@ -1086,14 +722,7 @@ mod tests {
         assert_eq!(
             normalize_order(&["lrclib".into(), "bogus".into(), "lrclib".into()]),
             vec![
-                "lyssna",
-                "lrclib",
-                "apple",
-                "spicy",
-                "lrcred",
-                "musixmatch",
-                "spotify",
-                "netease"
+                "lyssna", "lrclib", "apple", "spicy", "lrcred", "spotify", "netease"
             ]
         );
         configure(&["lrclib".into(), "spicy".into()], &["spicy".into()]);
@@ -1108,19 +737,11 @@ mod tests {
         assert_eq!(
             order,
             [
-                "lyssna",
-                "spicy",
-                "lrcred",
-                "lrclib",
-                "apple",
-                "musixmatch",
-                "spotify",
-                "netease"
+                "lyssna", "spicy", "lrcred", "lrclib", "apple", "spotify", "netease"
             ]
         );
         assert!(!disabled.contains(&"lrcred".to_owned()));
         assert!(disabled.contains(&"netease".to_owned()));
-        assert!(!disabled.contains(&"musixmatch".to_owned()));
         // A source the user turned on is not turned back off.
         let mut chosen = Vec::new();
         migrate(&DEFAULT_ORDER.map(String::from), &mut chosen);
@@ -1129,27 +750,25 @@ mod tests {
 
     #[test]
     fn first_timed_source_in_order_wins() {
-        let order: Vec<String> = ["lyssna", "musixmatch", "lrclib"]
-            .map(String::from)
-            .to_vec();
-        let pick = |lyssna: Lyrics, musixmatch: Lyrics| {
+        let order: Vec<String> = ["lyssna", "apple", "lrclib"].map(String::from).to_vec();
+        let pick = |lyssna: Lyrics, apple: Lyrics| {
             fetch_best(
                 &order,
                 Arc::new(move |source: &str| match source {
                     "lyssna" => Ok(lyssna.clone()),
-                    "musixmatch" => Ok(musixmatch.clone()),
+                    "apple" => Ok(apple.clone()),
                     _ => Ok(timed(true, true)),
                 }),
             )
             .unwrap()
         };
-        // Line-synced Lyssna, listed first, beats word-synced Musixmatch.
+        // Line-synced Lyssna, listed first, beats word-synced Apple Music.
         assert!(
             pick(timed(false, true), timed(true, true)).lines[0]
                 .words
                 .is_empty()
         );
-        // Timed Musixmatch beats plain Lyssna.
+        // Timed Apple Music beats plain Lyssna.
         assert!(pick(timed(false, false), timed(true, true)).synced);
         // A preferred source's answer stops LRCLIB being used.
         assert!(
@@ -1201,18 +820,8 @@ mod tests {
     }
 
     #[test]
-    fn musixmatch_tokens_are_bounded_letters_and_digits() {
-        assert!(valid_musixmatch_token(MUSIXMATCH_TOKEN));
-        assert!(!valid_musixmatch_token("short"));
-        assert!(!valid_musixmatch_token(&"a".repeat(201)));
-        assert!(!valid_musixmatch_token(
-            "21051986b9886beabe1ce01c3ce94c9631941 1f8f2c"
-        ));
-    }
-
-    #[test]
     fn missing_lyrics_differ_from_unreachable_sources() {
-        let order: Vec<String> = ["spicy", "musixmatch"].map(String::from).to_vec();
+        let order: Vec<String> = ["spicy", "apple"].map(String::from).to_vec();
         let missing = fetch_best(&order, Arc::new(|_: &str| Err(anyhow!("No match"))))
             .err()
             .unwrap();
@@ -1356,28 +965,6 @@ mod tests {
     }
 
     #[test]
-    fn musixmatch_richsync_becomes_word_timing() {
-        let lyrics = from_musixmatch_richsync(&json!([
-            {"ts":1.0,"te":3.0,"l":[{"c":"Don't","o":0.0},{"c":" ","o":0.4},{"c":"stop","o":0.5},{"c":"!","o":1.5}]}
-        ]))
-        .unwrap();
-        let words: Vec<_> = lyrics.lines[0]
-            .words
-            .iter()
-            .map(|word| word.text.as_str())
-            .collect();
-        assert_eq!(words, vec!["Don't", " stop", "!"]);
-        assert_eq!(lyrics.lines[0].words[1].start_ms, 1_500);
-        assert_eq!(lyrics.lines[0].text, "Don't stop!");
-        let subtitles = from_musixmatch_subtitles(
-            &json!([{"text":"Hi","time":{"total":1.0}},{"text":"","time":{"total":2.5}},{"text":"Bye","time":{"total":4.0}}]),
-            9_000,
-        )
-        .unwrap();
-        assert_eq!(subtitles.lines[0].end_ms, 2_500);
-    }
-
-    #[test]
     fn netease_drops_credit_lines() {
         let lyrics = from_netease(
             &json!({"lrc":{"lyric":"[00:00.00]作词 : Someone\n[00:01.00]Hello\n[00:02.00]World"}}),
@@ -1424,7 +1011,6 @@ mod tests {
             ..Default::default()
         };
         for (name, result) in [
-            ("musixmatch", musixmatch(&client, &track, true)),
             ("lrclib", lrclib(&client, &track)),
             ("netease", netease(&client, &track)),
         ] {

@@ -47,7 +47,6 @@ import { FontSettings } from "./custom-fonts";
 import { DEFAULT_MARKER, MARKER_COLOURS } from "./highlighter";
 import { OffsetSetting } from "./lyric-offset";
 import { LyricsProvider } from "./lyrics-provider";
-import { MusixmatchToken } from "./musixmatch-token";
 import { LyssnaAccount } from "./lyssna-account";
 import { AnimatorPresetRow } from "./animator-settings";
 import { SOLOIST_PLAYS, SoloistRows } from "./soloist-settings";
@@ -60,7 +59,6 @@ export const DEFAULT_SOURCES = [
   "spicy",
   "apple",
   "lrcred",
-  "musixmatch",
   "spotify",
   "lrclib",
   "netease",
@@ -79,10 +77,6 @@ export const SOURCES: Record<string, { name: string; help: string }> = {
   spicy: {
     name: "Spicy Lyrics",
     help: "Community-contributed lyrics from Spicy Lyrics. Receives the track ID and your IP address.",
-  },
-  musixmatch: {
-    name: "Musixmatch",
-    help: "Synced or word-timed lyrics through Musixmatch's desktop-app service (unofficial). Receives the title, artists, album, length and track ID.",
   },
   apple: {
     name: "Apple Music",
@@ -1712,23 +1706,6 @@ export function SettingsWindow({
             </button>
           </footer>
         </SettingRow>,
-      ],
-    ],
-    [
-      "Sources",
-      "Source options",
-      [
-        flag(
-          "lyrics_musixmatch_lines_only",
-          "Ignore Musixmatch word sync",
-          "Use only Musixmatch's line timing, even when it has word timing.",
-          "musixmatch word sync richsync line timing",
-        ),
-        <MusixmatchToken
-          key="musixmatch"
-          onCall={onCall}
-          onNotice={onNotice}
-        />,
       ],
     ],
     [

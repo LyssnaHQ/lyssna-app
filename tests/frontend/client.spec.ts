@@ -1281,13 +1281,6 @@ async function startClient(
             host.__clientTest.link = null;
             return link;
           }
-          if (command === "musixmatch_token_saved")
-            return !!host.__clientTest.musixmatchToken;
-          if (command === "save_musixmatch_token") {
-            host.__clientTest.musixmatchToken = args?.token ?? "";
-            return;
-          }
-          if (command === "renew_musixmatch_token") return true;
           if (command === "cancel_sign_in") {
             emit({ type: "login_finished" });
             return;
@@ -10548,20 +10541,19 @@ test("Lyssna settings combines app and lyrics options with ordered sources", asy
     /Spicy Lyrics/,
     /Apple Music/,
     /lrc\.red/,
-    /Musixmatch/,
     /Spotify/,
     /LRCLIB/,
     /Netease/,
   ]);
   await expect(page.locator(".lyric-source-rank")).toHaveText([
-    "1", "2", "3", "4", "5", "6", "7", "8",
+    "1", "2", "3", "4", "5", "6", "7",
   ]);
   await page.locator(".lyric-sources").screenshot({
     path: "target/diagnostics/lyssna-lyric-sources.png",
     animations: "disabled",
   });
   await expect(
-    page.getByRole("switch", { name: "Musixmatch", exact: true }),
+    page.getByRole("switch", { name: "Spotify", exact: true }),
   ).toBeChecked();
   await page.getByRole("switch", { name: "LRCLIB", exact: true }).check();
   await expect
@@ -10574,9 +10566,8 @@ test("Lyssna settings combines app and lyrics options with ordered sources", asy
       "lyssna",
       "spicy",
       "apple",
-      "lrcred",
       "spotify",
-      "musixmatch",
+      "lrcred",
       "lrclib",
       "netease",
     ]);
@@ -14254,58 +14245,6 @@ test("the lyrics cache button follows its chosen action", async ({ page }) => {
   await page.getByRole("switch", { name: "Lyrics cache button" }).click();
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(toolbar.locator('[data-icon="retry"]')).toHaveCount(0);
-});
-
-test("Musixmatch word sync can be ignored", async ({ page }) => {
-  await startClient(page);
-  await openSettings(page, "Sources");
-  const toggle = page.getByRole("switch", {
-    name: "Ignore Musixmatch word sync",
-  });
-  await expect(toggle).not.toBeChecked();
-  await toggle.click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as any).__clientTest.commands
-            .filter((entry: any) => entry.command === "save_settings")
-            .at(-1)?.args.settings.lyrics_musixmatch_lines_only,
-      ),
-    )
-    .toBe(true);
-});
-
-test("a Musixmatch token is saved without being shown again", async ({
-  page,
-}) => {
-  await startClient(page);
-  await openSettings(page, "Sources");
-  const field = page.getByLabel("Musixmatch token", { exact: true });
-  await page.getByRole("button", { name: "Refresh token" }).click();
-  await expect(page.locator(".toast")).toContainText(
-    "Musixmatch token refreshed",
-  );
-  await field.fill("abcdefghij0123456789abcd");
-  await page.getByRole("button", { name: "Save token" }).click();
-  await expect(field).toHaveValue("");
-  await expect(field).toHaveAttribute("placeholder", "Saved");
-  await expect(page.getByRole("button", { name: "Refresh token" })).toHaveCount(
-    0,
-  );
-  await page.getByRole("button", { name: "Remove token" }).click();
-  await expect(
-    page.getByRole("button", { name: "Refresh token" }),
-  ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        (window as any).__clientTest.commands
-          .filter((call: any) => call.command === "save_musixmatch_token")
-          .map((call: any) => call.args.token),
-      ),
-    )
-    .toEqual(["abcdefghij0123456789abcd", ""]);
 });
 
 test("Settings can forget where it was closed", async ({ page }) => {
@@ -21671,11 +21610,11 @@ test("Load TTML chooses the lyrics source for the playing song", async ({
     name: "Lyrics source for this song",
   });
   await expect(source).toHaveValue("apple");
-  await source.selectOption("musixmatch");
-  await expect(source).toHaveValue("musixmatch");
+  await source.selectOption("lrcred");
+  await expect(source).toHaveValue("lrcred");
   await source.selectOption("");
   expect(await commandArgs(page, "set_lyrics_song_source")).toEqual([
-    { source: "musixmatch" },
+    { source: "lrcred" },
     { source: null },
   ]);
 });
