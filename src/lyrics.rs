@@ -631,6 +631,11 @@ fn timed_syllables(text: roxmltree::Node) -> Vec<Word> {
             syllable.insert(0, ' ');
         }
         spaced = false;
+        // A whole word's reading can carry the syllables it's sung in.
+        if let Some(pieces) = split_reading(child, &syllable, begin, end) {
+            syllables.extend(pieces);
+            continue;
+        }
         syllables.push(Word {
             start_ms: begin,
             end_ms: end,
@@ -639,6 +644,45 @@ fn timed_syllables(text: roxmltree::Node) -> Vec<Word> {
         });
     }
     syllables
+}
+
+/// A reading span's `lyssna:pieces` and `lyssna:starts`, as timed pieces,
+/// when they spell out the span's text in order inside its timing.
+fn split_reading(span: roxmltree::Node, text: &str, begin: u64, end: u64) -> Option<Vec<Word>> {
+    let texts: Vec<&str> = attribute(span, "pieces")?.split('|').collect();
+    let starts = attribute(span, "starts")?
+        .split_whitespace()
+        .map(timestamp)
+        .collect::<Option<Vec<u64>>>()?;
+    let leading = text.len() - text.trim_start().len();
+    if texts.len() < 2
+        || starts.len() + 1 != texts.len()
+        || texts.concat() != text.trim()
+        || !starts.windows(2).all(|pair| pair[0] < pair[1])
+        || starts.first().is_some_and(|first| *first <= begin)
+        || starts.last().is_some_and(|last| *last >= end)
+    {
+        return None;
+    }
+    let mut bounds = vec![begin];
+    bounds.extend(starts);
+    bounds.push(end);
+    Some(
+        texts
+            .iter()
+            .enumerate()
+            .map(|(index, piece)| Word {
+                start_ms: bounds[index],
+                end_ms: bounds[index + 1],
+                text: if index == 0 {
+                    format!("{}{piece}", &text[..leading])
+                } else {
+                    (*piece).to_owned()
+                },
+                sung_by: None,
+            })
+            .collect(),
+    )
 }
 
 /// The transliteration's pieces placed on the line's words: each piece sits
@@ -1899,6 +1943,31 @@ mod tests {
             .map(|piece| piece.text.as_str())
             .collect();
         assert_eq!(texts, ["mi", "kan", "sei", " no"]);
+    }
+
+    #[test]
+    fn ttml_reads_a_whole_word_reading_split_into_syllables() {
+        let text = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xmlns:lyssna="https://lyssna.org/ns/ttml"><head><metadata><ttm:agent type="person" xml:id="v1"/><iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal"><transliterations><transliteration><text for="L1"><span begin="00:01.000" end="00:01.800" lyssna:pieces="i|no|chi" lyssna:starts="00:01.200 00:01.400">inochi</span> <span begin="00:02.000" end="00:02.500">no</span></text></transliteration></transliterations></iTunesMetadata></metadata></head><body><div><p begin="00:01.000" end="00:02.500" ttm:agent="v1" itunes:key="L1"><span begin="00:01.000" end="00:01.800">命</span> <span begin="00:02.000" end="00:02.500">の</span></p></div></body></tt>"#;
+        let lyrics = parse_ttml(text, 5_000).unwrap();
+        assert_eq!(lyrics.lines[0].romanization, "inochi no");
+        let pieces: Vec<_> = lyrics.lines[0]
+            .romanization_words
+            .iter()
+            .map(|piece| (piece.text.as_str(), piece.start_ms, piece.end_ms))
+            .collect();
+        assert_eq!(
+            pieces,
+            [
+                ("i", 1_000, 1_200),
+                ("no", 1_200, 1_400),
+                ("chi", 1_400, 1_800),
+                (" no", 2_000, 2_500)
+            ]
+        );
+        // Pieces that don't spell the reading are left as one.
+        let wrong = text.replace("i|no|chi", "i|no|ka");
+        let lyrics = parse_ttml(&wrong, 5_000).unwrap();
+        assert_eq!(lyrics.lines[0].romanization_words[0].text, "inochi");
     }
 
     #[test]

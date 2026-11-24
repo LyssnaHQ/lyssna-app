@@ -842,8 +842,9 @@ describe("TTML Creator model", () => {
     ]);
     const ttml = toTtml(lines, meta);
     expect(ttml).toContain(
-      '<span begin="00:01.000" end="00:01.200">i</span><span begin="00:01.200" end="00:01.400">no</span><span begin="00:01.400" end="00:01.800">chi</span>',
+      '<span begin="00:01.000" end="00:01.800" lyssna:pieces="i|no|chi" lyssna:starts="00:01.200 00:01.400">inochi</span>',
     );
+    expect(ttml).toContain('xmlns:lyssna="https://lyssna.org/ns/ttml"');
     expect(ttml).toContain('<span begin="00:01.000" end="00:01.800">命</span>');
     const shown = toLyrics(lines).lines[0];
     expect(shown.romanization).toBe("inochi no");

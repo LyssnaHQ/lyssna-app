@@ -2771,10 +2771,29 @@ function spans(
       const pieces = roman
         ? romanPieces(unit)
         : [{ text: unit.text, start: unit.start!, end: unit.end! }];
-      const span = pieces
+      // A reading split into syllables stays one span timed like its word,
+      // which is how readers match a reading to its word; the split rides
+      // along in Lyssna attributes.
+      const split =
+        pieces.length > 1
+          ? ` lyssna:pieces="${escape(pieces.map((piece) => piece.text).join("|"))}" lyssna:starts="${pieces
+              .slice(1)
+              .map((piece) => formatTime(piece.start))
+              .join(" ")}"`
+          : "";
+      const whole = split
+        ? [
+            {
+              text: pieces.map((piece) => piece.text).join(""),
+              start: unit.start!,
+              end: unit.end!,
+            },
+          ]
+        : pieces;
+      const span = whole
         .map(
           (piece) =>
-            `<span begin="${formatTime(piece.start)}" end="${formatTime(Math.max(piece.start, piece.end))}"${agent ? ` ttm:agent="${agent}"` : ""}>${escape(piece.text)}</span>`,
+            `<span begin="${formatTime(piece.start)}" end="${formatTime(Math.max(piece.start, piece.end))}"${agent ? ` ttm:agent="${agent}"` : ""}${split}>${escape(piece.text)}</span>`,
         )
         .join("");
       const spaced = roman ? readingSpaced(unit, index) : index > 0 && !unit.joined;
@@ -2952,7 +2971,7 @@ export function toTtml(
       : "",
   ].join("");
   const duration = Math.max(end, meta.durationMs ?? 0);
-  return `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:amll="http://www.example.com/ns/amll" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"${lines.some((line) => line.part && line.singer) ? ` xmlns:lyssna="${LYSSNA_NS}"` : ""} itunes:timing="Word"><head><metadata>${metadata}</metadata></head><body dur="${formatTime(duration)}">${body}</body></tt>`;
+  return `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:amll="http://www.example.com/ns/amll" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"${lines.some((line) => line.part && line.singer) || readings.some((reading) => reading.includes("lyssna:pieces")) ? ` xmlns:lyssna="${LYSSNA_NS}"` : ""} itunes:timing="Word"><head><metadata>${metadata}</metadata></head><body dur="${formatTime(duration)}">${body}</body></tt>`;
 }
 
 export function fileName(meta: SongMeta): string {
