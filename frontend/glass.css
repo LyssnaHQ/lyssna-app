@@ -357,6 +357,10 @@
 .liquid-glass .song-menu > button {
   border-radius: 8px;
 }
+/* Rows follow the menu's 14px corners inside its 4px padding. */
+.liquid-glass .sort-menu > button {
+  border-radius: 10px;
+}
 
 @media (prefers-reduced-transparency: reduce) {
   .liquid-glass {
