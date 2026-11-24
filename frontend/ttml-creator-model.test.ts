@@ -36,6 +36,7 @@ import {
   splitReadings,
   geniusChanges,
   geniusLeads,
+  geniusEchoes,
   geniusMissing,
   addMissing,
   clearLines,
@@ -366,6 +367,16 @@ describe("TTML Creator model", () => {
     ).toEqual([1]);
   });
 
+  it("points out lead lines Genius has all in brackets", () => {
+    const lines = timeAll(
+      "Giga yeah\nAh\nSomething old\nOh whoa\nMake it new",
+    ).map((line, index) => ({ ...line, background: index === 3 }));
+    const genius =
+      "[Intro]\n(Giga yeah)\n[Pre-Chorus]\nAh (Something old), oh, whoa (Make it new)";
+    expect(geniusEchoes(lines, genius)).toEqual([2, 4]);
+    expect(geniusLeads(lines, genius)).toEqual([3]);
+  });
+
   it("finds and adds what Genius sings that the draft leaves out", () => {
     const lines = timeAll("Start here\nWhoa oh whoa\nCheck it out");
     const genius =
@@ -404,6 +415,7 @@ describe("TTML Creator model", () => {
       singers: [{ voice: "Mira", lines: [1, 3] }],
       mixed: [],
       leads: [],
+      echoes: [],
       missing: [],
     });
   });

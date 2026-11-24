@@ -476,7 +476,8 @@ export function GeniusReview({
   onGo: (line: number) => void;
   onKeep: () => void;
   onUndo: () => void;
-  onMakeLeads: (lines: number[]) => void;
+  /** Makes these lines background vocals, or lead lines. */
+  onMakeLeads: (lines: number[], background: boolean) => void;
   onAddMissing: () => void;
 }) {
   const go = (line: number, label: string, key: string | number) => (
@@ -534,9 +535,35 @@ export function GeniusReview({
           </div>
           <button
             className="ttml-review-action"
-            onClick={() => onMakeLeads(changes.leads.map((each) => each.line))}
+            onClick={() =>
+              onMakeLeads(
+                changes.leads.map((each) => each.line),
+                false,
+              )
+            }
           >
             Make {changes.leads.length === 1 ? "it a main line" : "them main lines"}
+          </button>
+        </section>
+      )}
+      {changes.echoes.length > 0 && (
+        <section>
+          <h4>Main lines Genius has in brackets</h4>
+          <div className="ttml-review-chips">
+            {changes.echoes.map((each) =>
+              go(each.line, `${each.line + 1} · ${each.text}`, each.line),
+            )}
+          </div>
+          <button
+            className="ttml-review-action"
+            onClick={() =>
+              onMakeLeads(
+                changes.echoes.map((each) => each.line),
+                true,
+              )
+            }
+          >
+            Make {changes.echoes.length === 1 ? "it a background vocal" : "them background vocals"}
           </button>
         </section>
       )}

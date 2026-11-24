@@ -748,19 +748,40 @@ export function addMissing(
 }
 
 /**
- * Background lines Genius sings as lead, outside any bracket. Some are
- * background on purpose, so these are only pointed out, never changed.
+ * Whole lines the draft and Genius disagree on: background lines Genius
+ * sings outside any bracket, and lead lines it has all in brackets. A
+ * draft may set either apart on purpose, so they are only pointed out.
  */
-export function geniusLeads(lines: CreatorLine[], text: string): number[] {
+function geniusDisputes(lines: CreatorLine[], text: string) {
   const { tokensOf, match } = alignGenius(lines, text, new Map());
-  return lines.flatMap((line, index) => {
-    if (!line.background) return [];
+  const first = lines.findIndex((line) => line.units.length);
+  const leads: number[] = [];
+  const echoes: number[] = [];
+  lines.forEach((line, index) => {
     const found = tokensOf[index].map((token) => match.get(token));
     const lead = found.filter((word) => word?.group === -1).length;
     const bracketed = found.filter((word) => word && word.group >= 0).length;
-    return lead >= 2 && lead * 2 >= found.length && !bracketed ? [index] : [];
+    if (line.background) {
+      if (lead && lead * 2 >= found.length && !bracketed) leads.push(index);
+    } else if (
+      // A song's opening ad-libs are its lead.
+      index !== first &&
+      bracketed &&
+      bracketed * 2 >= found.length &&
+      !lead
+    )
+      echoes.push(index);
   });
+  return { leads, echoes };
 }
+
+/** Background lines Genius sings as lead, outside any bracket. */
+export const geniusLeads = (lines: CreatorLine[], text: string) =>
+  geniusDisputes(lines, text).leads;
+
+/** Lead lines Genius has all in brackets, as backing vocals. */
+export const geniusEchoes = (lines: CreatorLine[], text: string) =>
+  geniusDisputes(lines, text).echoes;
 
 /**
  * Who sings and what's a backing vocal, from Genius's styling: italic and
@@ -916,6 +937,8 @@ export interface GeniusChanges {
   mixed: number[];
   /** Background lines Genius sings as lead. */
   leads: { line: number; text: string }[];
+  /** Lead lines Genius has all in brackets. */
+  echoes: { line: number; text: string }[];
   /** What Genius sings that the draft leaves out. */
   missing: MissingLine[];
 }
@@ -931,7 +954,9 @@ export function geniusChanges(
   after: CreatorLine[],
   genius?: string,
 ): GeniusChanges {
-  const leads = genius ? geniusLeads(after, genius) : [];
+  const { leads, echoes: bracketed } = genius
+    ? geniusDisputes(after, genius)
+    : { leads: [], echoes: [] };
   const echoes = new Map<string, number>();
   for (const line of before)
     if (line.background)
@@ -942,6 +967,7 @@ export function geniusChanges(
     singers: [],
     mixed: [],
     leads: leads.map((line) => ({ line, text: textOf(after[line]) })),
+    echoes: bracketed.map((line) => ({ line, text: textOf(after[line]) })),
     missing: genius ? geniusMissing(after, genius) : [],
   };
   after.forEach((line, index) => {

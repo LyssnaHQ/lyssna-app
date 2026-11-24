@@ -3824,9 +3824,9 @@ export function TtmlCreator({
             centre(line);
           }}
           onKeep={() => setReview(null)}
-          onMakeLeads={(chosen) => {
+          onMakeLeads={(chosen, background) => {
             const next = lines.map((line, index) =>
-              chosen.includes(index) ? { ...line, background: false } : line,
+              chosen.includes(index) ? { ...line, background } : line,
             );
             setLines(next);
             setReview({
