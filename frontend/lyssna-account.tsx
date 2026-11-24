@@ -32,8 +32,8 @@ interface Reserved {
   username: string;
 }
 
-/** Admins only: upload as a reserved account (one made for someone who hasn't signed up yet) for a few hours.
- *  Type part of its name or paste its user ID. The choice stays in memory, so quitting the app or signing out ends it. */
+/** Admins only: upload as another account (a reserved one made for someone who hasn't signed up yet, or any other)
+ *  for a few hours. Type part of its name or paste its user ID. The choice stays in memory, so quitting the app or signing out ends it. */
 function ActAsRow({
   onCall,
   onNotice,
@@ -122,8 +122,8 @@ function ActAsRow({
         active
           ? `Uploads from this app go to ${active.username} until ${until}, or until you quit the app.`
           : none
-            ? "No reserved account matches."
-            : "Admins only. Type part of a reserved account's name, or paste its user ID, to upload as it for a while."
+            ? "No account matches."
+            : "Admins only. Type part of an account's name, or paste its user ID, to upload as it for a while."
       }
       keywords="admin upload as reserved account act as impersonate user uuid"
     >
@@ -137,7 +137,7 @@ function ActAsRow({
         <div className="inline-actions">
           <input
             type="text"
-            aria-label="Reserved account name or user ID"
+            aria-label="Account name or user ID"
             placeholder="Name or user ID"
             autoComplete="off"
             spellCheck={false}

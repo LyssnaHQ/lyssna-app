@@ -417,14 +417,14 @@ pub fn account(client: &Client) -> Result<Option<Account>> {
     }))
 }
 
-/// A reserved Lyssna account: one an admin made for someone who has not signed up yet.
+/// A Lyssna account an admin can upload as: a reserved one (made for someone who has not signed up yet) or any other.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Reserved {
     pub id: String,
     pub username: String,
 }
 
-/// The reserved account uploads go to, with when the choice ends.
+/// The account uploads go to, with when the choice ends.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ActAs {
     pub id: String,
@@ -433,12 +433,12 @@ pub struct ActAs {
     pub seconds_left: u64,
 }
 
-// An admin can upload as a reserved account for a while. The choice lives in memory only, so quitting the
-// app, signing out or four hours ends it; the API only honours it for admins and reserved accounts.
+// An admin can upload as another account for a while. The choice lives in memory only, so quitting the
+// app, signing out or four hours ends it; the API only honours it for admins.
 const ACT_AS_FOR: Duration = Duration::from_secs(4 * 60 * 60);
 static ACT_AS: Mutex<Option<(Reserved, Instant)>> = Mutex::new(None);
 
-/// Who uploads currently go to, if an admin chose a reserved account and the time is not up.
+/// Who uploads currently go to, if an admin chose an account and the time is not up.
 pub fn act_as() -> Option<ActAs> {
     let mut chosen = ACT_AS.lock().unwrap_or_else(|error| error.into_inner());
     let (who, until) = chosen.clone()?;
@@ -470,7 +470,7 @@ pub fn clear_act_as() {
     *ACT_AS.lock().unwrap_or_else(|error| error.into_inner()) = None;
 }
 
-/// The address uploads go to: with a reserved account chosen, `?as=` makes the request run as it.
+/// The address uploads go to: with an account chosen, `?as=` makes the request run as it.
 fn submissions_url() -> String {
     match act_as() {
         Some(who) => format!("{API}/v1/submissions?as={}", who.id),
@@ -478,12 +478,12 @@ fn submissions_url() -> String {
     }
 }
 
-/// Finds reserved accounts by part of their name, or by user ID. Admins only.
+/// Finds accounts by part of their name, or by user ID; reserved accounts come first. Admins only.
 pub fn find_reserved(client: &Client, query: &str) -> Result<Vec<Reserved>> {
     let Some(token) = access_token(client)? else {
         bail!("Sign in to Lyssna in Settings first");
     };
-    let mut url = Url::parse(&format!("{API}/v1/users/reserved"))?;
+    let mut url = Url::parse(&format!("{API}/v1/users/act-as"))?;
     url.query_pairs_mut()
         .append_pair("limit", "8")
         .append_pair("q", query.trim());
