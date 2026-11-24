@@ -630,10 +630,15 @@ export interface MissingLine {
  * rest of a Genius line with none of its words in the draft. Each goes
  * after the draft line holding the Genius words just before it.
  */
-export function geniusMissing(
-  lines: CreatorLine[],
-  text: string,
-): MissingLine[] {
+export const geniusMissing = (lines: CreatorLine[], text: string) =>
+  geniusGaps(lines, text).missing;
+
+/**
+ * Where Genius and the draft part ways: Genius parts the draft leaves out,
+ * and draft lines missing some of Genius's words or characters
+ * ("パレー" where Genius has "パレード").
+ */
+function geniusGaps(lines: CreatorLine[], text: string) {
   const { tokensOf, match, theirs } = alignGenius(
     lines,
     text,
@@ -647,6 +652,7 @@ export function geniusMissing(
     }
   });
   const missing: MissingLine[] = [];
+  const differs = new Map<number, string[]>();
   let next = 0;
   let after = -1;
   for (const raw of balanceStyles(text)) {
@@ -700,11 +706,11 @@ export function geniusMissing(
             }
             return found * 2 >= own.length;
           });
+      const bare = unmark(each.text)
+        .trim()
+        .replace(/^[,，、\s]+|[,，、\s]+$/gu, "")
+        .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
       if (kept.length * 4 < own.length && !nearby()) {
-        const bare = unmark(each.text)
-          .trim()
-          .replace(/^[,，、\s]+|[,，、\s]+$/gu, "")
-          .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
         if (bare)
           missing.push({
             after,
@@ -712,6 +718,25 @@ export function geniusMissing(
             background: each.background,
             voice: own[0].voice,
           });
+      } else if (kept.length) {
+        // Words of it that no draft line around its own has.
+        const at = kept.map((word) => lineOf.get(word)!);
+        const near = tokensOf
+          .slice(Math.max(0, Math.min(...at) - 1), Math.max(...at) + 2)
+          .flat()
+          .map((token) => token.word);
+        const lost = own.filter((word) => {
+          const found = near.findIndex((each) => sameWord(each, word.word));
+          if (found >= 0) near.splice(found, 1);
+          return found < 0;
+        });
+        if (lost.length && bare) {
+          const line = Math.min(...at);
+          differs.set(line, [
+            ...(differs.get(line) ?? []),
+            each.background ? `(${bare})` : bare,
+          ]);
+        }
       }
       for (const word of own) {
         const line = lineOf.get(word);
@@ -719,7 +744,12 @@ export function geniusMissing(
       }
     }
   }
-  return missing;
+  return {
+    missing,
+    differs: [...differs]
+      .sort((a, b) => a[0] - b[0])
+      .map(([line, parts]) => ({ line, genius: parts.join(" ") })),
+  };
 }
 
 /** Adds Genius lines the draft left out, untimed, where they go. */
@@ -948,6 +978,8 @@ export interface GeniusChanges {
   missing: MissingLine[];
   /** Lines that lost a comma left at their end. */
   commas: number[];
+  /** Draft lines missing some of what Genius has there. */
+  differs: { line: number; genius: string }[];
 }
 
 const textOf = (line: CreatorLine) =>
@@ -975,7 +1007,9 @@ export function geniusChanges(
     mixed: [],
     leads: leads.map((line) => ({ line, text: textOf(after[line]) })),
     echoes: bracketed.map((line) => ({ line, text: textOf(after[line]) })),
-    missing: genius ? geniusMissing(after, genius) : [],
+    ...(genius
+      ? geniusGaps(after, genius)
+      : { missing: [], differs: [] }),
     commas: [],
   };
   const trimmed = new Map<string, number>();

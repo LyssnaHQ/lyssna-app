@@ -377,6 +377,15 @@ describe("TTML Creator model", () => {
     expect(geniusChanges(lines, tagged).commas).toEqual([0]);
   });
 
+  it("points out where the draft lacks characters Genius has", () => {
+    const lines = timeAll("Start here\n悠久のパレー\nGo on");
+    const genius = "[Verse]\nStart here\n悠久のパレード\nGo on";
+    const tagged = applySections(lines, genius)!;
+    expect(geniusChanges(lines, tagged, genius).differs).toEqual([
+      { line: 1, genius: "悠久のパレード" },
+    ]);
+  });
+
   it("points out lead lines Genius has all in brackets", () => {
     const lines = timeAll(
       "Giga yeah\nAh\nSomething old\nOh whoa\nMake it new",
@@ -428,6 +437,7 @@ describe("TTML Creator model", () => {
       echoes: [],
       missing: [],
       commas: [],
+      differs: [],
     });
   });
 

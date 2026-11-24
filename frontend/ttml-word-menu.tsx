@@ -584,6 +584,16 @@ export function GeniusReview({
           </button>
         </section>
       )}
+      {changes.differs.length > 0 && (
+        <section>
+          <h4>Differs from Genius</h4>
+          <div className="ttml-review-chips">
+            {changes.differs.map((each) =>
+              go(each.line, `${each.line + 1} · Genius: ${each.genius}`, each.line),
+            )}
+          </div>
+        </section>
+      )}
       {changes.commas.length > 0 && (
         <section>
           <h4>Removed a comma left at the end of the line</h4>
