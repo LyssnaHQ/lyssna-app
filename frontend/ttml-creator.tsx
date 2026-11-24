@@ -2151,12 +2151,35 @@ export function TtmlCreator({
   // A double-click replays from just before a word, which can start in the
   // line above; the view stays put until playback reaches the word's line.
   const holdLine = useRef<number | null>(null);
+  // The Genius review panel holds the view still while it's open, so the
+  // lines it points at stay put; following picks up 3s after it closes.
+  const geniusPanel = !!review;
+  const geniusPanelRef = useRef(geniusPanel);
+  geniusPanelRef.current = geniusPanel;
+  const following = useRef({ playingLine, isPlaying });
+  following.current = { playingLine, isPlaying };
+  const geniusPanelWas = useRef(false);
+  useEffect(() => {
+    if (geniusPanel) {
+      geniusPanelWas.current = true;
+      return;
+    }
+    if (!geniusPanelWas.current) return;
+    geniusPanelWas.current = false;
+    const timer = window.setTimeout(() => {
+      const { playingLine, isPlaying } = following.current;
+      if (isPlaying && playingLine >= 0 && !geniusPanelRef.current)
+        centre(playingLine);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [geniusPanel, centre]);
   useEffect(() => {
     if (
       playingLine < 0 ||
       touringRef.current ||
       !isPlaying ||
       workingRef.current ||
+      geniusPanelRef.current ||
       typingInCreator() ||
       Date.now() - scrolledAt.current < 3000
     )
