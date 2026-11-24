@@ -469,7 +469,7 @@ const STYLE_INDEX = { first: 0, second: 1, third: 2 } as const;
 export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
   let voices: string[] = [];
   return lyrics.lines
-    .map((line): CreatorLine => {
+    .flatMap((line): CreatorLine[] => {
       if (line.section) voices = voicesOf(line.section_singer ?? "");
       const voiceFor = (style?: keyof typeof STYLE_INDEX) =>
         style && voices.length > 1 ? voices[STYLE_INDEX[style]] : undefined;
@@ -488,10 +488,24 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
                 joined: index > 0 && !/^\s/.test(word.text),
                 start: word.start_ms,
                 end: word.end_ms,
+      // Untimed words in brackets are backing vocals: they move to
+      // background lines of their own after the line.
+      const split = authored
+        ? []
+        : parseText(geniusBackgrounds(line.text.replace(/\|/g, "")));
+      const main = split.find((each) => !each.background);
+      const echoes =
+        main && split.length > 1
+          ? split
+              .filter((each) => each.background)
+              .map((each) => ({ ...each, opposite: line.opposite }))
+          : [];
                 ...(sungBy && { sungBy }),
               };
             })
-        : (parseText(line.text.replace(/\|/g, ""))[0]?.units ?? []);
+        : echoes.length
+          ? main!.units
+          : (parseText(line.text.replace(/\|/g, ""))[0]?.units ?? []);
       if (
         !authored &&
         lyrics.synced &&
@@ -509,7 +523,7 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
       const perWord =
         timed ||
         (authored && units.length > 1 && readings.length === units.length);
-      return {
+      const lead: CreatorLine = {
         units: perWord
           ? units.map((unit, index) => ({ ...unit, roman: readings[index] }))
           : units,
@@ -532,6 +546,7 @@ export const timed = (unit: CreatorUnit) =>
 export function progress(lines: CreatorLine[]) {
   let done = 0,
     total = 0;
+      return [lead, ...echoes];
   for (const line of lines)
     for (const unit of line.units) {
       total++;

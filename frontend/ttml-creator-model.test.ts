@@ -332,6 +332,36 @@ describe("TTML Creator model", () => {
           translation: "",
           romanization: "mikansei no",
           romanization_syllables: ["mi", "kan", "sei", " no"],
+  it("moves bracketed words of a line-timed line to a background line", () => {
+    const lyrics: Lyrics = {
+      source: "x",
+      instrumental: false,
+      synced: true,
+      lines: [
+        {
+          start_ms: 0,
+          end_ms: 1000,
+          text: "One, two, three (hold up)",
+          translation: "",
+          romanization: "",
+          background: false,
+          opposite: true,
+          words: [],
+        },
+      ],
+    };
+    const lines = fromLyrics(lyrics);
+    expect(lines.map((line) => line.units.map((unit) => unit.text))).toEqual([
+      ["One,", "two,", "three"],
+      ["hold", "up"],
+    ]);
+    expect(lines.map((line) => [line.background, line.opposite])).toEqual([
+      [false, true],
+      [true, true],
+    ]);
+    expect(lines[0].units[2].end).toBe(1000);
+  });
+
           background: false,
           opposite: false,
           words: [
