@@ -135,18 +135,45 @@
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+/* The sheet's blur sits on a layer behind its content: a backdrop-filter
+   on the dialog itself would make it a backdrop root, and its menus could
+   then no longer blur the dialog under them. The body scrolls instead of
+   the dialog so that layer stays put. */
 .liquid-glass .dialog.load-ttml {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: none;
+  border: 0;
+  box-shadow: var(--glass-shadow);
+}
+.liquid-glass .dialog.load-ttml::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
   background: light-dark(#e1e1dc80, #1e1e2380);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   backdrop-filter: blur(40px) saturate(180%);
-  box-shadow: var(--glass-shadow);
-  border: 1px solid light-dark(#0000001f, #ffffff1f);
+  box-shadow: inset 0 0 0 1px light-dark(#0000001f, #ffffff1f);
 }
 .liquid-glass .load-ttml-head {
+  flex: none;
   border-bottom-color: light-dark(#0000001f, #ffffff1f);
 }
+.liquid-glass .load-ttml-body {
+  min-height: 0;
+  overflow: auto;
+}
+.liquid-glass .dialog.load-ttml .sort-menu {
+  background: light-dark(#e9e9e5a6, #16161aa6);
+}
 @media (prefers-reduced-transparency: reduce) {
-  .liquid-glass .dialog.load-ttml {
+  .liquid-glass .dialog.load-ttml::before,
+  .liquid-glass .dialog.load-ttml .sort-menu {
     background: var(--glass-fill-strong);
   }
 }
