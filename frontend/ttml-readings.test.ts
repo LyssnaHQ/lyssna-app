@@ -26,7 +26,9 @@ const lyricsOf = (lines: string[][]): Lyrics => ({
 describe("readingsFrom", () => {
   it("takes the whole Genius word at a line's edges", () => {
     const request = lyricsOf([["「零」", "戻", "り", "ま", "た", "再", "生"]]);
-    const ours = lyricsOf([["\"Rei\"", " modo", "ri", " ma", "ta", " sai", "sei"]]);
+    const ours = lyricsOf([
+      ['"Rei"', " modo", "ri", " ma", "ta", " sai", "sei"],
+    ]);
     const { lyrics } = readingsFrom(
       request,
       ours,
@@ -42,7 +44,6 @@ describe("readingsFrom", () => {
       "seiyo",
     ]);
   });
-
 
   it("spreads a romanized line over the syllables", () => {
     const request = lyricsOf([
@@ -98,11 +99,29 @@ describe("splitBrackets", () => {
     expect(lines[1].units[0].start).toBe(200);
   });
 
-  it("keeps brackets that open the line, and unbalanced ones", () => {
-    const opening = lineOf(["(Konrinzai)", "Big", "juicer"]);
-    expect(splitBrackets(opening)).toEqual([opening]);
+  it("moves brackets that open a line, and keeps unbalanced ones", () => {
+    const opening = splitBrackets(lineOf(["(Watch", "it)", "You're", "gonna"]));
+    expect(
+      opening.map((line) => [
+        line.background,
+        line.units.map((unit) => unit.text),
+      ]),
+    ).toEqual([
+      [false, ["You're", "gonna"]],
+      [true, ["Watch", "it"]],
+    ]);
     const open = lineOf(["Hey", "(la", "la"]);
     expect(splitBrackets(open)).toEqual([open]);
+  });
+
+  it("turns a line all in brackets background, except the song's first", () => {
+    const intro = lineOf(["(Giga,", "TeddyLoid)"]);
+    expect(splitBrackets(intro, true)).toEqual([intro]);
+    const [later] = splitBrackets(lineOf(["(one,", "two)"]));
+    expect([later.background, later.units.map((unit) => unit.text)]).toEqual([
+      true,
+      ["One,", "two"],
+    ]);
   });
 });
 
