@@ -488,18 +488,6 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
         !lyrics.estimated_words &&
         line.words.length > 0 &&
         line.words.every((word) => !word.estimated);
-      // Untimed words in brackets are backing vocals: they move to
-      // background lines of their own after the line.
-      const split = authored
-        ? []
-        : parseText(geniusBackgrounds(line.text.replace(/\|/g, "")));
-      const main = split.find((each) => !each.background);
-      const echoes =
-        main && split.length > 1
-          ? split
-              .filter((each) => each.background)
-              .map((each) => ({ ...each, opposite: line.opposite }))
-          : [];
       const units: CreatorUnit[] = authored
         ? line.words
             .filter((word) => word.text.trim())
@@ -513,20 +501,7 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
                 ...(sungBy && { sungBy }),
               };
             })
-        : echoes.length
-          ? main!.units
-          : (parseText(line.text.replace(/\|/g, ""))[0]?.units ?? []);
-      if (
-        !authored &&
-        lyrics.synced &&
-        !lyrics.estimated_lines &&
-        units.length &&
-        line.end_ms > line.start_ms
-      ) {
-        units[0] = { ...units[0], start: line.start_ms };
-        const last = units.length - 1;
-        units[last] = { ...units[last], end: line.end_ms };
-      }
+        : (parseText(line.text.replace(/\|/g, ""))[0]?.units ?? []);
       const syllables = line.romanization_syllables?.map((text) => text.trim());
       const timed = authored && syllables?.length === units.length;
       const readings = timed ? syllables! : line.romanization.trim().split(/\s+/);
@@ -546,9 +521,73 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
         ...(line.section && line.section_singer && { singer: line.section_singer }),
         ...(voiceFor(line.sung_by) && { sungBy: voiceFor(line.sung_by) }),
       };
-      return [lead, ...echoes];
+      const [main, ...echoes] = splitBrackets(lead);
+      if (
+        !authored &&
+        lyrics.synced &&
+        !lyrics.estimated_lines &&
+        main.units.length &&
+        line.end_ms > line.start_ms
+      ) {
+        const units = [...main.units];
+        units[0] = { ...units[0], start: line.start_ms };
+        const last = units.length - 1;
+        units[last] = { ...units[last], end: line.end_ms };
+        return [{ ...main, units }, ...echoes];
+      }
+      return [main, ...echoes];
     })
     .filter((line) => line.units.length > 0);
+}
+
+/**
+ * Words in brackets inside a line are backing vocals: each bracketed run
+ * moves to a background line of its own after the line, keeping its
+ * timings and readings. A line that opens with brackets keeps them, since
+ * Genius and Apple Music write a lead call that way: "(Konrinzai) Big juicer".
+ */
+export function splitBrackets(line: CreatorLine): CreatorLine[] {
+  if (line.background || line.units.length < 2) return [line];
+  const main: CreatorUnit[] = [];
+  const echoes: CreatorUnit[][] = [];
+  let open: CreatorUnit[] | undefined;
+  for (const [index, unit] of line.units.entries()) {
+    if (!open && index > 0 && !unit.joined && unit.text.startsWith("("))
+      open = [];
+    if (!open) {
+      main.push(unit);
+      continue;
+    }
+    open.push(unit);
+    if (unit.text.endsWith(")")) {
+      echoes.push(open);
+      open = undefined;
+    }
+  }
+  if (open || !echoes.length) return [line];
+  const strip = (units: CreatorUnit[]): CreatorUnit[] =>
+    units
+      .map((unit, index) => {
+        let text = unit.text;
+        if (index === 0) text = text.slice(1);
+        if (index === units.length - 1) text = text.replace(/\)$/, "");
+        return { ...unit, text, joined: index > 0 && unit.joined };
+      })
+      .filter((unit) => unit.text);
+  return [
+    { ...line, units: main },
+    ...echoes.map((units) => ({
+      units: strip(units),
+      background: true,
+      opposite: line.opposite,
+    })),
+  ].filter((each) => each.units.length);
+}
+
+/** Brackets to background lines over a whole draft; the same lines when none moved. */
+export function bracketsToBackground(lines: CreatorLine[]): CreatorLine[] {
+  const next = lines.flatMap(splitBrackets);
+  return next.length === lines.length ? lines : next;
 }
 
 export const timed = (unit: CreatorUnit) =>

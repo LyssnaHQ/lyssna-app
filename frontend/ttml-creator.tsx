@@ -37,6 +37,7 @@ import {
   Undo2,
   Wand2,
   Globe,
+  Layers,
   X,
 } from "lucide-react";
 import {
@@ -78,6 +79,7 @@ import {
   formatTime,
   fromLyrics,
   geniusBackgrounds,
+  bracketsToBackground,
   insertBlankLine,
   joinHyphenated,
   cursorAt,
@@ -1503,6 +1505,27 @@ export function TtmlCreator({
     setCursor({ line: 0, unit: 0 });
     notify("Draft cleared. Earlier saves are still under Saves.");
   };
+  const splitBackingVocals = () => {
+    const next = bracketsToBackground(lines);
+    if (next === lines) {
+      notify("No words in brackets to move.");
+      return;
+    }
+    setLines(next);
+    notify(
+      `Moved ${next.length - lines.length} bracketed ${next.length - lines.length === 1 ? "part" : "parts"} to background lines.`,
+    );
+  };
+  const bracketsButton = (
+    <button
+      onClick={splitBackingVocals}
+      disabled={!lines.length}
+      title="Move words in brackets to background vocal lines. Brackets that open a line stay."
+    >
+      <Layers size={15} />
+      Brackets to background
+    </button>
+  );
   const clearButton = (
     <button
       className={clearArmed ? "danger" : ""}
@@ -2930,6 +2953,7 @@ export function TtmlCreator({
                   <Type size={15} />
                   Edit as text
                 </button>
+                {bracketsButton}
                 <button
                   className={wordRoman ? "active" : ""}
                   aria-pressed={wordRoman}
@@ -2944,7 +2968,7 @@ export function TtmlCreator({
                 <button
                   onClick={() => void autoRomanize()}
                   disabled={romanNote === "Romanizing…"}
-                  title="Fill empty word readings for lyrics in any non-Latin script"
+                  title="Fill empty word readings for lyrics in any non-Latin script."
                 >
                   <Languages size={15} />
                   Auto romanize
@@ -3048,10 +3072,11 @@ export function TtmlCreator({
                   <Type size={15} />
                   Edit as text
                 </button>
+                {bracketsButton}
                 <button
                   onClick={() => void autoRomanize()}
                   disabled={romanNote === "Romanizing…"}
-                  title="Fill empty word readings for lyrics in any non-Latin script"
+                  title="Fill empty word readings for lyrics in any non-Latin script."
                 >
                   <Languages size={15} />
                   Auto romanize
