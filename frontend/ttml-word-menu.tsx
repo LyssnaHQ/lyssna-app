@@ -471,6 +471,7 @@ export function GeniusReview({
   onUndo,
   onMakeLeads,
   onAddMissing,
+  onFix,
 }: {
   changes: GeniusChanges;
   onGo: (line: number) => void;
@@ -479,6 +480,8 @@ export function GeniusReview({
   /** Makes these lines background vocals, or lead lines. */
   onMakeLeads: (lines: number[], background: boolean) => void;
   onAddMissing: () => void;
+  /** Puts in characters a line lacks against Genius. */
+  onFix: (line: number, genius: string) => void;
 }) {
   const go = (line: number, label: string, key: string | number) => (
     <button
@@ -588,9 +591,20 @@ export function GeniusReview({
         <section>
           <h4>Differs from Genius</h4>
           <div className="ttml-review-chips">
-            {changes.differs.map((each) =>
-              go(each.line, `${each.line + 1} · Genius: ${each.genius}`, each.line),
-            )}
+            {changes.differs.map((each) => (
+              <span key={each.line} className="ttml-review-pair">
+                {go(each.line, `${each.line + 1} · Genius: ${each.genius}`, "go")}
+                {each.fixable && (
+                  <button
+                    className="ttml-review-chip primary"
+                    title="Put in what this line lacks; timings stay"
+                    onClick={() => onFix(each.line, each.genius)}
+                  >
+                    Fix
+                  </button>
+                )}
+              </span>
+            ))}
           </div>
         </section>
       )}

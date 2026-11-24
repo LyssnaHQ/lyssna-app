@@ -630,6 +630,75 @@ export interface MissingLine {
  * rest of a Genius line with none of its words in the draft. Each goes
  * after the draft line holding the Genius words just before it.
  */
+const NUMBERS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+];
+// Interjections are spelled every which way ("whoa", "woah") and numbers
+// written either way ("4", "four"); neither is a real difference.
+const loose = (word: string) => {
+  const number = NUMBERS.indexOf(word);
+  if (number >= 0) return String(number);
+  return word.length <= 5 ? word.replace(/h/g, "") : word;
+};
+const looseWord = (a: string, b: string) =>
+  sameWord(a, b) || loose(a) === loose(b);
+
+/**
+ * The line with characters Genius has that it lacks put in, when that's
+ * all that differs ("パレー" against "パレード"): each goes into the word
+ * after the character before it, so timings stay. Undefined otherwise.
+ */
+export function fixFromGenius(
+  line: CreatorLine,
+  genius: string,
+): CreatorLine | undefined {
+  const isLetter = (char: string) => /[\p{L}\p{N}]/u.test(char);
+  const ours: { unit: number; at: number; char: string }[] = [];
+  line.units.forEach((unit, index) =>
+    Array.from(unit.text).forEach((char, at) => {
+      if (isLetter(char)) ours.push({ unit: index, at, char });
+    }),
+  );
+  const added = new Map<string, string>();
+  let next = 0;
+  for (const char of Array.from(unmark(genius))) {
+    if (!isLetter(char)) continue;
+    if (next < ours.length && ours[next].char.toLowerCase() === char.toLowerCase()) {
+      next++;
+      continue;
+    }
+    if (!OWN_WORD.test(char)) return;
+    const before = ours[next - 1];
+    const key = before ? `${before.unit}:${before.at + 1}` : "0:0";
+    added.set(key, (added.get(key) ?? "") + char);
+  }
+  if (next < ours.length || !added.size) return;
+  return {
+    ...line,
+    units: line.units.map((unit, index) => {
+      const chars = Array.from(unit.text);
+      let changed = false;
+      for (let at = chars.length; at >= 0; at--) {
+        const extra = added.get(`${index}:${at}`);
+        if (!extra) continue;
+        chars.splice(at, 0, extra);
+        changed = true;
+      }
+      return changed ? { ...unit, text: chars.join("") } : unit;
+    }),
+  };
+}
+
 export const geniusMissing = (lines: CreatorLine[], text: string) =>
   geniusGaps(lines, text).missing;
 
@@ -726,7 +795,7 @@ function geniusGaps(lines: CreatorLine[], text: string) {
           .flat()
           .map((token) => token.word);
         const lost = own.filter((word) => {
-          const found = near.findIndex((each) => sameWord(each, word.word));
+          const found = near.findIndex((each) => looseWord(each, word.word));
           if (found >= 0) near.splice(found, 1);
           return found < 0;
         });
@@ -748,7 +817,14 @@ function geniusGaps(lines: CreatorLine[], text: string) {
     missing,
     differs: [...differs]
       .sort((a, b) => a[0] - b[0])
-      .map(([line, parts]) => ({ line, genius: parts.join(" ") })),
+      .map(([line, parts]) => {
+        const genius = parts.join(" ");
+        return {
+          line,
+          genius,
+          fixable: !!fixFromGenius(lines[line], genius),
+        };
+      }),
   };
 }
 
@@ -979,7 +1055,7 @@ export interface GeniusChanges {
   /** Lines that lost a comma left at their end. */
   commas: number[];
   /** Draft lines missing some of what Genius has there. */
-  differs: { line: number; genius: string }[];
+  differs: { line: number; genius: string; fixable: boolean }[];
 }
 
 const textOf = (line: CreatorLine) =>

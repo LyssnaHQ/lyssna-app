@@ -82,6 +82,7 @@ import {
   geniusBackgrounds,
   geniusChanges,
   addMissing,
+  fixFromGenius,
   type GeniusChanges,
   bracketsToBackground,
   readingsFrom,
@@ -3827,6 +3828,19 @@ export function TtmlCreator({
           onMakeLeads={(chosen, background) => {
             const next = lines.map((line, index) =>
               chosen.includes(index) ? { ...line, background } : line,
+            );
+            setLines(next);
+            setReview({
+              ...review,
+              changes: geniusChanges(review.before, next, review.genius),
+              shown: undefined,
+            });
+          }}
+          onFix={(at, genius) => {
+            const fixed = fixFromGenius(lines[at], genius);
+            if (!fixed) return;
+            const next = lines.map((line, index) =>
+              index === at ? fixed : line,
             );
             setLines(next);
             setReview({

@@ -38,6 +38,7 @@ import {
   geniusLeads,
   geniusEchoes,
   geniusMissing,
+  fixFromGenius,
   addMissing,
   clearLines,
   removeLines,
@@ -382,8 +383,18 @@ describe("TTML Creator model", () => {
     const genius = "[Verse]\nStart here\n悠久のパレード\nGo on";
     const tagged = applySections(lines, genius)!;
     expect(geniusChanges(lines, tagged, genius).differs).toEqual([
-      { line: 1, genius: "悠久のパレード" },
+      { line: 1, genius: "悠久のパレード", fixable: true },
     ]);
+    const fixed = fixFromGenius(tagged[1], "悠久のパレード")!;
+    expect(fixed.units.map((unit) => unit.text).join("")).toBe("悠久のパレード");
+    expect(fixed.units.at(-1)!.start).toBe(tagged[1].units.at(-1)!.start);
+  });
+
+  it("counts spellings of the same word as the same against Genius", () => {
+    const lines = timeAll("Start here\nWow, oh, whoa\n1, 2, 3, 4");
+    const genius = "[Outro]\nStart here\nWow, oh, woah\nOne, two, three, four";
+    const tagged = applySections(lines, genius)!;
+    expect(geniusChanges(lines, tagged, genius).differs).toEqual([]);
   });
 
   it("points out lead lines Genius has all in brackets", () => {
