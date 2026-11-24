@@ -556,12 +556,6 @@ function bracketRuns(
   return runs;
 }
 
-/**
- * Who sings and what's a backing vocal, from Genius's styling: italic and
- * bold say who sings, so a line takes the voice of its first word and
- * words another voice sings keep theirs; what Genius brackets moves to a
- * background line, even where the draft sings it in the lead line.
- */
 /** The voices each styled section header sets in italic and in bold. */
 function styledHeaders(text: string) {
   const headers = new Map<string, { italic?: string; bold?: string }>();
@@ -620,7 +614,137 @@ function alignGenius(
     theirs.map((word) => word.word),
   ))
     match.set(ours[i], theirs[j]);
-  return { tokensOf, match, groupSize };
+  return { tokensOf, match, groupSize, theirs };
+}
+
+export interface MissingLine {
+  /** The draft line it goes after; -1 is before the first. */
+  after: number;
+  text: string;
+  background: boolean;
+  voice?: string;
+}
+
+/**
+ * What Genius sings that the draft leaves out: a bracketed part or the
+ * rest of a Genius line with none of its words in the draft. Each goes
+ * after the draft line holding the Genius words just before it.
+ */
+export function geniusMissing(
+  lines: CreatorLine[],
+  text: string,
+): MissingLine[] {
+  const { tokensOf, match, theirs } = alignGenius(
+    lines,
+    text,
+    styledHeaders(text),
+  );
+  const lineOf = new Map<GeniusWord, number>();
+  tokensOf.forEach((tokens, index) => {
+    for (const token of tokens) {
+      const found = match.get(token);
+      if (found) lineOf.set(found, index);
+    }
+  });
+  const missing: MissingLine[] = [];
+  let next = 0;
+  let after = -1;
+  for (const raw of balanceStyles(text)) {
+    if (isSectionLine(unmark(raw))) continue;
+    // Bracketed parts and the words between them, as Genius sets them.
+    const parts: { text: string; background: boolean }[] = [];
+    let depth = 0;
+    let part = "";
+    const end = (background: boolean) => {
+      if (part.trim()) parts.push({ text: part, background });
+      part = "";
+    };
+    for (const char of raw) {
+      if (char === "(" || char === "（") {
+        if (depth++ === 0) {
+          end(false);
+          continue;
+        }
+      } else if ((char === ")" || char === "）") && depth > 0) {
+        if (--depth === 0) {
+          end(true);
+          continue;
+        }
+      }
+      part += char;
+    }
+    end(depth > 0);
+    for (const each of parts) {
+      const words = tokenize(
+        [...each.text].map((char): [string, number] => [char, -1]),
+        { groups: 0 },
+      ).length;
+      const own = theirs.slice(next, next + words);
+      next += words;
+      if (!own.length) continue;
+      const kept = own.filter((word) => lineOf.has(word));
+      // A backing line comes after its lead in the draft even where Genius
+      // brackets it first, so the in-order match can miss it; its words in
+      // a line nearby mean it's there.
+      const nearby = () =>
+        tokensOf
+          .slice(Math.max(0, after - 4), Math.max(0, after + 5))
+          .some((tokens) => {
+            const left = tokens.map((token) => token.word);
+            let found = 0;
+            for (const word of own) {
+              const at = left.findIndex((each) => sameWord(each, word.word));
+              if (at < 0) continue;
+              left.splice(at, 1);
+              found++;
+            }
+            return found * 2 >= own.length;
+          });
+      if (kept.length * 4 < own.length && !nearby()) {
+        const bare = unmark(each.text)
+          .trim()
+          .replace(/^[,，、\s]+|[,，、\s]+$/gu, "")
+          .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
+        if (bare)
+          missing.push({
+            after,
+            text: bare,
+            background: each.background,
+            voice: own[0].voice,
+          });
+      }
+      for (const word of own) {
+        const line = lineOf.get(word);
+        if (line !== undefined) after = Math.max(after, line);
+      }
+    }
+  }
+  return missing;
+}
+
+/** Adds Genius lines the draft left out, untimed, where they go. */
+export function addMissing(
+  lines: CreatorLine[],
+  missing: MissingLine[],
+): CreatorLine[] {
+  const made = (item: MissingLine): CreatorLine => {
+    const voices = sectionVoices(lines, Math.max(item.after, 0));
+    const at = lines[Math.max(item.after, 0)];
+    return {
+      units: parseText(item.text.replace(/[()（）]/g, ""))[0]?.units ?? [],
+      background: item.background,
+      opposite: at?.opposite ?? false,
+      ...(item.voice &&
+        voices.includes(item.voice) &&
+        item.voice !== voices[0] && { sungBy: item.voice }),
+    };
+  };
+  const at = (index: number) =>
+    missing.filter((item) => item.after === index).map(made);
+  return [
+    ...at(-1),
+    ...lines.flatMap((line, index) => [line, ...at(index)]),
+  ].filter((line) => line.units.length);
 }
 
 /**
@@ -638,6 +762,12 @@ export function geniusLeads(lines: CreatorLine[], text: string): number[] {
   });
 }
 
+/**
+ * Who sings and what's a backing vocal, from Genius's styling: italic and
+ * bold say who sings, so a line takes the voice of its first word and
+ * words another voice sings keep theirs; what Genius brackets moves to a
+ * background line, even where the draft sings it in the lead line.
+ */
 function geniusVoices(
   placed: CreatorLine[],
   text: string,
@@ -786,6 +916,8 @@ export interface GeniusChanges {
   mixed: number[];
   /** Background lines Genius sings as lead. */
   leads: { line: number; text: string }[];
+  /** What Genius sings that the draft leaves out. */
+  missing: MissingLine[];
 }
 
 const textOf = (line: CreatorLine) =>
@@ -797,8 +929,9 @@ const textOf = (line: CreatorLine) =>
 export function geniusChanges(
   before: CreatorLine[],
   after: CreatorLine[],
-  leads: number[] = [],
+  genius?: string,
 ): GeniusChanges {
+  const leads = genius ? geniusLeads(after, genius) : [];
   const echoes = new Map<string, number>();
   for (const line of before)
     if (line.background)
@@ -809,6 +942,7 @@ export function geniusChanges(
     singers: [],
     mixed: [],
     leads: leads.map((line) => ({ line, text: textOf(after[line]) })),
+    missing: genius ? geniusMissing(after, genius) : [],
   };
   after.forEach((line, index) => {
     if (line.part) changes.sections.push({ line: index, part: line.part });

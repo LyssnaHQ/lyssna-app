@@ -81,7 +81,7 @@ import {
   fromLyrics,
   geniusBackgrounds,
   geniusChanges,
-  geniusLeads,
+  addMissing,
   type GeniusChanges,
   bracketsToBackground,
   readingsFrom,
@@ -780,7 +780,8 @@ export function TtmlCreator({
         setLines(tagged);
         setReview({
           before: lines,
-          changes: geniusChanges(lines, tagged, geniusLeads(tagged, found)),
+          genius: found,
+          changes: geniusChanges(lines, tagged, found),
         });
       })
       .catch((error) =>
@@ -792,6 +793,7 @@ export function TtmlCreator({
   // the draft is edited (which keeps it).
   const [review, setReview] = useState<{
     before: CreatorLine[];
+    genius: string;
     changes: GeniusChanges;
     shown?: CreatorLine[];
   } | null>(null);
@@ -3823,14 +3825,22 @@ export function TtmlCreator({
           }}
           onKeep={() => setReview(null)}
           onMakeLeads={(chosen) => {
-            setLines(
-              lines.map((line, index) =>
-                chosen.includes(index) ? { ...line, background: false } : line,
-              ),
+            const next = lines.map((line, index) =>
+              chosen.includes(index) ? { ...line, background: false } : line,
             );
+            setLines(next);
             setReview({
               ...review,
-              changes: { ...review.changes, leads: [] },
+              changes: geniusChanges(review.before, next, review.genius),
+              shown: undefined,
+            });
+          }}
+          onAddMissing={() => {
+            const next = addMissing(lines, review.changes.missing);
+            setLines(next);
+            setReview({
+              ...review,
+              changes: geniusChanges(review.before, next, review.genius),
               shown: undefined,
             });
           }}

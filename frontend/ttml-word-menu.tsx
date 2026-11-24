@@ -470,12 +470,14 @@ export function GeniusReview({
   onKeep,
   onUndo,
   onMakeLeads,
+  onAddMissing,
 }: {
   changes: GeniusChanges;
   onGo: (line: number) => void;
   onKeep: () => void;
   onUndo: () => void;
   onMakeLeads: (lines: number[]) => void;
+  onAddMissing: () => void;
 }) {
   const go = (line: number, label: string, key: string | number) => (
     <button
@@ -535,6 +537,23 @@ export function GeniusReview({
             onClick={() => onMakeLeads(changes.leads.map((each) => each.line))}
           >
             Make {changes.leads.length === 1 ? "it a main line" : "them main lines"}
+          </button>
+        </section>
+      )}
+      {changes.missing.length > 0 && (
+        <section>
+          <h4>On Genius but missing from your draft</h4>
+          <div className="ttml-review-chips">
+            {changes.missing.map((each, index) =>
+              go(
+                Math.max(each.after, 0),
+                `${each.after + 1} · ${each.background ? `(${each.text})` : each.text}`,
+                index,
+              ),
+            )}
+          </div>
+          <button className="ttml-review-action" onClick={onAddMissing}>
+            Add {changes.missing.length === 1 ? "it" : "them"}, untimed
           </button>
         </section>
       )}

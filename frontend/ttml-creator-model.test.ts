@@ -36,6 +36,8 @@ import {
   splitReadings,
   geniusChanges,
   geniusLeads,
+  geniusMissing,
+  addMissing,
   clearLines,
   removeLines,
   setLineFlag,
@@ -364,18 +366,45 @@ describe("TTML Creator model", () => {
     ).toEqual([1]);
   });
 
+  it("finds and adds what Genius sings that the draft leaves out", () => {
+    const lines = timeAll("Start here\nWhoa oh whoa\nCheck it out");
+    const genius =
+      "[Outro: Aiko & Mira]\nStart here\nWhoa, oh, whoa (Hahaha)\nCheck it out";
+    const tagged = applySections(lines, genius)!;
+    const missing = geniusMissing(tagged, genius);
+    expect(missing).toEqual([
+      { after: 1, text: "Hahaha", background: true, voice: "Mira" },
+    ]);
+    const added = addMissing(tagged, missing);
+    expect(
+      added.map((line) => [
+        line.units.map((unit) => unit.text).join(" "),
+        line.background,
+        line.sungBy,
+        line.units[0].start,
+      ]),
+    ).toEqual([
+      ["Start here", false, undefined, expect.any(Number)],
+      ["Whoa oh whoa", false, undefined, expect.any(Number)],
+      ["Hahaha", true, "Mira", undefined],
+      ["Check it out", false, undefined, expect.any(Number)],
+    ]);
+    expect(geniusMissing(added, genius)).toEqual([]);
+  });
+
   it("lists what Sections from Genius changed", () => {
     const lines = timeAll("Start here\nあの星が tell me where to go\n(Run it)");
     const tagged = applySections(
       lines,
       "[Chorus: Aiko, Mira]\nStart here\n(あの星が) Tell me where to go (Run it)",
     )!;
-    expect(geniusChanges(lines, tagged)).toEqual({
+    expect(geniusChanges(lines, tagged, "Start here")).toEqual({
       sections: [{ line: 0, part: "Chorus" }],
       backgrounds: [{ line: 2, text: "あの星が" }],
       singers: [{ voice: "Mira", lines: [1, 3] }],
       mixed: [],
       leads: [],
+      missing: [],
     });
   });
 
