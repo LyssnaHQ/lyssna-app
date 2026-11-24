@@ -90,6 +90,7 @@ import {
   singingAt,
   markEnd,
   markNext,
+  timingCursor,
   markStart,
   moveLine,
   moveWord,
@@ -1921,16 +1922,21 @@ export function TtmlCreator({
           const start = lines[to.line]?.units[to.unit]?.start;
           if (start !== undefined) seek(start);
         } else if (event.repeat && timing) handled = true;
-        else if (action === "start")
-          setLines(markStart(lines, cursor, tap(event.timeStamp)));
-        else if (action === "next") {
-          const result = markNext(lines, cursor, tap(event.timeStamp));
-          setLines(result.lines);
-          setCursor(result.cursor);
-        } else if (action === "end") {
-          const result = markEnd(lines, cursor, tap(event.timeStamp));
-          setLines(result.lines);
-          setCursor(result.cursor);
+        else if (timing) {
+          const time = tap(event.timeStamp);
+          const at = timingCursor(lines, cursor, time);
+          if (action === "start") {
+            setLines(markStart(lines, at, time));
+            if (at !== cursor) setCursor(at);
+          } else {
+            const result = (action === "next" ? markNext : markEnd)(
+              lines,
+              at,
+              time,
+            );
+            setLines(result.lines);
+            setCursor(result.cursor);
+          }
         } else if (action === "replay") {
           const line = lines[cursor.line];
           const before = lines[cursor.line - 1];

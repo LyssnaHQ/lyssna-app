@@ -31,6 +31,7 @@ import {
   geniusBackgrounds,
   breakLine,
   splitBrackets,
+  timingCursor,
   clearLines,
   removeLines,
   setLineFlag,
@@ -203,6 +204,19 @@ describe("TTML Creator model", () => {
     ]);
     expect(tagged[1].units[0].start).toBe(lines[1].units[0].start);
     expect(applySections(lines, "[Chorus]\nnothing alike")).toBeUndefined();
+  });
+
+  it("lands a tap on the earlier line still being timed", () => {
+    const lines = parseText("die and live it\nrip the fabric");
+    lines[0].units[0] = { ...lines[0].units[0], start: 1000, end: 1200 };
+    lines[0].units[2] = { ...lines[0].units[2], start: 1400 };
+    lines[1].units[0] = { ...lines[1].units[0], start: 3000 };
+    lines[1].units[2] = { ...lines[1].units[2], end: 4000 };
+    const away = { line: 1, unit: 2 };
+    expect(timingCursor(lines, away, 1600)).toEqual({ line: 0, unit: 2 });
+    expect(timingCursor(lines, away, 3500)).toBe(away);
+    lines[0].units[2] = { ...lines[0].units[2], end: 1600 };
+    expect(timingCursor(lines, away, 1700)).toEqual({ line: 0, unit: 3 });
   });
 
   it("drops the comma left at the end of a line split in two", () => {

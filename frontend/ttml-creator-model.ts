@@ -1216,6 +1216,36 @@ export function markEnd(
   };
 }
 
+/**
+ * Where a tap at `time` lands. A tap earlier than anything already timed
+ * on the cursor's line belongs to an earlier line still being timed: the
+ * word that line is singing, or the first one after its timed words.
+ */
+export function timingCursor(
+  lines: CreatorLine[],
+  at: Cursor,
+  time: number,
+): Cursor {
+  const known = (lines[at.line]?.units ?? []).flatMap((unit) =>
+    [unit.start, unit.end].filter((value) => value !== undefined),
+  );
+  if (!known.length || time >= Math.min(...known)) return at;
+  for (let line = at.line - 1; line >= 0; line--) {
+    const units = lines[line].units;
+    let last = -1;
+    units.forEach((unit, index) => {
+      if (unit.start !== undefined && unit.start <= time) last = index;
+    });
+    if (last < 0) continue;
+    if (units[last].end === undefined) return { line, unit: last };
+    const next = units.findIndex(
+      (unit, index) => index > last && unit.start === undefined,
+    );
+    return next < 0 ? at : { line, unit: next };
+  }
+  return at;
+}
+
 export function markNext(
   lines: CreatorLine[],
   at: Cursor,
