@@ -865,6 +865,16 @@ describe("TTML Creator card editing", () => {
       undefined,
       "mine",
     ]);
+    const again = applyRomanized(
+      filled,
+      request,
+      romanizeRequest(parseText("mira hi dar")),
+    );
+    expect(again[0].units.map((unit) => unit.roman)).toEqual([
+      "mira",
+      undefined,
+      "mine",
+    ]);
     const edited = editUnit(blank, { line: 0, unit: 0 }, "мой");
     expect(applyRomanized(edited, request, result)[0].units[0].roman).toBe(
       undefined,

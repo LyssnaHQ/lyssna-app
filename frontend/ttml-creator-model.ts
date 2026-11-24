@@ -12,6 +12,8 @@ export interface CreatorUnit {
   joined: boolean;
   /** The reading, split with "|" into the pieces it's sung in: 命 as "i|no|chi". */
   roman?: string;
+  /** The reading came from Auto romanize, so running it again may replace it. */
+  romanAuto?: boolean;
   /** When each reading piece after the first starts; missing ones are spread evenly. */
   romanStarts?: (number | null)[];
   start?: number;
@@ -1526,6 +1528,7 @@ export function setUnitRoman(
               ? {
                   ...each,
                   roman,
+                  romanAuto: undefined,
                   // Taps for pieces that changed no longer fit.
                   romanStarts:
                     roman?.split("|").length === unit.roman?.split("|").length
@@ -2055,7 +2058,7 @@ export function readingsFrom(
   return { lyrics: { ...romanized, lines: out }, matched };
 }
 
-/** Fills only empty readings, so hand-typed ones survive. */
+/** Fills empty readings and ones it filled before; hand-typed ones survive. */
 export function applyRomanized(
   lines: CreatorLine[],
   request: Lyrics,
@@ -2073,14 +2076,15 @@ export function applyRomanized(
     const units = line.units.map((unit, index) => {
       const reading = words[index].text.trim();
       if (
-        unit.roman ||
+        (unit.roman && !unit.romanAuto) ||
         !reading ||
         reading === unit.text ||
+        reading === unit.roman ||
         asked[index].text.trim() !== unit.text
       )
         return unit;
       changed = true;
-      return { ...unit, roman: reading };
+      return { ...unit, roman: reading, romanAuto: true, romanStarts: undefined };
     });
     return units.some((unit, index) => unit !== line.units[index])
       ? { ...line, units }
