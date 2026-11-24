@@ -14537,6 +14537,11 @@ test("pinned lyric effects get a toggle on the lyrics toolbar", async ({
   ).toHaveCount(3);
   const gravity = toolbar.locator('[data-icon="space_gravity"]');
   await expect(gravity).toHaveAttribute("aria-pressed", "false");
+  // The orbit turns about the planet in the middle, not its own corner.
+  await expect(gravity.locator(".part-orbit")).toHaveCSS(
+    "transform-box",
+    "view-box",
+  );
   await expect(toolbar.locator('[data-icon="lyrics_highlighter"]')).toHaveCount(
     1,
   );

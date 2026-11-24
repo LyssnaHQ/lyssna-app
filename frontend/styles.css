@@ -4380,7 +4380,11 @@ small {
   opacity: 0.5;
   scale: 0.86;
 }
-.toolbar-icon-gravity .part-orbit {
+/* As in Lyssna Lyrics, these move in the icon's own space: the orbit turns
+   about the planet at its centre. */
+.toolbar-icon-gravity .part-orbit,
+.toolbar-icon-highlighter :is(g, path) {
+  transform-box: view-box;
   transform-origin: 12px 12px;
 }
 .toolbar-icon-visualiser .part-level {
