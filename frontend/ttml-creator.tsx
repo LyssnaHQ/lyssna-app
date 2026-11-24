@@ -3616,7 +3616,7 @@ export function TtmlCreator({
                       </div>
                     ) : (
                       <div className="ttml-cells">
-                        {line.units.map((unit, unitIndex) => {
+                        {line.units.map((unit, unitIndex, all) => {
                           const at = { line: lineIndex, unit: unitIndex };
                           const selected =
                             cursor.line === lineIndex &&
@@ -3779,7 +3779,24 @@ export function TtmlCreator({
                                     ? unit.roman
                                     : unit.text}
                               </span>
-                              {!syncRoman && parts.length > 1 && pieces}
+                              {!syncRoman &&
+                                (parts.length > 1 ||
+                                  // Every word of a line with split readings
+                                  // gets the row, so the end times line up.
+                                  all.some(
+                                    (each) => romanParts(each).length > 1,
+                                  )) &&
+                                (parts.length ? (
+                                  pieces
+                                ) : (
+                                  <span
+                                    className="ttml-pieces"
+                                    aria-hidden="true"
+                                    style={{ visibility: "hidden" }}
+                                  >
+                                    <span className="ttml-piece">-</span>
+                                  </span>
+                                ))}
                               <TimePill ms={unit.end} end />
                             </button>
                           );
