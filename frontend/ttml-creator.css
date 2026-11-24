@@ -542,15 +542,6 @@
      the plain words beside it and the time pills stay put. */
   margin-block: -0.15em;
 }
-.ttml-pieces.large .ttml-piece:not(.live, .current) {
-  /* In the romanization view the pieces are the words themselves, so they
-     read like the words beside them until one is picked or playing. */
-  background: transparent;
-  color: inherit;
-}
-.ttml-pieces.large .ttml-piece + .ttml-piece:not(.live, .current) {
-  box-shadow: inset 1px 0 0 #ffffff1f;
-}
 .ttml-piece.live {
   background: #1ed76066;
   color: #fff;
