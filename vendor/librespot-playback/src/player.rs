@@ -690,10 +690,7 @@ impl Player {
                 local_file_lookup: Arc::new(local_file_lookup),
             };
 
-            // While PlayerInternal is written as a future, it still contains blocking code.
-            // It must be run by using block_on() in a dedicated thread.
-            let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-            runtime.block_on(internal);
+            run_blocking_future(internal);
 
             debug!("PlayerInternal thread finished.");
         });
@@ -3096,6 +3093,18 @@ impl Drop for PlayerInternal {
     }
 }
 
+/// While PlayerInternal is written as a future, it still contains blocking code.
+/// It must be run by using block_on() in a dedicated thread.
+///
+/// Its poll never returns while a song plays, so Tokio's per-poll budget
+/// would run out after about 128 commands and leave every later command
+/// (Next, Pause, Seek) waiting until the song ends. This thread is the
+/// player's alone, so it has nothing to yield to.
+fn run_blocking_future<F: Future>(future: F) -> F::Output {
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+    runtime.block_on(tokio::task::unconstrained(future))
+}
+
 /// A crossfading sink holds a song's end only when something will follow it.
 fn next_can_follow(repeats_current: bool, preload: &PlayerPreload) -> bool {
     repeats_current || matches!(preload, PlayerPreload::Ready { .. })
@@ -3105,6 +3114,25 @@ fn next_can_follow(repeats_current: bool, preload: &PlayerPreload) -> bool {
 mod resume_tests {
     use super::*;
     use futures_util::FutureExt;
+
+    #[test]
+    fn commands_keep_arriving_while_the_player_never_yields() {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<u32>();
+        for command in 0..1000 {
+            sender.send(command).unwrap();
+        }
+        drop(sender);
+        let received = run_blocking_future(std::future::poll_fn(move |cx| {
+            let mut received = 0;
+            loop {
+                match receiver.poll_recv(cx) {
+                    Poll::Ready(Some(_)) => received += 1,
+                    _ => return Poll::Ready(received),
+                }
+            }
+        }));
+        assert_eq!(received, 1000);
+    }
 
     #[test]
     fn repeat_one_offers_its_own_start_for_a_crossfade() {
