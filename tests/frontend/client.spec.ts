@@ -21527,3 +21527,43 @@ test("signed-in members send a song without lyrics as instrumental", async ({
       .getByRole("button", { name: "Mark instrumental" }),
   ).toBeVisible();
 });
+
+test("admins can choose an account to upload lyrics as", async ({ page }) => {
+  await startClient(page);
+  await page.evaluate(() => {
+    const test = (window as any).__clientTest;
+    (window as any).__lyssnaAccount = {
+      id: "u1",
+      username: "Arashii",
+      role: "admin",
+      reputation: 5,
+      tier_name: "Trusted",
+      email_verified: true,
+    };
+    test.answers = {
+      ...test.answers,
+      lyssna_act_as: null,
+      lyssna_act_as_find: [
+        { id: "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0", username: "Reserved Artist", reserved: true },
+      ],
+      lyssna_act_as_set: {
+        id: "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0",
+        username: "Reserved Artist",
+        until: Date.now() + 4 * 60 * 60 * 1000,
+      },
+    };
+  });
+  await openSettings(page);
+  const dialog = page.getByRole("dialog", { name: "Lyssna settings" });
+  await expect(dialog.getByText("Upload as another account", { exact: true }).first()).toBeVisible();
+  await dialog.getByLabel("Account name or user ID").fill("Reserved");
+  await dialog.getByRole("button", { name: "Reserved Artist" }).click();
+  await expect(dialog.getByText("Uploading as Reserved Artist", { exact: true }).first()).toBeVisible();
+  expect(await commandArgs(page, "lyssna_act_as_find")).toEqual([{ query: "Reserved" }]);
+  expect(await commandArgs(page, "lyssna_act_as_set")).toEqual([
+    { id: "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0", username: "Reserved Artist" },
+  ]);
+  await dialog.getByRole("button", { name: "Stop uploading as Reserved Artist" }).click();
+  await expect(dialog.getByText("Upload as another account", { exact: true }).first()).toBeVisible();
+  expect(await commandArgs(page, "lyssna_act_as_clear")).toHaveLength(1);
+});

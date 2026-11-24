@@ -3296,6 +3296,32 @@ async fn lyssna_sign_out() -> std::result::Result<(), String> {
     .map_err(error)
 }
 #[tauri::command]
+fn lyssna_act_as() -> Option<crate::lyssna_account::ActAs> {
+    crate::lyssna_account::act_as()
+}
+#[tauri::command]
+async fn lyssna_act_as_find(
+    query: String,
+) -> std::result::Result<Vec<crate::lyssna_account::ActAsMatch>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::lyssna_account::find_act_as(&crate::auth::http_client()?, &query)
+    })
+    .await
+    .map_err(|_| "Lyssna account worker unavailable".to_owned())?
+    .map_err(error)
+}
+#[tauri::command]
+fn lyssna_act_as_set(
+    id: String,
+    username: String,
+) -> std::result::Result<crate::lyssna_account::ActAs, String> {
+    crate::lyssna_account::set_act_as(&id, &username).map_err(error)
+}
+#[tauri::command]
+fn lyssna_act_as_clear() {
+    crate::lyssna_account::clear_act_as();
+}
+#[tauri::command]
 async fn lyssna_review(
     method: crate::lyssna_account::ReviewMethod,
     path: String,
@@ -6834,6 +6860,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             lyssna_sign_in,
             lyssna_cancel_sign_in,
             lyssna_sign_out,
+            lyssna_act_as,
+            lyssna_act_as_find,
+            lyssna_act_as_set,
+            lyssna_act_as_clear,
             lyssna_submit,
             lyssna_review,
             lyssna_mark_instrumental,

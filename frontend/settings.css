@@ -1209,3 +1209,31 @@
   font-size: 12px;
   color: light-dark(#6a6a6a, #8f8f8f);
 }
+
+/* Admins: the account to upload as, found by name or user ID. */
+.act-as-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.act-as-search input {
+  flex: 1 1 200px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid light-dark(#0000001f, #ffffff24);
+  border-radius: 999px;
+  outline: 0;
+  background: light-dark(#00000008, #ffffff0d);
+  font: inherit;
+  font-size: 13px;
+  color: light-dark(#000, #fff);
+}
+.act-as-search input:focus-visible {
+  border-color: light-dark(#00000059, #ffffff66);
+}
+.act-as-none {
+  font-size: 12px;
+  color: light-dark(#6a6a6a, #8f8f8f);
+}

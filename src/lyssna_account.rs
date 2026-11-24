@@ -526,7 +526,8 @@ pub fn submit(
     let Some(token) = access_token(client)? else {
         bail!("Sign in to Lyssna in Settings to submit lyrics");
     };
-    let response = keyed(client.post(format!("{API}/v1/submissions")))
+    let path = submissions_path(act_as().as_ref());
+    let response = keyed(client.post(format!("{API}{path}")))
         .bearer_auth(token)
         .json(&body)
         .send()
@@ -824,11 +825,98 @@ fn instrumental_body(isrcs: &[String], instrumental: Option<bool>) -> serde_json
     serde_json::json!({ "instrumental": instrumental, "isrcs": isrcs })
 }
 
+/// The account an admin uploads as for a while. Kept in memory only, so it
+/// ends with the app, on sign-out or after four hours; the API honours it
+/// only for admins.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ActAs {
+    pub id: String,
+    pub username: String,
+    /// When it ends, Unix milliseconds.
+    pub until: i64,
+}
+
+const ACT_AS_FOR: Duration = Duration::from_secs(4 * 60 * 60);
+static ACT_AS: Mutex<Option<(ActAs, Instant)>> = Mutex::new(None);
+
+pub fn act_as() -> Option<ActAs> {
+    let mut chosen = ACT_AS.lock().unwrap_or_else(|error| error.into_inner());
+    match chosen.as_ref() {
+        Some((_, ends)) if Instant::now() >= *ends => {
+            *chosen = None;
+            None
+        }
+        other => other.map(|(act, _)| act.clone()),
+    }
+}
+
+pub fn set_act_as(id: &str, username: &str) -> Result<ActAs> {
+    ensure!(is_user_id(id), "Not a Lyssna user ID");
+    let until = OffsetDateTime::now_utc() + ACT_AS_FOR;
+    let act = ActAs {
+        id: id.to_ascii_lowercase(),
+        username: username.trim().to_owned(),
+        until: (until.unix_timestamp_nanos() / 1_000_000) as i64,
+    };
+    *ACT_AS.lock().unwrap_or_else(|error| error.into_inner()) =
+        Some((act.clone(), Instant::now() + ACT_AS_FOR));
+    Ok(act)
+}
+
+pub fn clear_act_as() {
+    *ACT_AS.lock().unwrap_or_else(|error| error.into_inner()) = None;
+}
+
+fn is_user_id(id: &str) -> bool {
+    id.len() == 36
+        && id.char_indices().all(|(at, c)| match at {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_hexdigit(),
+        })
+}
+
+/// The upload path, naming the chosen account when an admin uploads as one.
+fn submissions_path(act: Option<&ActAs>) -> String {
+    match act {
+        Some(act) => format!("/v1/submissions?as={}", act.id),
+        None => "/v1/submissions".to_owned(),
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ActAsMatch {
+    pub id: String,
+    pub username: String,
+    #[serde(default)]
+    pub reserved: bool,
+}
+
+/// Accounts an admin may upload as: by part of the name or a user ID,
+/// reserved accounts first.
+pub fn find_act_as(client: &Client, query: &str) -> Result<Vec<ActAsMatch>> {
+    let Some(token) = access_token(client)? else {
+        bail!("Sign in to Lyssna first");
+    };
+    let response = keyed(client.get(format!("{API}/v1/users/act-as")))
+        .query(&[("limit", "8"), ("q", query.trim())])
+        .bearer_auth(token)
+        .send()
+        .context("Cannot reach Lyssna")?;
+    if response.status() == StatusCode::FORBIDDEN {
+        bail!("Only admins can upload as another account");
+    }
+    if !response.status().is_success() {
+        return Err(rejection(response).into_error());
+    }
+    Ok(response.json()?)
+}
+
 pub fn signed_in() -> bool {
     matches!(load(), Ok(Some(_)))
 }
 
 pub fn sign_out(client: &Client) -> Result<()> {
+    clear_act_as();
     let _guard = TOKENS.lock().unwrap_or_else(|error| error.into_inner());
     if let Some(tokens) = load()? {
         // Best effort: the server session also expires on its own.
@@ -843,6 +931,22 @@ pub fn sign_out(client: &Client) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uploads_go_to_the_chosen_account_until_cleared() {
+        assert!(set_act_as("not-an-id", "Someone").is_err());
+        let act = set_act_as("0B1C2D3E-4F50-6172-8394-A5B6C7D8E9F0", " Reserved ").unwrap();
+        assert_eq!(act.id, "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0");
+        assert_eq!(act.username, "Reserved");
+        assert_eq!(act_as(), Some(act.clone()));
+        assert_eq!(
+            submissions_path(Some(&act)),
+            "/v1/submissions?as=0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
+        );
+        clear_act_as();
+        assert_eq!(act_as(), None);
+        assert_eq!(submissions_path(None), "/v1/submissions");
+    }
 
     #[test]
     fn review_requests_stay_on_the_review_routes() {
