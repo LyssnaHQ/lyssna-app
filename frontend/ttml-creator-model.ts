@@ -411,6 +411,8 @@ export function applySections(
 
 interface Token {
   word: string;
+  /** As written. */
+  text: string;
   /** 0 plain, 1 italic, 2 bold. */
   style: number;
   /** The bracketed run it sits in, or -1. */
@@ -459,7 +461,7 @@ function tokenize(
   let units: number[] = [];
   const end = () => {
     const word = wordOf(current);
-    if (word) tokens.push({ word, style, group: inGroup, units });
+    if (word) tokens.push({ word, text: current, style, group: inGroup, units });
     current = "";
     units = [];
   };
@@ -495,7 +497,13 @@ const unitChars = (line: CreatorLine) =>
     ),
   );
 
-type GeniusWord = { word: string; voice?: string; group: number };
+type GeniusWord = {
+  word: string;
+  voice?: string;
+  group: number;
+  /** Starts its Genius line with a capital. */
+  capital: boolean;
+};
 
 /**
  * The draft words that sit in one of Genius's bracketed runs, as
@@ -576,14 +584,15 @@ function geniusVoices(
     }
     const voices = voicesOf(who ?? "");
     const styled = headers.get(who ?? "");
-    for (const token of tokenize(
+    for (const [at, token] of tokenize(
       [...raw].map((char): [string, number] => [char, -1]),
       count,
-    )) {
+    ).entries()) {
       theirs.push({
         word: token.word,
         voice: styleVoice(token.style, voices, styled),
         group: token.group,
+        capital: at === 0 && /^\p{Lu}/u.test(token.text),
       });
       if (token.group >= 0)
         groupSize.set(token.group, (groupSize.get(token.group) ?? 0) + 1);
@@ -600,7 +609,18 @@ function geniusVoices(
   ))
     match.set(ours[i], theirs[j]);
 
-  const voicedLines = tagged.map((line, index) => {
+  const voicedLines = tagged.map((original, index) => {
+    // A lead line Genius starts with a capital starts with one here too.
+    const opening = tokensOf[index][0];
+    const line =
+      !original.background &&
+      opening?.units[0] === 0 &&
+      match.get(opening)?.capital
+        ? {
+            ...original,
+            units: [capitalFirst(original.units[0]), ...original.units.slice(1)],
+          }
+        : original;
     const voices = sectionVoices(tagged, index);
     if (voices.length < 2) return line;
     let lineVoice: string | undefined;
@@ -661,17 +681,7 @@ function geniusVoices(
     const voices = sectionVoices(voicedLines, index);
     const own = line.sungBy ?? voices[0];
     return split.map((part, at) => {
-      let units = dropEndComma(part.units);
-      if (at === 0 && !part.background && units[0] !== line.units[0])
-        units = [
-          {
-            ...units[0],
-            text: units[0].text.replace(/^\p{Ll}/u, (letter) =>
-              letter.toUpperCase(),
-            ),
-          },
-          ...units.slice(1),
-        ];
+      const units = dropEndComma(part.units);
       if (voices.length < 2) return { ...part, units };
       const sung = units.map((unit) => unit.sungBy ?? own);
       const { sungBy: _, ...rest } = part;
@@ -962,10 +972,18 @@ export function splitBrackets(
     const [first, ...rest] = backgrounds;
     return [{ ...line, ...first }, ...rest].filter((each) => each.units.length);
   }
-  return [{ ...line, units: main }, ...backgrounds].filter(
+  // The lead line now starts where a bracket ended: "(Watch it) you're".
+  const lead =
+    main[0] === line.units[0] ? main : [capitalFirst(main[0]), ...main.slice(1)];
+  return [{ ...line, units: lead }, ...backgrounds].filter(
     (each) => each.units.length,
   );
 }
+
+const capitalFirst = (unit: CreatorUnit): CreatorUnit => ({
+  ...unit,
+  text: unit.text.replace(/^\p{Ll}/u, (letter) => letter.toUpperCase()),
+});
 
 /** A line's words, with the brackets of a line all in brackets kept on them. */
 function untimedUnits(text: string): CreatorUnit[] {

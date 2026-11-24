@@ -30,6 +30,7 @@ vi.mock("./bridge", () => ({
 import {
   geniusBackgrounds,
   breakLine,
+  splitBrackets,
   clearLines,
   removeLines,
   setLineFlag,
@@ -274,6 +275,21 @@ describe("TTML Creator model", () => {
       ["あの星が", true, undefined],
       ["Run it", true, "Mira"],
     ]);
+  });
+
+  it("capitalises a lead line that Genius starts with a capital", () => {
+    const lines = timeAll("you're gonna be fine\nwe stay low");
+    const tagged = applySections(
+      lines,
+      "[Verse: Aiko]\nYou're gonna be fine, we stay low",
+    )!;
+    expect(tagged.map((line) => line.units[0].text)).toEqual(["You're", "we"]);
+  });
+
+  it("capitalises what leads a line once its opening bracket moves out", () => {
+    const [lead, echo] = splitBrackets(parseText("(Watch it) you're next")[0]);
+    expect(lead.units.map((unit) => unit.text)).toEqual(["You're", "next"]);
+    expect(echo.units.map((unit) => unit.text)).toEqual(["Watch", "it"]);
   });
 
   it("keeps the comma after a bracket mid-line on the lead", () => {
