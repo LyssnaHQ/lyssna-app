@@ -14508,9 +14508,22 @@ test("pinned lyric effects get a toggle on the lyrics toolbar", async ({
   const toolbar = page.locator(".lyrics-toolbar");
   await expect(toolbar.locator('[data-icon="space_gravity"]')).toHaveCount(0);
   await openSettings(page, "Effects");
-  await page
-    .getByRole("button", { name: "Pin Space Gravity to the lyrics toolbar" })
-    .click();
+  const pin = page.getByRole("button", {
+    name: "Pin Space Gravity to the lyrics toolbar",
+  });
+  const middle = async (box: Promise<{ y: number; height: number } | null>) => {
+    const { y, height } = (await box)!;
+    return y + height / 2;
+  };
+  expect(
+    Math.abs(
+      (await middle(pin.boundingBox())) -
+        (await middle(
+          page.getByRole("switch", { name: "Space Gravity", exact: true }).boundingBox(),
+        )),
+    ),
+  ).toBeLessThan(1);
+  await pin.click();
   await page
     .getByRole("button", { name: "Pin Highlighter to the lyrics toolbar" })
     .click();
