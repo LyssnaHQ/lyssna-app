@@ -691,6 +691,9 @@
 .ttml-review-chip:hover {
   background: #ffffff24;
 }
+.ttml-review-action {
+  margin-top: 8px;
+}
 .ttml-dialog-note {
   display: flex;
   gap: 10px;

@@ -81,6 +81,7 @@ import {
   fromLyrics,
   geniusBackgrounds,
   geniusChanges,
+  geniusLeads,
   type GeniusChanges,
   bracketsToBackground,
   readingsFrom,
@@ -779,7 +780,7 @@ export function TtmlCreator({
         setLines(tagged);
         setReview({
           before: lines,
-          changes: geniusChanges(lines, tagged),
+          changes: geniusChanges(lines, tagged, geniusLeads(tagged, found)),
         });
       })
       .catch((error) =>
@@ -3821,6 +3822,18 @@ export function TtmlCreator({
             centre(line);
           }}
           onKeep={() => setReview(null)}
+          onMakeLeads={(chosen) => {
+            setLines(
+              lines.map((line, index) =>
+                chosen.includes(index) ? { ...line, background: false } : line,
+              ),
+            );
+            setReview({
+              ...review,
+              changes: { ...review.changes, leads: [] },
+              shown: undefined,
+            });
+          }}
           onUndo={() => {
             setLines(review.before);
             setReview(null);

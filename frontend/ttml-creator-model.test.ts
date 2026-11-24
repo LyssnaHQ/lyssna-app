@@ -35,6 +35,7 @@ import {
   sameReadings,
   splitReadings,
   geniusChanges,
+  geniusLeads,
   clearLines,
   removeLines,
   setLineFlag,
@@ -354,6 +355,15 @@ describe("TTML Creator model", () => {
     ]);
   });
 
+  it("points out background lines Genius sings as lead", () => {
+    const lines = timeAll("Break it, save it\n囚われ\nYeah!\nStay here").map(
+      (line, index) => ({ ...line, background: index < 3 }),
+    );
+    expect(
+      geniusLeads(lines, "[Chorus]\n(Break it, save it) 囚われ (Yeah)\nStay here"),
+    ).toEqual([1]);
+  });
+
   it("lists what Sections from Genius changed", () => {
     const lines = timeAll("Start here\nあの星が tell me where to go\n(Run it)");
     const tagged = applySections(
@@ -365,6 +375,7 @@ describe("TTML Creator model", () => {
       backgrounds: [{ line: 2, text: "あの星が" }],
       singers: [{ voice: "Mira", lines: [1, 3] }],
       mixed: [],
+      leads: [],
     });
   });
 

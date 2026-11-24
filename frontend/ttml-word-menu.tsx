@@ -469,11 +469,13 @@ export function GeniusReview({
   onGo,
   onKeep,
   onUndo,
+  onMakeLeads,
 }: {
   changes: GeniusChanges;
   onGo: (line: number) => void;
   onKeep: () => void;
   onUndo: () => void;
+  onMakeLeads: (lines: number[]) => void;
 }) {
   const go = (line: number, label: string, key: string | number) => (
     <button
@@ -520,6 +522,22 @@ export function GeniusReview({
           </div>
         </section>
       ))}
+      {changes.leads.length > 0 && (
+        <section>
+          <h4>Background lines Genius sings as main lines</h4>
+          <div className="ttml-review-chips">
+            {changes.leads.map((each) =>
+              go(each.line, `${each.line + 1} · ${each.text}`, each.line),
+            )}
+          </div>
+          <button
+            className="ttml-review-action"
+            onClick={() => onMakeLeads(changes.leads.map((each) => each.line))}
+          >
+            Make {changes.leads.length === 1 ? "it a main line" : "them main lines"}
+          </button>
+        </section>
+      )}
       {changes.mixed.length > 0 && (
         <section>
           <h4>Words sung by another voice</h4>

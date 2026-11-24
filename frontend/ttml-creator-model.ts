@@ -339,16 +339,9 @@ export function applySections(
   });
 
   // Section headers lose their styling here; it says which voice is which.
-  const headers = new Map<string, { italic?: string; bold?: string }>();
+  const headers = styledHeaders(text);
   const unstyled = balanceStyles(text)
-    .map((raw) => {
-      const bare = unmark(raw);
-      if (!isSectionLine(bare)) return raw;
-      const singer = sectionOf(bare)?.singer;
-      if (singer && !headers.has(singer))
-        headers.set(singer, headerStyles(raw, voicesOf(singer)));
-      return bare;
-    })
+    .map((raw) => (isSectionLine(unmark(raw)) ? unmark(raw) : raw))
     .join("\n");
   // Backing vocals don't line up with the draft's leads, unless they are
   // all a section has: Genius writes an intro of ad-libs as "(Giga)".
@@ -569,11 +562,25 @@ function bracketRuns(
  * words another voice sings keep theirs; what Genius brackets moves to a
  * background line, even where the draft sings it in the lead line.
  */
-function geniusVoices(
-  placed: CreatorLine[],
+/** The voices each styled section header sets in italic and in bold. */
+function styledHeaders(text: string) {
+  const headers = new Map<string, { italic?: string; bold?: string }>();
+  for (const raw of balanceStyles(text)) {
+    const bare = unmark(raw);
+    if (!isSectionLine(bare)) continue;
+    const singer = sectionOf(bare)?.singer;
+    if (singer && !headers.has(singer))
+      headers.set(singer, headerStyles(raw, voicesOf(singer)));
+  }
+  return headers;
+}
+
+/** The draft's words lined up with Genius's, every one, brackets too. */
+function alignGenius(
+  lines: CreatorLine[],
   text: string,
   headers: Map<string, { italic?: string; bold?: string }>,
-): CreatorLine[] {
+) {
   const theirs: GeniusWord[] = [];
   const groupSize = new Map<number, number>();
   const count = { groups: 0 };
@@ -603,7 +610,7 @@ function geniusVoices(
         groupSize.set(token.group, (groupSize.get(token.group) ?? 0) + 1);
     }
   }
-  const tokensOf = placed.map((line) =>
+  const tokensOf = lines.map((line) =>
     tokenize(unitChars(line), { groups: 0 }),
   );
   const ours = tokensOf.flat();
@@ -613,6 +620,30 @@ function geniusVoices(
     theirs.map((word) => word.word),
   ))
     match.set(ours[i], theirs[j]);
+  return { tokensOf, match, groupSize };
+}
+
+/**
+ * Background lines Genius sings as lead, outside any bracket. Some are
+ * background on purpose, so these are only pointed out, never changed.
+ */
+export function geniusLeads(lines: CreatorLine[], text: string): number[] {
+  const { tokensOf, match } = alignGenius(lines, text, new Map());
+  return lines.flatMap((line, index) => {
+    if (!line.background) return [];
+    const found = tokensOf[index].map((token) => match.get(token));
+    const lead = found.filter((word) => word?.group === -1).length;
+    const bracketed = found.filter((word) => word && word.group >= 0).length;
+    return lead >= 2 && lead * 2 >= found.length && !bracketed ? [index] : [];
+  });
+}
+
+function geniusVoices(
+  placed: CreatorLine[],
+  text: string,
+  headers: Map<string, { italic?: string; bold?: string }>,
+): CreatorLine[] {
+  const { tokensOf, match, groupSize } = alignGenius(placed, text, headers);
 
   // Placing sections skips Genius's bracketed words, so a section whose
   // first lines the draft sings from them ("Waking something ancient")
@@ -753,6 +784,8 @@ export interface GeniusChanges {
   singers: { voice: string; lines: number[] }[];
   /** Lines with words another voice sings. */
   mixed: number[];
+  /** Background lines Genius sings as lead. */
+  leads: { line: number; text: string }[];
 }
 
 const textOf = (line: CreatorLine) =>
@@ -764,6 +797,7 @@ const textOf = (line: CreatorLine) =>
 export function geniusChanges(
   before: CreatorLine[],
   after: CreatorLine[],
+  leads: number[] = [],
 ): GeniusChanges {
   const echoes = new Map<string, number>();
   for (const line of before)
@@ -774,6 +808,7 @@ export function geniusChanges(
     backgrounds: [],
     singers: [],
     mixed: [],
+    leads: leads.map((line) => ({ line, text: textOf(after[line]) })),
   };
   after.forEach((line, index) => {
     if (line.part) changes.sections.push({ line: index, part: line.part });
