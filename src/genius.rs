@@ -276,7 +276,66 @@ fn clean(text: &str) -> String {
             .first()
             .is_some_and(|line| line.starts_with('[') && line.ends_with("歌詞]")),
     );
-    lines[skip..].join("\n")
+    lines[skip..]
+        .iter()
+        .map(|line| latin_twins(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Genius swaps some letters of Latin words for Cyrillic ones that look
+/// the same ("diе"), which breaks matching and imports the wrong letters.
+/// Words with no Latin letters, such as Russian lyrics, stay as they are.
+fn latin_twins(line: &str) -> String {
+    let twin = |letter: char| match letter {
+        'а' => 'a',
+        'е' => 'e',
+        'о' => 'o',
+        'р' => 'p',
+        'с' => 'c',
+        'у' => 'y',
+        'х' => 'x',
+        'і' => 'i',
+        'ј' => 'j',
+        'ѕ' => 's',
+        'ԁ' => 'd',
+        'ӏ' => 'l',
+        'А' => 'A',
+        'В' => 'B',
+        'Е' => 'E',
+        'К' => 'K',
+        'М' => 'M',
+        'Н' => 'H',
+        'О' => 'O',
+        'Р' => 'P',
+        'С' => 'C',
+        'Т' => 'T',
+        'Х' => 'X',
+        'Ѕ' => 'S',
+        'І' => 'I',
+        'Ј' => 'J',
+        other => other,
+    };
+    let mut out = String::with_capacity(line.len());
+    let mut word = String::new();
+    let flush = |word: &mut String, out: &mut String| {
+        if word.chars().any(|letter| letter.is_ascii_alphabetic()) {
+            out.extend(word.chars().map(twin));
+        } else {
+            out.push_str(word);
+        }
+        word.clear();
+    };
+    for letter in line.chars() {
+        if letter.is_alphabetic() {
+            word.push(letter);
+        } else {
+            flush(&mut word, &mut out);
+            out.push(letter);
+        }
+    }
+    flush(&mut word, &mut out);
+    out
 }
 
 #[cfg(test)]
@@ -293,6 +352,14 @@ mod tests {
             "[Intro]\n金ピカめっちゃちゅきぃ」"
         );
         assert_eq!(clean("[Intro]\nLine"), "[Intro]\nLine");
+    }
+
+    #[test]
+    fn cyrillic_letters_in_latin_words_are_put_back() {
+        assert_eq!(
+            clean("Rip th\u{0435} fabric, di\u{0435}\nвсе равно"),
+            "Rip the fabric, die\nвсе равно"
+        );
     }
 
     #[test]
