@@ -760,7 +760,7 @@ export function TtmlCreator({
     if (!track || fetching) return;
     const asked = track.uri;
     setFetching(true);
-    rpc<string>("genius_lyrics", { track })
+    rpc<string>("genius_lyrics", { track, styled: true })
       .then((found) => {
         if (geniusFor.current !== asked) return;
         const tagged = applySections(lines, found);

@@ -204,6 +204,39 @@ describe("TTML Creator model", () => {
     expect(applySections(lines, "[Chorus]\nnothing alike")).toBeUndefined();
   });
 
+  it("sets who sings from Genius's italic and bold", () => {
+    const lines = timeAll(
+      "Transforming the pain\nZero modori\nI'm lost unmei mawa re\nYuukyuu no",
+    );
+    const tagged = applySections(
+      lines,
+      "[Verse 1: Ashnikko, Konomi]\nTransforming the pain\nZero modori\nI'm lost unmei mawa\nre\nYuukyuu no",
+    )!;
+    expect(tagged[0].singer).toBe("Ashnikko, Konomi");
+    expect(tagged.map((line) => line.sungBy)).toEqual([
+      undefined,
+      "Konomi",
+      undefined,
+      "Konomi",
+    ]);
+    expect(tagged[2].units.map((unit) => unit.sungBy)).toEqual([
+      undefined,
+      undefined,
+      "Konomi",
+      "Konomi",
+      "Konomi",
+    ]);
+  });
+
+  it("gives plain lines to the first voice when the header sets it bold", () => {
+    const lines = timeAll("Transforming the pain\nZero modori");
+    const tagged = applySections(
+      lines,
+      "[Verse 1: Ashnikko, Konomi]\nTransforming the pain\nZero modori",
+    )!;
+    expect(tagged.map((line) => line.sungBy)).toEqual([undefined, "Konomi"]);
+  });
+
   it("places a Genius section of nothing but bracketed ad-libs", () => {
     const lines = timeAll("Giga, TeddyLoid\nTransforming the pain\nI'm lost");
     const tagged = applySections(

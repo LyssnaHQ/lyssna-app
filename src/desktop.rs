@@ -3480,9 +3480,13 @@ async fn lyssna_backfill_isrc(
     .map_err(error)
 }
 #[tauri::command]
-async fn genius_lyrics(track: Track) -> std::result::Result<String, String> {
+async fn genius_lyrics(track: Track, styled: Option<bool>) -> std::result::Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        crate::genius::lyrics(&crate::auth::http_client()?, &track)
+        crate::genius::lyrics(
+            &crate::auth::http_client()?,
+            &track,
+            styled.unwrap_or(false),
+        )
     })
     .await
     .map_err(|_| "Genius lookup unavailable".to_owned())?

@@ -257,6 +257,91 @@ function alignWords(ours: string[], theirs: string[]) {
   return pairs;
 }
 
+// Lyssna marks Genius's italic and bold with these when asked to.
+const STYLE_MARKS: Record<string, [style: number, opens: boolean]> = {
+  "": [1, true],
+  "": [1, false],
+  "": [2, true],
+  "": [2, false],
+};
+const unmark = (text: string) => text.replace(/[-]/g, "");
+
+/** Styled text with each line reopening the styles still running into it. */
+function balanceStyles(text: string): string[] {
+  const on = new Set<number>();
+  return text.split(/\r?\n/).map((line) => {
+    const open = [...on].map((style) => (style === 1 ? "" : ""));
+    for (const char of line) {
+      const mark = STYLE_MARKS[char];
+      if (mark) mark[1] ? on.add(mark[0]) : on.delete(mark[0]);
+    }
+    return open.join("") + line;
+  });
+}
+
+/**
+ * A line's words as `lineWords` reads them, each with the units it spans
+ * and its Genius style: 0 plain, 1 italic, 2 bold.
+ */
+function lineTokens(line: CreatorLine) {
+  const tokens: { word: string; style: number; units: number[] }[] = [];
+  let italic = false;
+  let bold = false;
+  let current = "";
+  let style = 0;
+  let units: number[] = [];
+  const end = () => {
+    const word = plain(current);
+    if (word) tokens.push({ word, style, units });
+    current = "";
+    units = [];
+  };
+  line.units.forEach((unit, index) => {
+    const text = (index && !unit.joined ? " " : "") + unit.text;
+    for (const char of text) {
+      if (/[\p{L}\p{N}']/u.test(char)) {
+        if (!current) style = bold ? 2 : italic ? 1 : 0;
+        current += char;
+        if (units[units.length - 1] !== index) units.push(index);
+        continue;
+      }
+      end();
+      const mark = STYLE_MARKS[char];
+      if (mark?.[0] === 1) italic = mark[1];
+      else if (mark) bold = mark[1];
+    }
+  });
+  end();
+  return tokens;
+}
+
+/**
+ * Who sings a word in Genius's style: plain is the section's first voice;
+ * italic and bold are whoever its header sets in that style, else the
+ * second and third voice.
+ */
+function styleVoice(
+  style: number,
+  voices: string[],
+  styled?: { italic?: string; bold?: string },
+) {
+  if (voices.length < 2) return;
+  if (style === 1) return styled?.italic ?? voices[1];
+  if (style === 2) return styled?.bold ?? voices[2];
+  return voices[0];
+}
+
+/** The voices a styled header line sets in italic and in bold. */
+function headerStyles(raw: string, voices: string[]) {
+  const named = (open: string, close: string) => {
+    const spans = [...raw.matchAll(new RegExp(`${open}([^${close}]*)${close}`, "g"))]
+      .map((match) => match[1].replace(/^[\s,&]+|[\s,&\]]+$/g, ""))
+      .filter(Boolean);
+    return voices.find((voice) => spans.includes(voice));
+  };
+  return { italic: named("", ""), bold: named("", "") };
+}
+
 /**
  * Puts the sections named in `text` ("[Chorus]" lines, as Genius writes
  * them) on the matching lines of a synced draft. Words and timings stay
@@ -283,9 +368,21 @@ export function applySections(
     }
   });
 
+  // Section headers lose their styling here; it says which voice is which.
+  const headers = new Map<string, { italic?: string; bold?: string }>();
+  const unstyled = balanceStyles(text)
+    .map((raw) => {
+      const bare = unmark(raw);
+      if (!isSectionLine(bare)) return raw;
+      const singer = sectionOf(bare)?.singer;
+      if (singer && !headers.has(singer))
+        headers.set(singer, headerStyles(raw, voicesOf(singer)));
+      return bare;
+    })
+    .join("\n");
   // Backing vocals don't line up with the draft's leads, unless they are
   // all a section has: Genius writes an intro of ad-libs as "(Giga)".
-  const parsed = parseText(geniusBackgrounds(text));
+  const parsed = parseText(geniusBackgrounds(unstyled));
   const isLead = (line: CreatorLine) =>
     !line.background && lineWords(line).length > 0;
   const sectionHasLead = (index: number) => {
@@ -296,14 +393,23 @@ export function applySections(
     return parsed.slice(from, to).some(isLead);
   };
   const theirs: string[] = [];
+  const theirVoices: (string | undefined)[] = [];
   const lineStart: number[] = [];
   const sections: { section: SongSection; from: number; to: number }[] = [];
   let pending: SongSection | undefined;
+  let singer: string | undefined;
   for (const [index, line] of parsed.entries()) {
     pending = sectionFrom(line) ?? pending;
+    if (line.part) singer = line.singer;
     if (line.background && sectionHasLead(index)) continue;
-    const found = lineWords(line);
+    const tokens = lineTokens(line);
+    const found = tokens.map((token) => token.word);
     if (!found.length) continue;
+    const voices = voicesOf(singer ?? "");
+    for (const token of tokens)
+      theirVoices.push(
+        styleVoice(token.style, voices, headers.get(singer ?? "")),
+      );
     if (pending)
       sections.push({ section: pending, from: theirs.length, to: 0 });
     pending = undefined;
@@ -334,10 +440,44 @@ export function applySections(
       parts.set(leads[at], section);
   }
   if (!parts.size) return;
-  return lines.map((line, index) => {
+  const tagged = lines.map((line, index) => {
     const { part: _, singer: __, ...rest } = line;
     const section = parts.get(index);
     return section ? { ...rest, ...section } : rest;
+  });
+  // Genius's italic and bold say who sings: the line takes the voice of
+  // its first word, and words sung by another voice keep theirs.
+  const voiced = new Map<number, string>();
+  for (const [j, i] of pairs) {
+    const voice = theirVoices[j];
+    if (voice) voiced.set(i, voice);
+  }
+  return tagged.map((line, index) => {
+    const start = firstWord.get(index);
+    if (start === undefined) return line;
+    const voices = sectionVoices(tagged, index);
+    if (voices.length < 2) return line;
+    let lineVoice: string | undefined;
+    const unitVoices = new Map<number, string>();
+    lineTokens(line).forEach((token, offset) => {
+      const voice = voiced.get(start + offset);
+      if (!voice || !voices.includes(voice)) return;
+      lineVoice ??= voice;
+      for (const unit of token.units)
+        if (!unitVoices.has(unit)) unitVoices.set(unit, voice);
+    });
+    if (!lineVoice) return line;
+    const { sungBy: _, ...rest } = line;
+    return {
+      ...rest,
+      ...(lineVoice !== voices[0] && { sungBy: lineVoice }),
+      units: line.units.map((unit, at) => {
+        const voice = unitVoices.get(at);
+        if (!voice) return unit;
+        const { sungBy: __, ...bare } = unit;
+        return voice === lineVoice ? bare : { ...bare, sungBy: voice };
+      }),
+    };
   });
 }
 

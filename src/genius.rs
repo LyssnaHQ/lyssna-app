@@ -6,13 +6,18 @@ use anyhow::{Context, Result, ensure};
 use reqwest::blocking::Client;
 use serde_json::Value;
 
-pub fn lyrics(client: &Client, track: &Track) -> Result<String> {
-    fetch(client, track, "", pick)
+/// Marks around italic and bold text when asked for: Genius sets the
+/// second singer in italic and the third in bold.
+pub const ITALIC: (char, char) = ('\u{E000}', '\u{E001}');
+pub const BOLD: (char, char) = ('\u{E002}', '\u{E003}');
+
+pub fn lyrics(client: &Client, track: &Track, styled: bool) -> Result<String> {
+    fetch(client, track, "", pick, styled)
 }
 
 /// The song's lyrics as Genius Romanizations writes them out in Latin letters.
 pub fn romanized(client: &Client, track: &Track) -> Result<String> {
-    fetch(client, track, " romanized", pick_romanized)
+    fetch(client, track, " romanized", pick_romanized, false)
 }
 
 fn fetch(
@@ -20,6 +25,7 @@ fn fetch(
     track: &Track,
     extra: &str,
     pick: fn(&Value, &str, &str) -> Option<String>,
+    styled: bool,
 ) -> Result<String> {
     let artist = track
         .artists
@@ -48,7 +54,7 @@ fn fetch(
         .context("Genius song page failed")?
         .text()
         .context("Cannot read the Genius page")?;
-    let text = clean(&extract(&page));
+    let text = clean(&extract(&page, styled));
     ensure!(!text.is_empty(), "Genius has no lyrics for this song");
     Ok(text)
 }
@@ -145,7 +151,12 @@ const VOID: [&str; 6] = ["br", "img", "hr", "input", "meta", "link"];
 
 /// Text inside the page's lyrics containers, leaving out the parts Genius
 /// marks as not lyrics (contributors, translations and the like).
-fn extract(html: &str) -> String {
+fn extract(html: &str, styled: bool) -> String {
+    let marks = |name: &str| match name {
+        "i" | "em" if styled => Some(ITALIC),
+        "b" | "strong" if styled => Some(BOLD),
+        _ => None,
+    };
     let mut out = String::new();
     // Each open element inside a container: its name and whether it is left out.
     let mut open: Vec<(String, bool)> = Vec::new();
@@ -178,6 +189,11 @@ fn extract(html: &str) -> String {
         }
         if closing {
             if let Some(index) = open.iter().rposition(|(open, _)| *open == name) {
+                if let Some((_, close)) = marks(&name)
+                    && !open.iter().any(|(_, skip)| *skip)
+                {
+                    out.push(close);
+                }
                 open.truncate(index);
                 if open.is_empty() {
                     out.push('\n');
@@ -193,7 +209,14 @@ fn extract(html: &str) -> String {
                 open.push((name, false));
             }
         } else {
-            open.push((name, tag.contains("data-exclude-from-selection=\"true\"")));
+            let skip = tag.contains("data-exclude-from-selection=\"true\"");
+            if let Some((start, _)) = marks(&name)
+                && !skip
+                && !open.iter().any(|(_, skip)| *skip)
+            {
+                out.push(start);
+            }
+            open.push((name, skip));
         }
     }
     out
@@ -276,8 +299,21 @@ mod tests {
     fn lyrics_come_from_the_containers_with_section_headers() {
         let page = r#"<html><div data-lyrics-container="true" class="a"><div data-exclude-from-selection="true"><span>26 Contributors</span><div>Translations</div></div>[Verse 1]<br/>I wish I was <i>more</i> than just<br>Someone you&#x27;d walk by &amp; forget<br></div><p>Not lyrics</p><div data-lyrics-container="true">[Chorus]<br><a href="/x"><span>Drunk text</span></a><br/></div></html>"#;
         assert_eq!(
-            clean(&extract(page)),
+            clean(&extract(page, false)),
             "[Verse 1]\nI wish I was more than just\nSomeone you'd walk by & forget\n[Chorus]\nDrunk text"
+        );
+    }
+
+    #[test]
+    fn italic_and_bold_are_marked_when_asked_for() {
+        let page = r#"<div data-lyrics-container="true">[Verse 1: Ashnikko, <i>Konomi</i>]<br>Plain <i>soft</i> and <b>loud</b><br></div>"#;
+        assert_eq!(
+            clean(&extract(page, true)),
+            "[Verse 1: Ashnikko, \u{E000}Konomi\u{E001}]\nPlain \u{E000}soft\u{E001} and \u{E002}loud\u{E003}"
+        );
+        assert_eq!(
+            clean(&extract(page, false)),
+            "[Verse 1: Ashnikko, Konomi]\nPlain soft and loud"
         );
     }
 
@@ -343,7 +379,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let text = lyrics(&client, &track).unwrap();
+        let text = lyrics(&client, &track, false).unwrap();
         println!("{}", text.lines().take(4).collect::<Vec<_>>().join(" / "));
         assert!(text.lines().count() > 10);
     }
