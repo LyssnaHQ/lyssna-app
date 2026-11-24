@@ -1377,11 +1377,6 @@ export function TtmlCreator({
     const unit = line?.units[at.unit];
     if (!line || !unit) return [];
     const suggestion = suggestSplit(unit.text, learned);
-    const splitReading: MenuAction = {
-      label: "Split reading…",
-      disabled: !unit.roman,
-      run: () => setSplittingReading(at),
-    };
     const chosen =
       group.length > 1 &&
       group.some((each) => each.line === at.line && each.unit === at.unit);
@@ -1390,10 +1385,14 @@ export function TtmlCreator({
     );
     return [
       [
-        // In the romanization view the reading is what's on screen.
-        ...(syncRoman ? [splitReading] : []),
-        { label: "Split word…", run: () => setSplitting(at) },
-        ...(syncRoman ? [] : [splitReading]),
+        {
+          label: "Split word…",
+          // In the romanization view the reading is what's on screen.
+          run: () =>
+            syncRoman && unit.roman
+              ? setSplittingReading(at)
+              : setSplitting(at),
+        },
         {
           label: "Auto-segment word",
           disabled: !suggestion.length,
