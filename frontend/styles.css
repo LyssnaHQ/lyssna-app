@@ -8345,6 +8345,15 @@ button.contributor-avatar {
 .lyric-line.sung-second {
   font-style: italic;
 }
+/* Japanese and other fonts have no italic, and the app turns off faked
+   styles, so a second voice in them would not lean at all. */
+.lyric-line.sung-second,
+.ttml-line.sung-second,
+.ttml-word.sung-second,
+.lyric-syllable.sung-second,
+.ttml-voice.sung-second {
+  font-synthesis: style;
+}
 .lyric-line.sung-third {
   font-weight: 900;
 }
