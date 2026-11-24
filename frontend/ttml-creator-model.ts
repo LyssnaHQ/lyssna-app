@@ -265,72 +265,24 @@ function alignWords(ours: string[], theirs: string[]) {
 
 // Lyssna marks Genius's italic and bold with these when asked to.
 const STYLE_MARKS: Record<string, [style: number, opens: boolean]> = {
-  "": [1, true],
-  "": [1, false],
-  "": [2, true],
-  "": [2, false],
+  "\uE000": [1, true],
+  "\uE001": [1, false],
+  "\uE002": [2, true],
+  "\uE003": [2, false],
 };
-const unmark = (text: string) => text.replace(/[-]/g, "");
+const unmark = (text: string) => text.replace(/[\uE000-\uE003]/g, "");
 
 /** Styled text with each line reopening the styles still running into it. */
 function balanceStyles(text: string): string[] {
   const on = new Set<number>();
   return text.split(/\r?\n/).map((line) => {
-    const open = [...on].map((style) => (style === 1 ? "" : ""));
+    const open = [...on].map((style) => (style === 1 ? "\uE000" : "\uE002"));
     for (const char of line) {
       const mark = STYLE_MARKS[char];
       if (mark) mark[1] ? on.add(mark[0]) : on.delete(mark[0]);
     }
     return open.join("") + line;
   });
-}
-
-/**
- * A line's words as `lineWords` reads them, each with the units it spans
- * and its Genius style: 0 plain, 1 italic, 2 bold.
- */
-function lineTokens(line: CreatorLine) {
-  const tokens: {
-    word: string;
-    style: number;
-    units: number[];
-    bracketed: boolean;
-  }[] = [];
-  let italic = false;
-  let bold = false;
-  let depth = 0;
-  let current = "";
-  let style = 0;
-  let bracketed = false;
-  let units: number[] = [];
-  const end = () => {
-    const word = plain(current);
-    if (word) tokens.push({ word, style, units, bracketed });
-    current = "";
-    units = [];
-  };
-  line.units.forEach((unit, index) => {
-    const text = (index && !unit.joined ? " " : "") + unit.text;
-    for (const char of text) {
-      if (/[\p{L}\p{N}']/u.test(char)) {
-        if (!current) {
-          style = bold ? 2 : italic ? 1 : 0;
-          bracketed = depth > 0;
-        }
-        current += char;
-        if (units[units.length - 1] !== index) units.push(index);
-        continue;
-      }
-      end();
-      if (char === "(") depth++;
-      else if (char === ")") depth = Math.max(0, depth - 1);
-      const mark = STYLE_MARKS[char];
-      if (mark?.[0] === 1) italic = mark[1];
-      else if (mark) bold = mark[1];
-    }
-  });
-  end();
-  return tokens;
 }
 
 /**
@@ -357,7 +309,7 @@ function headerStyles(raw: string, voices: string[]) {
       .filter(Boolean);
     return voices.find((voice) => spans.includes(voice));
   };
-  return { italic: named("", ""), bold: named("", "") };
+  return { italic: named("\uE000", "\uE001"), bold: named("\uE002", "\uE003") };
 }
 
 /**
@@ -454,49 +406,212 @@ export function applySections(
     const section = parts.get(index);
     return section ? { ...rest, ...section } : rest;
   });
-  // Genius's italic and bold say who sings: the line takes the voice of
-  // its first word, and words sung by another voice keep theirs. Every
-  // word counts here, bracketed ones too, since a draft may sing as its
-  // lead what Genius brackets.
-  const allTheirs: string[] = [];
-  const allVoices: (string | undefined)[] = [];
-  const allBracketed: boolean[] = [];
-  let who: string | undefined;
-  for (const line of parseText(unstyled)) {
-    if (line.part) who = line.singer;
-    const voices = voicesOf(who ?? "");
-    for (const token of lineTokens(line)) {
-      allTheirs.push(token.word);
-      allBracketed.push(line.background || token.bracketed);
-      allVoices.push(styleVoice(token.style, voices, headers.get(who ?? "")));
+  return geniusVoices(tagged, text, headers);
+}
+
+interface Token {
+  word: string;
+  /** 0 plain, 1 italic, 2 bold. */
+  style: number;
+  /** The bracketed run it sits in, or -1. */
+  group: number;
+  units: number[];
+}
+
+// Kana and kanji have no spaces, and Genius and a draft break them into
+// words differently, so each is matched on its own.
+const OWN_WORD = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Hangul}]/u;
+const WORD_CHAR = /[\p{L}\p{N}\p{M}'’]/u;
+// Genius swaps some Latin letters in its lyrics for Cyrillic twins.
+const TWINS: Record<string, string> = {
+  а: "a",
+  е: "e",
+  о: "o",
+  р: "p",
+  с: "c",
+  у: "y",
+  х: "x",
+  і: "i",
+  ј: "j",
+  ѕ: "s",
+  ԁ: "d",
+  ӏ: "l",
+};
+const wordOf = (text: string) => {
+  const word = plain(text);
+  return /[a-z]/.test(word)
+    ? word.replace(/[аеорсухіјѕԁӏ]/g, (twin) => TWINS[twin])
+    : word;
+};
+
+function tokenize(
+  chars: [char: string, unit: number][],
+  count: { groups: number },
+): Token[] {
+  const tokens: Token[] = [];
+  let italic = false;
+  let bold = false;
+  let depth = 0;
+  let group = -1;
+  let current = "";
+  let style = 0;
+  let inGroup = -1;
+  let units: number[] = [];
+  const end = () => {
+    const word = wordOf(current);
+    if (word) tokens.push({ word, style, group: inGroup, units });
+    current = "";
+    units = [];
+  };
+  for (const [char, unit] of chars) {
+    if (WORD_CHAR.test(char)) {
+      const own = OWN_WORD.test(char);
+      if (own) end();
+      if (!current) {
+        style = bold ? 2 : italic ? 1 : 0;
+        inGroup = depth > 0 ? group : -1;
+      }
+      current += char;
+      if (unit >= 0 && units[units.length - 1] !== unit) units.push(unit);
+      if (own) end();
+      continue;
+    }
+    end();
+    if (char === "(" || char === "（") {
+      if (depth++ === 0) group = count.groups++;
+    } else if (char === ")" || char === "）") depth = Math.max(0, depth - 1);
+    const mark = STYLE_MARKS[char];
+    if (mark?.[0] === 1) italic = mark[1];
+    else if (mark) bold = mark[1];
+  }
+  end();
+  return tokens;
+}
+
+const unitChars = (line: CreatorLine) =>
+  line.units.flatMap((unit, index) =>
+    [...((index && !unit.joined ? " " : "") + unit.text)].map(
+      (char): [string, number] => [char, index],
+    ),
+  );
+
+type GeniusWord = { word: string; voice?: string; group: number };
+
+/**
+ * The draft words that sit in one of Genius's bracketed runs, as
+ * [from, to) unit ranges. A run counts when it holds at least half of
+ * that bracket's words, so a stray match doesn't pull a word out.
+ */
+function bracketRuns(
+  line: CreatorLine,
+  tokens: Token[],
+  match: Map<Token, GeniusWord>,
+  groupSize: Map<number, number>,
+): [number, number][] {
+  const status: (number | undefined)[] = line.units.map(() => undefined);
+  const lettered: number[] = [];
+  for (const token of tokens) {
+    const found = match.get(token);
+    for (const unit of token.units) {
+      if (lettered[lettered.length - 1] !== unit) lettered.push(unit);
+      if (found && status[unit] === undefined) status[unit] = found.group;
     }
   }
-  const allOurs: string[] = [];
-  const startOf = new Map<number, number>();
-  lines.forEach((line, index) => {
-    startOf.set(index, allOurs.length);
-    allOurs.push(...lineTokens(line).map((token) => token.word));
-  });
-  const voiced = new Map<number, string>();
-  const bracketed = new Set<number>();
-  for (const [j, i] of alignWords(allOurs, allTheirs)) {
-    const voice = allVoices[j];
-    if (voice) voiced.set(i, voice);
-    if (allBracketed[j]) bracketed.add(i);
+  // A word spelled differently than on Genius goes with the words around
+  // it when they agree.
+  for (let at = 0; at < lettered.length; at++) {
+    if (status[lettered[at]] !== undefined) continue;
+    let end = at;
+    while (end < lettered.length && status[lettered[end]] === undefined) end++;
+    const before = at > 0 ? status[lettered[at - 1]] : undefined;
+    const after = end < lettered.length ? status[lettered[end]] : undefined;
+    const fill = before !== undefined && before === after ? before : -1;
+    for (let gap = at; gap < end; gap++) status[lettered[gap]] = fill;
+    at = end - 1;
   }
+  // Punctuation goes with the word before it.
+  for (let unit = 0; unit < status.length; unit++)
+    status[unit] ??= status[unit - 1] ?? status[unit + 1] ?? -1;
+  for (let unit = status.length - 1; unit >= 0; unit--)
+    if (status[unit] === undefined) status[unit] = status[unit + 1] ?? -1;
+
+  const runs: [number, number][] = [];
+  for (let from = 0; from < status.length; ) {
+    const group = status[from]!;
+    let to = from + 1;
+    while (to < status.length && status[to] === group) to++;
+    if (group >= 0) {
+      const hits = tokens.filter(
+        (token) =>
+          match.get(token)?.group === group &&
+          token.units.every((unit) => unit >= from && unit < to),
+      ).length;
+      if (hits * 2 >= (groupSize.get(group) ?? 1)) runs.push([from, to]);
+    }
+    from = to;
+  }
+  return runs;
+}
+
+/**
+ * Who sings and what's a backing vocal, from Genius's styling: italic and
+ * bold say who sings, so a line takes the voice of its first word and
+ * words another voice sings keep theirs; what Genius brackets moves to a
+ * background line, even where the draft sings it in the lead line.
+ */
+function geniusVoices(
+  tagged: CreatorLine[],
+  text: string,
+  headers: Map<string, { italic?: string; bold?: string }>,
+): CreatorLine[] {
+  const theirs: GeniusWord[] = [];
+  const groupSize = new Map<number, number>();
+  const count = { groups: 0 };
+  let who: string | undefined;
+  for (const raw of balanceStyles(text)) {
+    const bare = unmark(raw).trim();
+    if (isSectionLine(bare)) {
+      who = sectionOf(bare)?.singer;
+      continue;
+    }
+    const voices = voicesOf(who ?? "");
+    const styled = headers.get(who ?? "");
+    for (const token of tokenize(
+      [...raw].map((char): [string, number] => [char, -1]),
+      count,
+    )) {
+      theirs.push({
+        word: token.word,
+        voice: styleVoice(token.style, voices, styled),
+        group: token.group,
+      });
+      if (token.group >= 0)
+        groupSize.set(token.group, (groupSize.get(token.group) ?? 0) + 1);
+    }
+  }
+  const tokensOf = tagged.map((line) =>
+    tokenize(unitChars(line), { groups: 0 }),
+  );
+  const ours = tokensOf.flat();
+  const match = new Map<Token, GeniusWord>();
+  for (const [j, i] of alignWords(
+    ours.map((token) => token.word),
+    theirs.map((word) => word.word),
+  ))
+    match.set(ours[i], theirs[j]);
+
   const voicedLines = tagged.map((line, index) => {
-    const start = startOf.get(index)!;
     const voices = sectionVoices(tagged, index);
     if (voices.length < 2) return line;
     let lineVoice: string | undefined;
     const unitVoices = new Map<number, string>();
-    lineTokens(line).forEach((token, offset) => {
-      const voice = voiced.get(start + offset);
-      if (!voice || !voices.includes(voice)) return;
+    for (const token of tokensOf[index]) {
+      const voice = match.get(token)?.voice;
+      if (!voice || !voices.includes(voice)) continue;
       lineVoice ??= voice;
       for (const unit of token.units)
         if (!unitVoices.has(unit)) unitVoices.set(unit, voice);
-    });
+    }
     if (!lineVoice) return line;
     const { sungBy: _, ...rest } = line;
     return {
@@ -510,32 +625,38 @@ export function applySections(
       }),
     };
   });
-  // What Genius brackets is a backing vocal, even when the draft sings it
-  // in the lead line.
+
   const first = voicedLines.findIndex((line) => line.units.length);
   return voicedLines.flatMap((line, index) => {
     if (line.background) return [line];
-    const start = startOf.get(index)!;
-    const inside = new Set<number>();
-    lineTokens(line).forEach((token, offset) => {
-      if (bracketed.has(start + offset))
-        for (const unit of token.units) inside.add(unit);
-    });
-    if (!inside.size) return [line];
-    let midWord = false;
-    const marked = line.units.map((unit, at) => {
-      if (!inside.has(at)) return unit;
-      const opens = !inside.has(at - 1);
-      const closes = !inside.has(at + 1);
-      if ((opens && at > 0 && unit.joined) || (closes && line.units[at + 1]?.joined))
-        midWord = true;
-      return {
-        ...unit,
-        text: `${opens ? "(" : ""}${unit.text}${closes ? ")" : ""}`,
+    const runs = bracketRuns(line, tokensOf[index], match, groupSize);
+    if (!runs.length) return [line];
+    const units = [...line.units];
+    const inRun = (at: number) =>
+      runs.some(([from, to]) => at >= from && at < to);
+    for (const [from, to] of runs) {
+      units[from] = {
+        ...units[from],
+        joined: false,
+        text: `(${units[from].text.replace(/^[(（]/, "")}`,
       };
-    });
-    if (midWord) return [line];
-    const split = splitBrackets({ ...line, units: marked }, index === first);
+      // A comma after the bracket ("ancient), oh") belongs to the lead.
+      const [, word, comma] = units[to - 1].text.match(
+        /^(.*?)[)）]?([,，、;]*)$/su,
+      )!;
+      units[to - 1] = { ...units[to - 1], text: `${word})` };
+      const before = units[from - 1];
+      if (
+        comma &&
+        before &&
+        !inRun(from - 1) &&
+        to < units.length &&
+        !/[,，、;.!?。！？…]$/u.test(before.text)
+      )
+        units[from - 1] = { ...before, text: before.text + comma };
+      if (units[to]) units[to] = { ...units[to], joined: false };
+    }
+    const split = splitBrackets({ ...line, units }, index === first);
     if (split.length === 1 && !split[0].background) return [line];
     const voices = sectionVoices(voicedLines, index);
     const own = line.sungBy ?? voices[0];
@@ -576,6 +697,18 @@ export function unknownSections(text: string): string[] {
     );
 }
 
+/** Whether one pair of brackets holds the whole text: "(a) b (c)" is two. */
+function enclosed(text: string) {
+  if (!text.startsWith("(") || !text.endsWith(")")) return false;
+  let depth = 0;
+  for (let at = 0; at < text.length; at++) {
+    if (text[at] === "(") depth++;
+    else if (text[at] === ")" && --depth === 0 && at < text.length - 1)
+      return false;
+  }
+  return true;
+}
+
 export function parseText(text: string): CreatorLine[] {
   const lines: CreatorLine[] = [];
   let section: SongSection | undefined;
@@ -591,7 +724,7 @@ export function parseText(text: string): CreatorLine[] {
       body = body.slice(OPPOSITE_PREFIX.length).trim();
     }
     let background = false;
-    if (body.length > 2 && body.startsWith("(") && body.endsWith(")")) {
+    if (body.length > 2 && enclosed(body)) {
       background = true;
       body = body.slice(1, -1).trim();
     }

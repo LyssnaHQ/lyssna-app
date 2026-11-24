@@ -219,7 +219,7 @@ describe("TTML Creator model", () => {
     );
     const tagged = applySections(
       lines,
-      "[Verse 1: Ashnikko, Konomi]\nTransforming the pain\nZero modori\nI'm lost unmei mawa\nre\nYuukyuu no",
+      "[Verse 1: Ashnikko, \uE000Konomi\uE001]\nTransforming the pain\n\uE000Zero modori\uE001\nI'm lost \uE000unmei mawa\nre\uE001\n\uE000Yuukyuu no\uE001",
     )!;
     expect(tagged[0].singer).toBe("Ashnikko, Konomi");
     expect(tagged.map((line) => line.sungBy)).toEqual([
@@ -241,7 +241,7 @@ describe("TTML Creator model", () => {
     const lines = timeAll("Konrinzai big juicer ready to crush");
     const tagged = applySections(
       lines,
-      "[Chorus: Konomi, Ashnikko]\n(Konrinzai) Big juicer ready to crush",
+      "[Chorus: Konomi, \uE000Ashnikko\uE001]\n(Konrinzai) \uE000Big juicer ready to crush\uE001",
     )!;
     expect(
       tagged.map((line) => [
@@ -257,11 +257,102 @@ describe("TTML Creator model", () => {
     expect(tagged[0].units.every((unit) => !unit.sungBy)).toBe(true);
   });
 
+  it("splits Genius brackets at both ends of a line apart from its lead", () => {
+    const lines = timeAll("あの星が tell me where to go\n(Run it)");
+    const tagged = applySections(
+      lines,
+      "[Chorus: Aiko, \uE000Mira\uE001]\n(あの星が) \uE000Tell me where to go\uE001 (\uE000Run it\uE001)",
+    )!;
+    const text = (line: CreatorLine) =>
+      line.units
+        .map((unit, index) => (index && !unit.joined ? " " : "") + unit.text)
+        .join("");
+    expect(
+      tagged.map((line) => [text(line), line.background, line.sungBy]),
+    ).toEqual([
+      ["Tell me where to go", false, "Mira"],
+      ["あの星が", true, undefined],
+      ["Run it", true, "Mira"],
+    ]);
+  });
+
+  it("keeps the comma after a bracket mid-line on the lead", () => {
+    const lines = timeAll("Ah (Something old), oh, whoa (Make it new)");
+    const tagged = applySections(
+      lines,
+      "[Chorus: Aiko & \uE000Mira\uE001]\nAh (\uE000Something old\uE001), oh, whoa (\uE000Make it new\uE001)",
+    )!;
+    expect(
+      tagged.map((line) => line.units.map((unit) => unit.text).join(" ")),
+    ).toEqual([
+      "Ah, oh, whoa",
+      "Something old",
+      "Make it new",
+    ]);
+  });
+
+  it("matches kana one by one, however the draft spaces them", () => {
+    const lines = timeAll("まだかな? Waiting in the rain").map((line) => ({
+      ...line,
+      units: line.units.map((unit) => ({ ...unit, joined: false })),
+    }));
+    const tagged = applySections(
+      lines,
+      "[Chorus: Aiko, \uE000Mira\uE001]\n(まだ かな？) \uE000Waiting in the rain\uE001",
+    )!;
+    expect(
+      tagged.map((line) => [
+        line.units.map((unit) => unit.text),
+        line.background,
+      ]),
+    ).toEqual([
+      [["Waiting", "in", "the", "rain"], false],
+      [["ま", "だ", "か", "な?"], true],
+    ]);
+  });
+
+  it("reads Genius words with Cyrillic letters swapped in", () => {
+    const lines = timeAll("Face it, die and live");
+    const tagged = applySections(
+      lines,
+      "[Chorus: Aiko, \uE000Mira\uE001, \uE002Mira & Aiko\uE003]\n\uE000Face it\uE001, \uE002diе and livе\uE003",
+    )!;
+    expect(tagged[0].sungBy).toBe("Mira");
+    expect(tagged[0].units.map((unit) => unit.sungBy)).toEqual([
+      undefined,
+      undefined,
+      "Mira & Aiko",
+      "Mira & Aiko",
+      "Mira & Aiko",
+    ]);
+  });
+
+  it("leaves a lead word alone that only a stray match ties to a bracket", () => {
+    const lines = timeAll("We go home tonight");
+    const tagged = applySections(
+      lines,
+      "[Verse: Aiko, \uE000Mira\uE001]\nWe walk home tonight (go)",
+    )!;
+    expect(tagged).toHaveLength(1);
+    expect(tagged[0].background).toBe(false);
+  });
+
+  it("reads a line opening and closing with two bracket pairs as a lead", () => {
+    const [line] = parseText("(Ooh) we go (yeah)");
+    expect(line.background).toBe(false);
+    expect(line.units.map((unit) => unit.text)).toEqual([
+      "(Ooh)",
+      "we",
+      "go",
+      "(yeah)",
+    ]);
+  });
+
   it("gives plain lines to the first voice when the header sets it bold", () => {
     const lines = timeAll("Transforming the pain\nZero modori");
     const tagged = applySections(
       lines,
-      "[Verse 1: Ashnikko, Konomi]\nTransforming the pain\nZero modori",
+      "[Verse 1: \uE002Ashnikko\uE003, \uE000Konomi\uE001]\nTransforming the pain\n\uE000Zero modori\uE001",
     )!;
     expect(tagged.map((line) => line.sungBy)).toEqual([undefined, "Konomi"]);
   });
