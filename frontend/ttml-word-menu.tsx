@@ -469,6 +469,7 @@ export function GeniusReview({
   onGo,
   onKeep,
   onUndo,
+  canUndo = true,
   onMakeLeads,
   onAddMissing,
   onFix,
@@ -478,6 +479,8 @@ export function GeniusReview({
   onGo: (line: number) => void;
   onKeep: () => void;
   onUndo: () => void;
+  /** Off once the draft was edited by hand, which Undo would discard. */
+  canUndo?: boolean;
   /** Makes these lines background vocals, or lead lines. */
   onMakeLeads: (lines: number[], background: boolean) => void;
   onAddMissing: () => void;
@@ -659,9 +662,11 @@ export function GeniusReview({
         </section>
       )}
       <div className="ttml-dialog-row end">
-        <button onClick={onUndo} title="Put the draft back as it was">
-          Undo
-        </button>
+        {canUndo && (
+          <button onClick={onUndo} title="Put the draft back as it was">
+            Undo
+          </button>
+        )}
         <button className="primary" onClick={onKeep}>
           Keep
         </button>

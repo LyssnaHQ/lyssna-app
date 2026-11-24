@@ -810,10 +810,22 @@ export function TtmlCreator({
     genius: string;
     changes: GeniusChanges;
     shown?: CreatorLine[];
+    /** Edited by hand since; Undo would throw that away, Ctrl+Z won't. */
+    edited?: boolean;
   } | null>(null);
+  // The panel stays open through edits and follows them.
   useEffect(() => {
     if (!review || review.shown === lines) return;
-    setReview(review.shown ? null : { ...review, shown: lines });
+    setReview(
+      review.shown
+        ? {
+            ...review,
+            shown: lines,
+            edited: true,
+            changes: geniusChanges(review.before, lines, review.genius),
+          }
+        : { ...review, shown: lines },
+    );
   }, [lines, review]);
   const [geniusOpen, setGeniusOpen] = useState(false);
   const geniusMenu = (
@@ -3875,6 +3887,7 @@ export function TtmlCreator({
             centre(line);
           }}
           onKeep={() => setReview(null)}
+          canUndo={!review.edited}
           onMakeLeads={(chosen, background) => {
             const next = lines.map((line, index) =>
               chosen.includes(index) ? { ...line, background } : line,
