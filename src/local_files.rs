@@ -94,6 +94,17 @@ pub fn sidecar_lyrics(uri: &str) -> Option<(String, String)> {
     })
 }
 
+/// The cover saved for a local track from its file or folder.
+pub fn track_cover(track: &Track) -> Option<(Vec<u8>, &'static str)> {
+    let prefix = cover_url("");
+    track
+        .album
+        .images
+        .iter()
+        .find_map(|image| image.url.strip_prefix(&prefix))
+        .and_then(cover)
+}
+
 /// A saved cover by the name the interface asked for.
 pub fn cover(name: &str) -> Option<(Vec<u8>, &'static str)> {
     let (hash, extension) = name.split_once('.')?;

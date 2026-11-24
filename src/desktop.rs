@@ -3382,14 +3382,26 @@ async fn lyssna_submit(
                 Vec::new()
             })
         };
-        crate::lyssna_account::submit(
-            &crate::auth::http_client()?,
+        let client = crate::auth::http_client()?;
+        let submission = crate::lyssna_account::submit(
+            &client,
             ttml.as_deref(),
             &track,
             &isrcs,
             authored_at.as_deref(),
             apple_original.as_ref(),
-        )
+        )?;
+        // A file not on Spotify has no cover the website can find, so the
+        // one in its tags goes along.
+        if track.is_local
+            && track.id.is_none()
+            && let Some(song) = submission.song_id.as_deref()
+            && let Some((picture, mime)) = crate::local_files::track_cover(&track)
+            && let Err(failure) = crate::lyssna_account::upload_cover(&client, song, picture, mime)
+        {
+            crate::native::diagnostic(&format!("cover upload for {song} failed: {failure:#}"));
+        }
+        anyhow::Ok(submission)
     })
     .await
     .map_err(|_| "Lyssna account worker unavailable".to_owned())?

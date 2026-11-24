@@ -427,6 +427,8 @@ pub fn account(client: &Client) -> Result<Option<Account>> {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Submission {
     pub id: String,
+    #[serde(default)]
+    pub song_id: Option<String>,
     pub song_title: String,
     /// `new` or `edit`.
     pub kind: String,
@@ -513,6 +515,25 @@ fn submit_failure(response: reqwest::blocking::Response) -> anyhow::Error {
         Some(text) => anyhow::anyhow!("{text}"),
         None => rejected.into_error(),
     }
+}
+
+/// Sends the cover of a song that has none anywhere else, such as one from a
+/// file on disk. The API accepts it only from the song's submitter while it
+/// has no Spotify link and no cover, or from reviewers.
+pub fn upload_cover(client: &Client, song_id: &str, picture: Vec<u8>, mime: &str) -> Result<()> {
+    let Some(token) = access_token(client)? else {
+        bail!("Sign in to Lyssna first");
+    };
+    let response = keyed(client.put(format!("{API}/v1/songs/{song_id}/cover")))
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, mime)
+        .body(picture)
+        .send()
+        .context("Cannot reach Lyssna")?;
+    if !response.status().is_success() {
+        return Err(rejection(response).into_error());
+    }
+    Ok(())
 }
 
 /// Uploads a TTML for the song, linked by its ISRC when Spotify knows it, and its Spotify ID.
