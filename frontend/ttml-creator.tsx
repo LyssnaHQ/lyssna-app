@@ -98,6 +98,7 @@ import {
   nextCursor,
   romanizeRequest,
   setUnitRoman,
+  romanParts,
   hasWordRoman,
   parseText,
   applySections,
@@ -3030,6 +3031,7 @@ export function TtmlCreator({
                   aria-label="Reading of the selected word"
                   defaultValue={selectedUnit?.roman ?? ""}
                   placeholder="–"
+                  title="Split a reading with | to time each piece, like i|no|chi"
                   disabled={!selectedUnit}
                   spellCheck={false}
                   onBlur={(event) =>
@@ -3514,6 +3516,21 @@ export function TtmlCreator({
                           const selected =
                             cursor.line === lineIndex &&
                             cursor.unit === unitIndex;
+                          const parts = romanParts(unit);
+                          const pieces = (
+                            <span
+                              className={`ttml-pieces${syncRoman ? " large" : ""}`}
+                            >
+                              {parts.map((part, index) => (
+                                <span
+                                  key={index}
+                                  className={`ttml-piece${selected && (cursor.part ?? 0) === index ? " current" : ""}`}
+                                >
+                                  {part}
+                                </span>
+                              ))}
+                            </span>
+                          );
                           const live =
                             (liveWord?.line === lineIndex &&
                               liveWord.unit === unitIndex) ||
@@ -3631,10 +3648,13 @@ export function TtmlCreator({
                                     : undefined
                                 }
                               >
-                                {syncRoman && unit.roman
-                                  ? unit.roman
-                                  : unit.text}
+                                {syncRoman && parts.length > 1
+                                  ? pieces
+                                  : syncRoman && unit.roman
+                                    ? unit.roman
+                                    : unit.text}
                               </span>
+                              {!syncRoman && parts.length > 1 && pieces}
                               <TimePill ms={unit.end} end />
                             </button>
                           );

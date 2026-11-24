@@ -273,8 +273,8 @@ export interface Line {
   text: string;
   translation: string;
   romanization: string;
-  /** The supplied romanization, one reading per word, when the file times it syllable by syllable. */
-  romanization_syllables?: string[];
+  /** The supplied romanization timed piece by piece; a word may hold several. */
+  romanization_words?: Word[];
   /** Romanized reading shown under the line, timed like the line. */
   reading?: Line;
   words: Word[];

@@ -754,9 +754,9 @@ pub struct Line {
     pub text: String,
     #[serde(default)]
     pub romanization: String,
-    /// The supplied romanization timed like `words`, one reading per word.
+    /// The supplied romanization timed piece by piece; a word may hold several.
     #[serde(default)]
-    pub romanization_syllables: Vec<String>,
+    pub romanization_words: Vec<Word>,
     #[serde(default)]
     pub words: Vec<Word>,
 }
@@ -908,17 +908,19 @@ fn supplied_words(line: &Line, text: &str) -> Vec<RomanizedWord> {
 
 fn romanize_line(line: &Line, readers: Readers) -> Option<RomanizedLine> {
     // Readings timed syllable by syllable keep each syllable's own timing.
-    if !line.words.is_empty() && line.romanization_syllables.len() == line.words.len() {
+    if !line.romanization_words.is_empty() {
         let words: Vec<RomanizedWord> = line
-            .words
+            .romanization_words
             .iter()
-            .zip(&line.romanization_syllables)
-            .enumerate()
-            .map(|(index, (word, syllable))| RomanizedWord {
-                text: syllable.clone(),
-                start_ms: word.start_ms,
-                end_ms: word.end_ms,
-                from: Some(index),
+            .map(|piece| RomanizedWord {
+                text: piece.text.clone(),
+                start_ms: piece.start_ms,
+                end_ms: piece.end_ms,
+                from: line
+                    .words
+                    .iter()
+                    .rposition(|word| word.start_ms <= piece.start_ms + 1.0)
+                    .or((!line.words.is_empty()).then_some(0)),
                 estimated: false,
             })
             .collect();

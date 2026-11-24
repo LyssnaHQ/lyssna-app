@@ -10,7 +10,10 @@ import {
 export interface CreatorUnit {
   text: string;
   joined: boolean;
+  /** The reading, split with "|" into the pieces it's sung in: 命 as "i|no|chi". */
   roman?: string;
+  /** When each reading piece after the first starts; missing ones are spread evenly. */
+  romanStarts?: (number | null)[];
   start?: number;
   end?: number;
   /** Which of the section's voices sings this word, when not the line's. */
@@ -34,6 +37,8 @@ export interface CreatorLine {
 export interface Cursor {
   line: number;
   unit: number;
+  /** Which piece of a split reading is being timed. */
+  part?: number;
 }
 export interface SongMeta {
   name: string;
@@ -502,16 +507,17 @@ export function fromLyrics(lyrics: Lyrics): CreatorLine[] {
               };
             })
         : (parseText(line.text.replace(/\|/g, ""))[0]?.units ?? []);
-      const syllables = line.romanization_syllables?.map((text) => text.trim());
-      const timed = authored && syllables?.length === units.length;
-      const readings = timed ? syllables! : line.romanization.trim().split(/\s+/);
+      const pieces = authored ? piecesByUnit(units, line.romanization_words) : undefined;
+      const readings = line.romanization.trim().split(/\s+/);
       const perWord =
-        timed ||
+        !!pieces ||
         (authored && units.length > 1 && readings.length === units.length);
       const lead: CreatorLine = {
-        units: perWord
-          ? units.map((unit, index) => ({ ...unit, roman: readings[index] }))
-          : units,
+        units: pieces
+          ? units.map((unit, index) => withPieces(unit, pieces[index]))
+          : perWord
+            ? units.map((unit, index) => ({ ...unit, roman: readings[index] }))
+            : units,
         background: line.background,
         opposite: line.opposite,
         ...(line.translation && { translation: line.translation }),
@@ -590,6 +596,77 @@ export function bracketsToBackground(lines: CreatorLine[]): CreatorLine[] {
   return next.length === lines.length ? lines : next;
 }
 
+/** Each timed reading piece in the word it starts in; undefined when one fits none. */
+function piecesByUnit(units: CreatorUnit[], pieces: Word[] = []) {
+  if (!pieces.length) return;
+  const owned = units.map((): Word[] => []);
+  for (const piece of pieces) {
+    const at = units.findIndex(
+      (unit) =>
+        unit.start !== undefined &&
+        piece.start_ms + 1 >= unit.start &&
+        piece.start_ms < Math.max(unit.end ?? unit.start, unit.start + 1),
+    );
+    if (at < 0) return;
+    owned[at].push(piece);
+  }
+  return owned;
+}
+
+function withPieces(unit: CreatorUnit, pieces: Word[]): CreatorUnit {
+  const texts = pieces.map((piece) => piece.text.trim()).filter(Boolean);
+  // A Latin word the transliteration left out comes back as itself.
+  if (!texts.length || (texts.length === 1 && texts[0] === unit.text)) return unit;
+  return {
+    ...unit,
+    roman: texts.join("|"),
+    ...(pieces.length > 1 && {
+      romanStarts: pieces.slice(1).map((piece) => piece.start_ms),
+    }),
+  };
+}
+
+/** The pieces a reading is sung in. */
+export const romanParts = (unit: CreatorUnit) =>
+  (unit.roman ?? "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+/**
+ * A timed word's reading piece by piece, each with its own timing. Pieces
+ * not yet tapped share the time around them evenly.
+ */
+export function romanPieces(unit: CreatorUnit) {
+  if (unit.start === undefined || unit.end === undefined) return [];
+  const parts = romanParts(unit);
+  const texts = parts.length ? parts : [unit.text];
+  const end = Math.max(unit.start, unit.end);
+  const starts: number[] = [unit.start];
+  for (let index = 1; index < texts.length; index++) {
+    const given = unit.romanStarts?.[index - 1];
+    starts.push(
+      typeof given === "number" && given > starts[index - 1] && given < end
+        ? given
+        : NaN,
+    );
+  }
+  for (let index = 1; index < starts.length; index++) {
+    if (!Number.isNaN(starts[index])) continue;
+    let known = index;
+    while (known < starts.length && Number.isNaN(starts[known])) known++;
+    const to = known < starts.length ? starts[known] : end;
+    const step = (to - starts[index - 1]) / (known - index + 1);
+    for (let at = index; at < known; at++)
+      starts[at] = starts[index - 1] + step * (at - index + 1);
+  }
+  return texts.map((text, index) => ({
+    text,
+    start: starts[index],
+    end: index + 1 < starts.length ? starts[index + 1] : end,
+  }));
+}
+
 export const timed = (unit: CreatorUnit) =>
   unit.start !== undefined && unit.end !== undefined;
 
@@ -605,6 +682,10 @@ export function progress(lines: CreatorLine[]) {
 }
 
 export function nextCursor(lines: CreatorLine[], at: Cursor): Cursor | null {
+  const unit = lines[at.line]?.units[at.unit];
+  const part = at.part ?? 0;
+  if (unit && part + 1 < romanParts(unit).length)
+    return { line: at.line, unit: at.unit, part: part + 1 };
   if (at.unit + 1 < (lines[at.line]?.units.length ?? 0))
     return { line: at.line, unit: at.unit + 1 };
   for (let line = at.line + 1; line < lines.length; line++)
@@ -616,6 +697,7 @@ export function previousCursor(
   lines: CreatorLine[],
   at: Cursor,
 ): Cursor | null {
+  if (at.part) return { ...at, part: at.part - 1 };
   if (at.unit > 0) return { line: at.line, unit: at.unit - 1 };
   for (let line = at.line - 1; line >= 0; line--)
     if (lines[line].units.length)
@@ -650,9 +732,20 @@ function patch(
   );
 }
 
+/** Sets when piece `part` of a split reading starts. */
+function startPiece(unit: CreatorUnit, part: number, time: number) {
+  const starts = Array.from(
+    { length: romanParts(unit).length - 1 },
+    (_, index) => unit.romanStarts?.[index] ?? null,
+  );
+  starts[part - 1] = time;
+  return { romanStarts: starts };
+}
+
 export function markStart(lines: CreatorLine[], at: Cursor, time: number) {
   const unit = lines[at.line]?.units[at.unit];
   if (!unit) return lines;
+  if (at.part) return patch(lines, at, startPiece(unit, at.part, time));
   return patch(lines, at, {
     start: time,
     end: unit.end !== undefined && unit.end > time ? unit.end : undefined,
@@ -666,6 +759,16 @@ export function markEnd(
 ): { lines: CreatorLine[]; cursor: Cursor } {
   const unit = lines[at.line]?.units[at.unit];
   if (!unit) return { lines, cursor: at };
+  const part = at.part ?? 0;
+  // Ending a piece before the last starts the next one; the word goes on.
+  if (part + 1 < romanParts(unit).length)
+    return {
+      lines: patch(lines, at, {
+        ...(part === 0 && unit.start === undefined && { start: time }),
+        ...startPiece(unit, part + 1, time),
+      }),
+      cursor: nextCursor(lines, at) ?? at,
+    };
   const start = Math.min(unit.start ?? time, time);
   return {
     lines: patch(lines, at, { start, end: time }),
@@ -685,7 +788,11 @@ export function markNext(
 }
 
 export function clearTiming(lines: CreatorLine[], at: Cursor) {
-  return patch(lines, at, { start: undefined, end: undefined });
+  return patch(lines, at, {
+    start: undefined,
+    end: undefined,
+    romanStarts: undefined,
+  });
 }
 
 export function clearAll(lines: CreatorLine[]): CreatorLine[] {
@@ -1413,7 +1520,17 @@ export function setUnitRoman(
       ? {
           ...line,
           units: line.units.map((each, position) =>
-            position === at.unit ? { ...each, roman } : each,
+            position === at.unit
+              ? {
+                  ...each,
+                  roman,
+                  // Taps for pieces that changed no longer fit.
+                  romanStarts:
+                    roman?.split("|").length === unit.roman?.split("|").length
+                      ? each.romanStarts
+                      : undefined,
+                }
+              : each,
           ),
         }
       : line,
@@ -1529,9 +1646,21 @@ export function toLyrics(lines: CreatorLine[]): Lyrics {
       romanization: hasWordRoman(line)
         ? line.units
             .filter((unit) => unit.start !== undefined)
-            .map((unit) => unit.roman || unit.text)
+            .map((unit) => romanParts(unit).join("") || unit.text)
             .join(" ")
         : (line.romanization ?? ""),
+      ...(hasWordRoman(line) && {
+        romanization_words: line.units.filter(timed).flatMap((unit, index) =>
+          romanPieces(unit).map((piece, part) => ({
+            start_ms: piece.start,
+            end_ms: piece.end,
+            text:
+              part === 0 && index > 0 && !unit.joined
+                ? ` ${piece.text}`
+                : piece.text,
+          })),
+        ),
+      }),
       words,
       background: line.background,
       opposite: line.background ? leadOpposite : line.opposite,
@@ -1571,9 +1700,16 @@ function spans(
   return line.units
     .filter(timed)
     .map((unit, index) => {
-      const text = roman ? unit.roman || unit.text : unit.text;
       const agent = agentOf(unit);
-      const span = `<span begin="${formatTime(unit.start!)}" end="${formatTime(Math.max(unit.start!, unit.end!))}"${agent ? ` ttm:agent="${agent}"` : ""}>${escape(text)}</span>`;
+      const pieces = roman
+        ? romanPieces(unit)
+        : [{ text: unit.text, start: unit.start!, end: unit.end! }];
+      const span = pieces
+        .map(
+          (piece) =>
+            `<span begin="${formatTime(piece.start)}" end="${formatTime(Math.max(piece.start, piece.end))}"${agent ? ` ttm:agent="${agent}"` : ""}>${escape(piece.text)}</span>`,
+        )
+        .join("");
       return index > 0 && !unit.joined ? ` ${span}` : span;
     })
     .join("");

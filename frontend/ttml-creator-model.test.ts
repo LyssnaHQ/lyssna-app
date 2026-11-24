@@ -76,8 +76,9 @@ import {
   sectionName,
   applySections,
   canSeed,
+  romanPieces,
 } from "./ttml-creator-model";
-import type { CreatorLine } from "./ttml-creator-model";
+import type { CreatorLine, Cursor } from "./ttml-creator-model";
 import { romanizeLyrics } from "./romanization";
 import type { Lyrics } from "./types";
 
@@ -371,17 +372,24 @@ describe("TTML Creator model", () => {
         {
           start_ms: 0,
           end_ms: 1000,
-          text: "未完成 の",
+          text: "未完成 命",
           translation: "",
-          romanization: "mikansei no",
-          romanization_syllables: ["mi", "kan", "sei", " no"],
+          romanization: "mikansei inochi",
+          romanization_words: [
+            { start_ms: 0, end_ms: 200, text: "mi" },
+            { start_ms: 200, end_ms: 500, text: "kan" },
+            { start_ms: 500, end_ms: 800, text: "sei" },
+            { start_ms: 800, end_ms: 850, text: " i" },
+            { start_ms: 850, end_ms: 900, text: "no" },
+            { start_ms: 900, end_ms: 1000, text: "chi" },
+          ],
           background: false,
           opposite: false,
           words: [
             { start_ms: 0, end_ms: 200, text: "未" },
             { start_ms: 200, end_ms: 500, text: "完" },
             { start_ms: 500, end_ms: 800, text: "成" },
-            { start_ms: 800, end_ms: 1000, text: " の" },
+            { start_ms: 800, end_ms: 1000, text: " 命" },
           ],
         },
       ],
@@ -391,9 +399,68 @@ describe("TTML Creator model", () => {
       "mi",
       "kan",
       "sei",
-      "no",
+      "i|no|chi",
     ]);
+    expect(line.units[3].romanStarts).toEqual([850, 900]);
     expect(line.romanization).toBeUndefined();
+  });
+
+  it("times a split reading piece by piece inside its word", () => {
+    let lines: CreatorLine[] = [
+      {
+        units: [
+          { text: "命", joined: false, roman: "i|no|chi" },
+          { text: "の", joined: false, roman: "no" },
+        ],
+        background: false,
+        opposite: false,
+      },
+    ];
+    let cursor: Cursor = { line: 0, unit: 0 };
+    lines = markStart(lines, cursor, 1000);
+    for (const time of [1200, 1400, 1800]) {
+      const result = markNext(lines, cursor, time);
+      lines = result.lines;
+      cursor = result.cursor;
+    }
+    expect(cursor).toEqual({ line: 0, unit: 1 });
+    lines = markEnd(lines, cursor, 2000).lines;
+    const [word] = lines[0].units;
+    expect([word.start, word.end]).toEqual([1000, 1800]);
+    expect(romanPieces(word)).toEqual([
+      { text: "i", start: 1000, end: 1200 },
+      { text: "no", start: 1200, end: 1400 },
+      { text: "chi", start: 1400, end: 1800 },
+    ]);
+    const ttml = toTtml(lines, meta);
+    expect(ttml).toContain(
+      '<span begin="00:01.000" end="00:01.200">i</span><span begin="00:01.200" end="00:01.400">no</span><span begin="00:01.400" end="00:01.800">chi</span>',
+    );
+    expect(ttml).toContain('<span begin="00:01.000" end="00:01.800">命</span>');
+    const shown = toLyrics(lines).lines[0];
+    expect(shown.romanization).toBe("inochi no");
+    expect(shown.romanization_words?.map((piece) => piece.text)).toEqual([
+      "i",
+      "no",
+      "chi",
+      " no",
+    ]);
+  });
+
+  it("spreads untapped reading pieces evenly over their word", () => {
+    expect(
+      romanPieces({
+        text: "命",
+        joined: false,
+        roman: "i|no|chi",
+        start: 0,
+        end: 900,
+      }).map((piece) => [piece.start, piece.end]),
+    ).toEqual([
+      [0, 300],
+      [300, 600],
+      [600, 900],
+    ]);
   });
 
   it("keeps real line times on a line's edges and leaves static lyrics untimed", () => {
