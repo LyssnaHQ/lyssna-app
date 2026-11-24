@@ -1942,6 +1942,11 @@ small {
   top: auto;
   bottom: calc(100% + 6px);
   min-width: 100%;
+  overflow-y: auto;
+}
+.reviewer-picker .sort-menu.opens-down {
+  top: calc(100% + 6px);
+  bottom: auto;
 }
 .load-ttml-reviewer-info {
   padding: 0 14px;

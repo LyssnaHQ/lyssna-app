@@ -21645,6 +21645,25 @@ test("Load TTML chooses the lyrics source for the playing song", async ({
       .click();
   };
   await expect(source).toHaveText("Apple Music");
+  // The dialog scrolls under its header, so the menu stays below the header
+  // and inside the dialog even with little room above it.
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await dialog.evaluate((box) => (box.scrollTop = 10));
+  await source.click();
+  const menu = dialog.getByRole("listbox", {
+    name: "Lyrics source for this song",
+  });
+  const fits = await menu.evaluate((list) => {
+    const box = list.closest(".load-ttml")!;
+    const inner = list.getBoundingClientRect();
+    const head = box.querySelector(".load-ttml-head")!.getBoundingClientRect();
+    return (
+      inner.top >= head.bottom &&
+      inner.bottom <= box.getBoundingClientRect().bottom
+    );
+  });
+  expect(fits).toBe(true);
+  await source.click();
   await choose("lrc.red");
   await expect(source).toHaveText("lrc.red");
   await choose("Your order");

@@ -486,7 +486,24 @@ function Picker<T extends string>({
   onChange: (value: T) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [room, setRoom] = useState<{ down: boolean; height: number }>();
   const root = useRef<HTMLDivElement>(null);
+  // The dialog scrolls under its header and clips, so the menu opens towards
+  // the side with more room inside it and scrolls itself when that is short.
+  const toggle = () => {
+    if (open) return setOpen(false);
+    const at = root.current!.getBoundingClientRect();
+    const dialog = root.current!.closest<HTMLElement>(".load-ttml");
+    const head = dialog
+      ?.querySelector(".load-ttml-head")
+      ?.getBoundingClientRect();
+    const frame = dialog?.getBoundingClientRect();
+    const above = at.top - Math.max(head?.bottom ?? 0, frame?.top ?? 0) - 12;
+    const below = (frame?.bottom ?? innerHeight) - at.bottom - 12;
+    const down = below >= above;
+    setRoom({ down, height: Math.max(120, down ? below : above) });
+    setOpen(true);
+  };
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => {
@@ -522,7 +539,7 @@ function Picker<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen((shown) => !shown)}
+        onClick={toggle}
         onKeyDown={(event) => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
@@ -535,7 +552,12 @@ function Picker<T extends string>({
         {options[index]?.[1]}
       </button>
       {open && (
-        <div className="sort-menu" role="listbox" aria-label={label}>
+        <div
+          className={`sort-menu ${room?.down ? "opens-down" : ""}`}
+          role="listbox"
+          aria-label={label}
+          style={{ maxHeight: room?.height }}
+        >
           {options.map(([option, name]) => (
             <button
               key={option}
