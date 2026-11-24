@@ -399,23 +399,14 @@ export function applySections(
     return parsed.slice(from, to).some(isLead);
   };
   const theirs: string[] = [];
-  const theirVoices: (string | undefined)[] = [];
   const lineStart: number[] = [];
   const sections: { section: SongSection; from: number; to: number }[] = [];
   let pending: SongSection | undefined;
-  let singer: string | undefined;
   for (const [index, line] of parsed.entries()) {
     pending = sectionFrom(line) ?? pending;
-    if (line.part) singer = line.singer;
     if (line.background && sectionHasLead(index)) continue;
-    const tokens = lineTokens(line);
-    const found = tokens.map((token) => token.word);
+    const found = lineWords(line);
     if (!found.length) continue;
-    const voices = voicesOf(singer ?? "");
-    for (const token of tokens)
-      theirVoices.push(
-        styleVoice(token.style, voices, headers.get(singer ?? "")),
-      );
     if (pending)
       sections.push({ section: pending, from: theirs.length, to: 0 });
     pending = undefined;
@@ -452,15 +443,33 @@ export function applySections(
     return section ? { ...rest, ...section } : rest;
   });
   // Genius's italic and bold say who sings: the line takes the voice of
-  // its first word, and words sung by another voice keep theirs.
+  // its first word, and words sung by another voice keep theirs. Every
+  // word counts here, bracketed ones too, since a draft may sing as its
+  // lead what Genius brackets.
+  const allTheirs: string[] = [];
+  const allVoices: (string | undefined)[] = [];
+  let who: string | undefined;
+  for (const line of parseText(unstyled)) {
+    if (line.part) who = line.singer;
+    const voices = voicesOf(who ?? "");
+    for (const token of lineTokens(line)) {
+      allTheirs.push(token.word);
+      allVoices.push(styleVoice(token.style, voices, headers.get(who ?? "")));
+    }
+  }
+  const allOurs: string[] = [];
+  const startOf = new Map<number, number>();
+  lines.forEach((line, index) => {
+    startOf.set(index, allOurs.length);
+    allOurs.push(...lineTokens(line).map((token) => token.word));
+  });
   const voiced = new Map<number, string>();
-  for (const [j, i] of pairs) {
-    const voice = theirVoices[j];
+  for (const [j, i] of alignWords(allOurs, allTheirs)) {
+    const voice = allVoices[j];
     if (voice) voiced.set(i, voice);
   }
   return tagged.map((line, index) => {
-    const start = firstWord.get(index);
-    if (start === undefined) return line;
+    const start = startOf.get(index)!;
     const voices = sectionVoices(tagged, index);
     if (voices.length < 2) return line;
     let lineVoice: string | undefined;

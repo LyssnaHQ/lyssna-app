@@ -237,6 +237,23 @@ describe("TTML Creator model", () => {
     ]);
   });
 
+  it("gives bracketed Genius words their own voice when the draft sings them as lead", () => {
+    const lines = timeAll("Konrinzai big juicer ready to crush");
+    const tagged = applySections(
+      lines,
+      "[Chorus: Konomi, Ashnikko]\n(Konrinzai) Big juicer ready to crush",
+    )!;
+    expect(tagged[0].sungBy).toBeUndefined();
+    expect(tagged[0].units.map((unit) => unit.sungBy)).toEqual([
+      undefined,
+      "Ashnikko",
+      "Ashnikko",
+      "Ashnikko",
+      "Ashnikko",
+      "Ashnikko",
+    ]);
+  });
+
   it("gives plain lines to the first voice when the header sets it bold", () => {
     const lines = timeAll("Transforming the pain\nZero modori");
     const tagged = applySections(
