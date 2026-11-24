@@ -2032,13 +2032,18 @@ export function readingsFrom(
       const from = at[starts[index]];
       const to = index + 1 < starts.length ? at[starts[index + 1]] : at[ours.length];
       if (from >= to) return word;
-      const end =
-        to < theirs.at.length ? theirs.at[to] : theirs.at[theirs.at.length - 1] + 1;
-      let stop = end;
-      if (to >= theirs.at.length)
-        while (stop < theirs.chars.length && !/[\s()]/.test(theirs.chars[stop])) stop++;
+      // The line's edges take in the whole word they land in: Lyssna
+      // reads 零 as "rei" where Genius writes "Zero".
+      const edge = (at: number) => at >= 0 && !/[\s()]/.test(theirs.chars[at]);
+      let begin = theirs.at[from];
+      if (starts[index] === 0) while (edge(begin - 1)) begin--;
+      let stop: number;
+      if (index + 1 === starts.length || starts[index + 1] === ours.length) {
+        stop = theirs.at[to - 1] + 1;
+        while (stop < theirs.chars.length && edge(stop)) stop++;
+      } else stop = theirs.at[to];
       const reading = theirs.chars
-        .slice(theirs.at[from], stop)
+        .slice(begin, stop)
         .join("")
         .replace(/[()]/g, "")
         .trim();

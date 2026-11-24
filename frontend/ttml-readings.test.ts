@@ -23,6 +23,26 @@ const lyricsOf = (lines: string[][]): Lyrics => ({
 });
 
 describe("readingsFrom", () => {
+  it("takes the whole Genius word at a line's edges", () => {
+    const request = lyricsOf([["「零」", "戻", "り", "ま", "た", "再", "生"]]);
+    const ours = lyricsOf([["\"Rei\"", " modo", "ri", " ma", "ta", " sai", "sei"]]);
+    const { lyrics } = readingsFrom(
+      request,
+      ours,
+      '"Zero" modori mata saiseiyo',
+    );
+    expect(lyrics.lines[0].words.map((word) => word.text)).toEqual([
+      '"Zero"',
+      " modo",
+      "ri",
+      " ma",
+      "ta",
+      " sai",
+      "seiyo",
+    ]);
+  });
+
+
   it("spreads a romanized line over the syllables", () => {
     const request = lyricsOf([
       ["濁", "る", "呼", "吸", "の", "奥", "で"],
