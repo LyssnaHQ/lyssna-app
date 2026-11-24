@@ -349,14 +349,18 @@ export function SplitDialog({
 export function ReadingSplitDialog({
   word,
   reading,
+  matches = 0,
   onConfirm,
   onClose,
 }: {
   word: string;
   reading: string;
-  onConfirm: (reading: string) => void;
+  /** Other words with the same reading. */
+  matches?: number;
+  onConfirm: (reading: string, everywhere: boolean) => void;
   onClose: () => void;
 }) {
+  const [everywhere, setEverywhere] = useState(true);
   const chars = Array.from(reading.replace(/\|/g, ""));
   const [offsets, setOffsets] = useState<Set<number>>(() => {
     const given = new Set<number>();
@@ -377,6 +381,7 @@ export function ReadingSplitDialog({
   const confirm = () =>
     onConfirm(
       chars.map((char, index) => (offsets.has(index) ? `|${char}` : char)).join(""),
+      matches > 0 && everywhere,
     );
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -433,6 +438,17 @@ export function ReadingSplitDialog({
             Join all
           </button>
         </div>
+        {matches > 0 && (
+          <label className="ttml-check">
+            <input
+              type="checkbox"
+              checked={everywhere}
+              onChange={(event) => setEverywhere(event.target.checked)}
+            />
+            Split the {matches} other {matches === 1 ? "word" : "words"} read "
+            {chars.join("")}" the same way
+          </label>
+        )}
         <div className="ttml-dialog-row end">
           <button onClick={onClose}>Cancel</button>
           <button className="primary" onClick={confirm}>

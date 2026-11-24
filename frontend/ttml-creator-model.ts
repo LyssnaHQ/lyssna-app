@@ -2086,6 +2086,66 @@ export function moveSpace(
   );
 }
 
+const bareReading = (roman?: string) =>
+  roman?.replace(/\|/g, "").toLowerCase();
+
+/** Other words with this reading, however it is split. */
+export function sameReadings(lines: CreatorLine[], at: Cursor): number {
+  const bare = bareReading(lines[at.line]?.units[at.unit]?.roman);
+  if (!bare) return 0;
+  return lines.reduce(
+    (count, line, index) =>
+      count +
+      line.units.filter(
+        (unit, position) =>
+          (index !== at.line || position !== at.unit) &&
+          bareReading(unit.roman) === bare,
+      ).length,
+    0,
+  );
+}
+
+/**
+ * Splits every reading the same as `reading` ("i|no|chi") at the same
+ * letters, each keeping its own letter case.
+ */
+export function splitReadings(
+  lines: CreatorLine[],
+  reading: string,
+): CreatorLine[] {
+  const bare = bareReading(reading);
+  if (!bare) return lines;
+  const cuts = new Set<number>();
+  let letters = 0;
+  for (const char of reading) {
+    if (char === "|") cuts.add(letters);
+    else letters++;
+  }
+  return lines.map((line) => {
+    if (!line.units.some((unit) => bareReading(unit.roman) === bare))
+      return line;
+    return {
+      ...line,
+      units: line.units.map((unit) => {
+        if (bareReading(unit.roman) !== bare) return unit;
+        const roman = Array.from(unit.roman!.replace(/\|/g, ""))
+          .map((char, index) => (cuts.has(index) ? `|${char}` : char))
+          .join("");
+        if (roman === unit.roman) return unit;
+        return {
+          ...unit,
+          roman,
+          romanAuto: undefined,
+          romanStarts:
+            roman.split("|").length === unit.roman!.split("|").length
+              ? unit.romanStarts
+              : undefined,
+        };
+      }),
+    };
+  });
+}
+
 export function setUnitRoman(
   lines: CreatorLine[],
   at: Cursor,

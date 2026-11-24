@@ -32,6 +32,8 @@ import {
   breakLine,
   splitBrackets,
   timingCursor,
+  sameReadings,
+  splitReadings,
   geniusChanges,
   clearLines,
   removeLines,
@@ -218,6 +220,18 @@ describe("TTML Creator model", () => {
     expect(timingCursor(lines, away, 3500)).toBe(away);
     lines[0].units[2] = { ...lines[0].units[2], end: 1600 };
     expect(timingCursor(lines, away, 1700)).toEqual({ line: 0, unit: 3 });
+  });
+
+  it("splits every word with the same reading alike", () => {
+    let lines = parseText("命 光\n命");
+    lines = setUnitRoman(lines, { line: 0, unit: 0 }, "Inochi");
+    lines = setUnitRoman(lines, { line: 1, unit: 0 }, "inochi");
+    lines = setUnitRoman(lines, { line: 0, unit: 1 }, "hikari");
+    expect(sameReadings(lines, { line: 0, unit: 0 })).toBe(1);
+    const split = splitReadings(lines, "i|no|chi");
+    expect(
+      split.flatMap((line) => line.units.map((unit) => unit.roman)),
+    ).toEqual(["I|no|chi", "hikari", "i|no|chi"]);
   });
 
   it("drops the comma left at the end of a line split in two", () => {

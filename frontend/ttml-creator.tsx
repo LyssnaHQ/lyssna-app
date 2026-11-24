@@ -101,7 +101,9 @@ import {
   applyRomanized,
   nextCursor,
   romanizeRequest,
+  sameReadings,
   setUnitRoman,
+  splitReadings,
   romanParts,
   romanPieces,
   hasWordRoman,
@@ -3833,9 +3835,17 @@ export function TtmlCreator({
             reading={
               lines[splittingReading.line].units[splittingReading.unit].roman!
             }
+            matches={sameReadings(lines, splittingReading)}
             onClose={() => setSplittingReading(null)}
-            onConfirm={(reading) => {
-              setLines(setUnitRoman(lines, splittingReading, reading));
+            onConfirm={(reading, everywhere) => {
+              setLines(
+                everywhere
+                  ? splitReadings(
+                      setUnitRoman(lines, splittingReading, reading),
+                      reading,
+                    )
+                  : setUnitRoman(lines, splittingReading, reading),
+              );
               setSplittingReading(null);
             }}
           />
