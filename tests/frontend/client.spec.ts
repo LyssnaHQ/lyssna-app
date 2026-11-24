@@ -21616,13 +21616,21 @@ test("Load TTML chooses the lyrics source for the playing song", async ({
     await page.getByTitle("Lyrics", { exact: true }).click();
   await page.getByTitle("Load TTML", { exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Load TTML" });
-  const source = dialog.getByRole("combobox", {
+  const source = dialog.getByRole("button", {
     name: "Lyrics source for this song",
   });
-  await expect(source).toHaveValue("apple");
-  await source.selectOption("lrcred");
-  await expect(source).toHaveValue("lrcred");
-  await source.selectOption("");
+  const choose = async (name: string) => {
+    await source.click();
+    await dialog
+      .getByRole("listbox", { name: "Lyrics source for this song" })
+      .getByRole("option", { name, exact: true })
+      .click();
+  };
+  await expect(source).toHaveText("Apple Music");
+  await choose("lrc.red");
+  await expect(source).toHaveText("lrc.red");
+  await choose("Your order");
+  await expect(source).toHaveText("Your order");
   expect(await commandArgs(page, "set_lyrics_song_source")).toEqual([
     { source: "lrcred" },
     { source: null },

@@ -168,27 +168,6 @@ export function LoadTtml({
                   <RotateCcw size={14} />
                   Reset TTML
                 </button>
-                <label
-                  className="load-ttml-source"
-                  title="Show this song's lyrics from one source whenever it has them"
-                >
-                  <span>Source</span>
-                  <select
-                    aria-label="Lyrics source for this song"
-                    value={songSource ?? ""}
-                    disabled={busy}
-                    onChange={(event) =>
-                      onSongSource(event.target.value || null)
-                    }
-                  >
-                    <option value="">Your order</option>
-                    {sources.map((source) => (
-                      <option key={source.id} value={source.id}>
-                        {source.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <button
                   title="Load many lyric files at once, each saved for its own song"
                   onClick={() => {
@@ -263,6 +242,32 @@ export function LoadTtml({
             </div>
             <section
               className="load-ttml-reviewer"
+              aria-labelledby="ttml-song-source-title"
+            >
+              <div className="load-ttml-reviewer-row">
+                <span>
+                  <strong id="ttml-song-source-title">Lyrics source</strong>
+                  <small>
+                    Show this song's lyrics from one source whenever it has
+                    them, instead of your usual order.
+                  </small>
+                </span>
+                <Picker
+                  label="Lyrics source for this song"
+                  options={[
+                    ["", "Your order"],
+                    ...sources.map(
+                      (source) => [source.id, source.name] as [string, string],
+                    ),
+                  ]}
+                  value={songSource ?? ""}
+                  disabled={busy}
+                  onChange={(source) => onSongSource(source || null)}
+                />
+              </div>
+            </section>
+            <section
+              className="load-ttml-reviewer"
               aria-labelledby="ttml-reviewer-title"
             >
               <div className="load-ttml-reviewer-row">
@@ -281,7 +286,9 @@ export function LoadTtml({
                 >
                   What does it change?
                 </button>
-                <ReviewerPicker
+                <Picker
+                  label="TTML Reviewer"
+                  options={REVIEWER_MODES}
                   value={reviewer}
                   disabled={busy}
                   onChange={onReviewer}
@@ -465,14 +472,18 @@ const REVIEWER_MODES: [ReviewerMode, string][] = [
   ["always", "All loaded TTML"],
 ];
 
-function ReviewerPicker({
+function Picker<T extends string>({
+  label,
+  options,
   value,
   disabled,
   onChange,
 }: {
-  value: ReviewerMode;
+  label: string;
+  options: readonly (readonly [T, string])[];
+  value: T;
   disabled: boolean;
-  onChange: (mode: ReviewerMode) => void;
+  onChange: (value: T) => void;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -491,9 +502,12 @@ function ReviewerPicker({
       document.removeEventListener("keydown", escape);
     };
   }, [open]);
-  const index = REVIEWER_MODES.findIndex(([mode]) => mode === value);
-  const pick = (mode: ReviewerMode) => {
-    onChange(mode);
+  const index = Math.max(
+    0,
+    options.findIndex(([option]) => option === value),
+  );
+  const pick = (option: T) => {
+    onChange(option);
     setOpen(false);
   };
   return (
@@ -504,7 +518,7 @@ function ReviewerPicker({
     >
       <button
         className="settings-select"
-        aria-label="TTML Reviewer"
+        aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
@@ -513,26 +527,24 @@ function ReviewerPicker({
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
           const step = event.key === "ArrowDown" ? 1 : -1;
-          const next =
-            REVIEWER_MODES[
-              (index + step + REVIEWER_MODES.length) % REVIEWER_MODES.length
-            ];
-          onChange(next[0]);
+          onChange(
+            options[(index + step + options.length) % options.length][0],
+          );
         }}
       >
-        {REVIEWER_MODES[index]?.[1] ?? "Off"}
+        {options[index]?.[1]}
       </button>
       {open && (
-        <div className="sort-menu" role="listbox" aria-label="TTML Reviewer">
-          {REVIEWER_MODES.map(([mode, label]) => (
+        <div className="sort-menu" role="listbox" aria-label={label}>
+          {options.map(([option, name]) => (
             <button
-              key={mode}
+              key={option}
               role="option"
-              aria-selected={mode === value}
-              className={mode === value ? "active" : ""}
-              onClick={() => pick(mode)}
+              aria-selected={option === value}
+              className={option === value ? "active" : ""}
+              onClick={() => pick(option)}
             >
-              {label}
+              {name}
             </button>
           ))}
         </div>
