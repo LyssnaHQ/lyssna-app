@@ -17957,6 +17957,20 @@ test("TTML Creator names sections from Genius without touching timings", async (
   ]);
   // Section lines, even an empty "[]", never become lyrics.
   expect(await read()).toEqual(words);
+
+  // What changed waits beside the draft until it's kept or undone.
+  const review = page.getByRole("dialog", { name: "Changes from Genius" });
+  await expect(review).toContainText("2 sections");
+  if (process.env.REVIEW_SHOT)
+    await page.screenshot({ path: process.env.REVIEW_SHOT });
+  await review.getByRole("button", { name: "Undo" }).click();
+  await expect(review).toBeHidden();
+  await expect(creator.locator(".ttml-part")).toHaveCount(0);
+  await creator.getByRole("button", { name: "Genius", exact: true }).click();
+  await creator.getByRole("menuitem", { name: "Sections from Genius" }).click();
+  await review.getByRole("button", { name: "Keep" }).click();
+  await expect(review).toBeHidden();
+  await expect(creator.locator(".ttml-part")).toHaveCount(2);
 });
 
 test("TTML Creator spectrogram zooms, scrolls, reads out and seeks", async ({

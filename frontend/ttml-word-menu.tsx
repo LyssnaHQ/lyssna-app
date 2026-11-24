@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, Info } from "lucide-react";
 import { type LearnedSplits, learnFrom, suggestSplit } from "./ttml-syllables";
-import { romajiSyllables } from "./ttml-creator-model";
+import { type GeniusChanges, romajiSyllables } from "./ttml-creator-model";
 
 export interface MenuAction {
   label: string;
@@ -439,6 +439,86 @@ export function ReadingSplitDialog({
             Confirm
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What Sections from Genius changed, beside the draft so each change can
+ * be looked at before keeping it.
+ */
+export function GeniusReview({
+  changes,
+  onGo,
+  onKeep,
+  onUndo,
+}: {
+  changes: GeniusChanges;
+  onGo: (line: number) => void;
+  onKeep: () => void;
+  onUndo: () => void;
+}) {
+  const go = (line: number, label: string, key: string | number) => (
+    <button
+      key={key}
+      className="ttml-review-chip"
+      title={`Go to line ${line + 1}`}
+      onClick={() => onGo(line)}
+    >
+      {label}
+    </button>
+  );
+  const plural = (count: number, one: string, many: string) =>
+    `${count} ${count === 1 ? one : many}`;
+  return (
+    <div className="ttml-dialog ttml-review" role="dialog" aria-label="Changes from Genius">
+      <h3>Changes from Genius</h3>
+      <section>
+        <h4>{plural(changes.sections.length, "section", "sections")}</h4>
+        <div className="ttml-review-chips">
+          {changes.sections.map((each, index) =>
+            go(each.line, `${each.line + 1} · ${each.part}`, index),
+          )}
+        </div>
+      </section>
+      {changes.backgrounds.length > 0 && (
+        <section>
+          <h4>
+            Moved to background vocals ({changes.backgrounds.length})
+          </h4>
+          <div className="ttml-review-chips">
+            {changes.backgrounds.map((each, index) =>
+              go(each.line, `${each.line + 1} · ${each.text}`, index),
+            )}
+          </div>
+        </section>
+      )}
+      {changes.singers.map((group) => (
+        <section key={group.voice}>
+          <h4>
+            Sung by {group.voice} ({plural(group.lines.length, "line", "lines")})
+          </h4>
+          <div className="ttml-review-chips">
+            {group.lines.map((line) => go(line, `${line + 1}`, line))}
+          </div>
+        </section>
+      ))}
+      {changes.mixed.length > 0 && (
+        <section>
+          <h4>Words sung by another voice</h4>
+          <div className="ttml-review-chips">
+            {changes.mixed.map((line) => go(line, `${line + 1}`, line))}
+          </div>
+        </section>
+      )}
+      <div className="ttml-dialog-row end">
+        <button onClick={onUndo} title="Put the draft back as it was">
+          Undo
+        </button>
+        <button className="primary" onClick={onKeep}>
+          Keep
+        </button>
       </div>
     </div>
   );

@@ -32,6 +32,7 @@ import {
   breakLine,
   splitBrackets,
   timingCursor,
+  geniusChanges,
   clearLines,
   removeLines,
   setLineFlag,
@@ -337,6 +338,20 @@ describe("TTML Creator model", () => {
       "Mira",
       undefined,
     ]);
+  });
+
+  it("lists what Sections from Genius changed", () => {
+    const lines = timeAll("Start here\nあの星が tell me where to go\n(Run it)");
+    const tagged = applySections(
+      lines,
+      "[Chorus: Aiko, Mira]\nStart here\n(あの星が) Tell me where to go (Run it)",
+    )!;
+    expect(geniusChanges(lines, tagged)).toEqual({
+      sections: [{ line: 0, part: "Chorus" }],
+      backgrounds: [{ line: 2, text: "あの星が" }],
+      singers: [{ voice: "Mira", lines: [1, 3] }],
+      mixed: [],
+    });
   });
 
   it("keeps the comma after a bracket mid-line on the lead", () => {

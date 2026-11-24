@@ -80,6 +80,8 @@ import {
   formatTime,
   fromLyrics,
   geniusBackgrounds,
+  geniusChanges,
+  type GeniusChanges,
   bracketsToBackground,
   readingsFrom,
   insertBlankLine,
@@ -189,6 +191,7 @@ import {
   type MenuAction,
   type SplitChoice,
   SplitDialog,
+  GeniusReview,
   ReadingSplitDialog,
   ReplaceDialog,
   type ReplaceChoice,
@@ -772,16 +775,27 @@ export function TtmlCreator({
           return;
         }
         setLines(tagged);
-        const count = tagged.filter((line) => line.part).length;
-        notify(
-          `Added ${count} ${count === 1 ? "section" : "sections"} from Genius.`,
-        );
+        setReview({
+          before: lines,
+          changes: geniusChanges(lines, tagged),
+        });
       })
       .catch((error) =>
         notify(`Couldn't get sections from Genius: ${error}`, true),
       )
       .finally(() => setFetching(false));
   };
+  // What Sections from Genius changed, open until it's kept, undone or
+  // the draft is edited (which keeps it).
+  const [review, setReview] = useState<{
+    before: CreatorLine[];
+    changes: GeniusChanges;
+    shown?: CreatorLine[];
+  } | null>(null);
+  useEffect(() => {
+    if (!review || review.shown === lines) return;
+    setReview(review.shown ? null : { ...review, shown: lines });
+  }, [lines, review]);
   const [geniusOpen, setGeniusOpen] = useState(false);
   const geniusMenu = (
     <span className="ttml-export ttml-genius">
@@ -3795,6 +3809,21 @@ export function TtmlCreator({
           learned={learned}
           onClose={() => setSplitting(null)}
           onConfirm={(choice) => confirmSplit(splitting, choice)}
+        />
+      )}
+      {review && (
+        <GeniusReview
+          changes={review.changes}
+          onGo={(line) => {
+            setCursor({ line, unit: 0 });
+            centre(line);
+          }}
+          onKeep={() => setReview(null)}
+          onUndo={() => {
+            setLines(review.before);
+            setReview(null);
+            notify("Undid the changes from Genius.");
+          }}
         />
       )}
       {splittingReading &&

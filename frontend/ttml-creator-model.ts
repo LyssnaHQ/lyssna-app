@@ -731,6 +731,56 @@ function geniusVoices(
   });
 }
 
+export interface GeniusChanges {
+  sections: { line: number; part: string }[];
+  /** Lines that became background vocals. */
+  backgrounds: { line: number; text: string }[];
+  /** Lines each voice other than a section's first sings. */
+  singers: { voice: string; lines: number[] }[];
+  /** Lines with words another voice sings. */
+  mixed: number[];
+}
+
+const textOf = (line: CreatorLine) =>
+  line.units
+    .map((unit, index) => (index && !unit.joined ? " " : "") + unit.text)
+    .join("");
+
+/** What Sections from Genius changed, for a look before keeping it. */
+export function geniusChanges(
+  before: CreatorLine[],
+  after: CreatorLine[],
+): GeniusChanges {
+  const echoes = new Map<string, number>();
+  for (const line of before)
+    if (line.background)
+      echoes.set(textOf(line), (echoes.get(textOf(line)) ?? 0) + 1);
+  const changes: GeniusChanges = {
+    sections: [],
+    backgrounds: [],
+    singers: [],
+    mixed: [],
+  };
+  after.forEach((line, index) => {
+    if (line.part) changes.sections.push({ line: index, part: line.part });
+    if (line.background) {
+      const left = echoes.get(textOf(line)) ?? 0;
+      if (left) echoes.set(textOf(line), left - 1);
+      else changes.backgrounds.push({ line: index, text: textOf(line) });
+    }
+    if (line.sungBy) {
+      let group = changes.singers.find((each) => each.voice === line.sungBy);
+      if (!group) {
+        group = { voice: line.sungBy, lines: [] };
+        changes.singers.push(group);
+      }
+      group.lines.push(index);
+    }
+    if (line.units.some((unit) => unit.sungBy)) changes.mixed.push(index);
+  });
+  return changes;
+}
+
 /** "[...]" lines that name no Genius section, so add no tag. */
 export function unknownSections(text: string): string[] {
   return text
