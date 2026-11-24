@@ -417,6 +417,90 @@ pub fn account(client: &Client) -> Result<Option<Account>> {
     }))
 }
 
+/// A reserved Lyssna account: one an admin made for someone who has not signed up yet.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Reserved {
+    pub id: String,
+    pub username: String,
+}
+
+/// The reserved account uploads go to, with when the choice ends.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ActAs {
+    pub id: String,
+    pub username: String,
+    /// Seconds left before uploads go back to the signed-in account.
+    pub seconds_left: u64,
+}
+
+// An admin can upload as a reserved account for a while. The choice lives in memory only, so quitting the
+// app, signing out or four hours ends it; the API only honours it for admins and reserved accounts.
+const ACT_AS_FOR: Duration = Duration::from_secs(4 * 60 * 60);
+static ACT_AS: Mutex<Option<(Reserved, Instant)>> = Mutex::new(None);
+
+/// Who uploads currently go to, if an admin chose a reserved account and the time is not up.
+pub fn act_as() -> Option<ActAs> {
+    let mut chosen = ACT_AS.lock().unwrap_or_else(|error| error.into_inner());
+    let (who, until) = chosen.clone()?;
+    let Some(left) = until
+        .checked_duration_since(Instant::now())
+        .filter(|left| !left.is_zero())
+    else {
+        *chosen = None;
+        return None;
+    };
+    Some(ActAs {
+        id: who.id,
+        username: who.username,
+        seconds_left: left.as_secs(),
+    })
+}
+
+pub fn set_act_as(who: Reserved) -> Result<ActAs> {
+    ensure!(
+        who.id.len() == 36 && who.id.chars().all(|c| c.is_ascii_hexdigit() || c == '-'),
+        "That is not a Lyssna user ID"
+    );
+    *ACT_AS.lock().unwrap_or_else(|error| error.into_inner()) =
+        Some((who, Instant::now() + ACT_AS_FOR));
+    act_as().context("Could not choose the account")
+}
+
+pub fn clear_act_as() {
+    *ACT_AS.lock().unwrap_or_else(|error| error.into_inner()) = None;
+}
+
+/// The address uploads go to: with a reserved account chosen, `?as=` makes the request run as it.
+fn submissions_url() -> String {
+    match act_as() {
+        Some(who) => format!("{API}/v1/submissions?as={}", who.id),
+        None => format!("{API}/v1/submissions"),
+    }
+}
+
+/// Finds reserved accounts by part of their name, or by user ID. Admins only.
+pub fn find_reserved(client: &Client, query: &str) -> Result<Vec<Reserved>> {
+    let Some(token) = access_token(client)? else {
+        bail!("Sign in to Lyssna in Settings first");
+    };
+    let mut url = Url::parse(&format!("{API}/v1/users/reserved"))?;
+    url.query_pairs_mut()
+        .append_pair("limit", "8")
+        .append_pair("q", query.trim());
+    let response = keyed(client.get(url))
+        .bearer_auth(token)
+        .send()
+        .context("Cannot reach Lyssna")?;
+    if !response.status().is_success() {
+        let rejected = rejection(response);
+        if rejected.status == StatusCode::FORBIDDEN && rejected.friendly().is_none() {
+            bail!("Only Lyssna admins can upload as another account");
+        }
+        return Err(rejected.into_error());
+    }
+    Ok(response.json()?)
+}
+
 /// What Lyssna made of an uploaded TTML.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Submission {
@@ -501,7 +585,7 @@ pub fn submit(
     let Some(token) = access_token(client)? else {
         bail!("Sign in to Lyssna in Settings to submit lyrics");
     };
-    let response = keyed(client.post(format!("{API}/v1/submissions")))
+    let response = keyed(client.post(submissions_url()))
         .bearer_auth(token)
         .json(&body)
         .send()
@@ -652,6 +736,7 @@ pub fn signed_in() -> bool {
 }
 
 pub fn sign_out(client: &Client) -> Result<()> {
+    clear_act_as();
     let _guard = TOKENS.lock().unwrap_or_else(|error| error.into_inner());
     if let Some(tokens) = load()? {
         // Best effort: the server session also expires on its own.
@@ -750,6 +835,31 @@ mod tests {
             ..track
         };
         assert!(submission_body("<tt/>", &local, None, None).is_err());
+    }
+
+    #[test]
+    fn uploads_go_to_the_chosen_reserved_account_until_cleared() {
+        clear_act_as();
+        assert_eq!(submissions_url(), format!("{API}/v1/submissions"));
+        assert!(
+            set_act_as(Reserved {
+                id: "nope".into(),
+                username: "x".into()
+            })
+            .is_err()
+        );
+        let id = "01a20aef-4fbc-7e68-9ead-a6f4acbf9fc8";
+        let chosen = set_act_as(Reserved {
+            id: id.into(),
+            username: "Waiting".into(),
+        })
+        .unwrap();
+        assert_eq!(chosen.username, "Waiting");
+        assert!(chosen.seconds_left > 4 * 60 * 60 - 5);
+        assert_eq!(submissions_url(), format!("{API}/v1/submissions?as={id}"));
+        clear_act_as();
+        assert!(act_as().is_none());
+        assert_eq!(submissions_url(), format!("{API}/v1/submissions"));
     }
 
     #[test]
