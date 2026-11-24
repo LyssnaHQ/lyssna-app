@@ -630,6 +630,32 @@ function withPieces(unit: CreatorUnit, pieces: Word[]): CreatorUnit {
   };
 }
 
+/**
+ * Where a romanized reading splits into syllables, as letter offsets:
+ * "inochi" to i|no|chi, "konrinzai" to kon|rin|zai, "chotto" to chot|to.
+ */
+export function romajiSyllables(reading: string): number[] {
+  const chars = Array.from(reading.toLowerCase());
+  const vowel = (char?: string) => !!char && "aeiouāēīōū".includes(char);
+  const letter = (char?: string) => !!char && /\p{L}/u.test(char);
+  const cuts: number[] = [];
+  for (let at = 1; at < chars.length; at++) {
+    const [before, here, after] = [chars[at - 1], chars[at], chars[at + 1]];
+    if (!letter(here) || !letter(before) || vowel(here)) continue;
+    // A closing n stays with its syllable: kon|rin.
+    const closingN = here === "n" && !vowel(after) && after !== "y";
+    // A doubled consonant splits between its two letters: chot|to.
+    const doubled = here === after;
+    if (
+      (vowel(before) && !closingN && !doubled) ||
+      (here === before && here !== "n")
+    )
+      cuts.push(at);
+    else if (before === "n" && !vowel(here) && here !== "y") cuts.push(at);
+  }
+  return cuts;
+}
+
 /** The pieces a reading is sung in. */
 export const romanParts = (unit: CreatorUnit) =>
   (unit.roman ?? "")

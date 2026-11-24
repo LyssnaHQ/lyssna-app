@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, Info } from "lucide-react";
 import { type LearnedSplits, learnFrom, suggestSplit } from "./ttml-syllables";
+import { romajiSyllables } from "./ttml-creator-model";
 
 export interface MenuAction {
   label: string;
@@ -336,6 +337,105 @@ export function SplitDialog({
             disabled={!offsets.size}
             onClick={confirm}
           >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Splits a word's reading into pieces that are timed one by one. */
+export function ReadingSplitDialog({
+  word,
+  reading,
+  onConfirm,
+  onClose,
+}: {
+  word: string;
+  reading: string;
+  onConfirm: (reading: string) => void;
+  onClose: () => void;
+}) {
+  const chars = Array.from(reading.replace(/\|/g, ""));
+  const [offsets, setOffsets] = useState<Set<number>>(() => {
+    const given = new Set<number>();
+    let at = 0;
+    for (const char of reading) {
+      if (char === "|") given.add(at);
+      else at++;
+    }
+    return given;
+  });
+  const suggestion = romajiSyllables(chars.join(""));
+  const toggle = (at: number) =>
+    setOffsets((current) => {
+      const next = new Set(current);
+      if (!next.delete(at)) next.add(at);
+      return next;
+    });
+  const confirm = () =>
+    onConfirm(
+      chars.map((char, index) => (offsets.has(index) ? `|${char}` : char)).join(""),
+    );
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
+  return (
+    <div className="ttml-dialog-backdrop" onClick={onClose}>
+      <div
+        className="ttml-dialog"
+        role="dialog"
+        aria-label="Split reading"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3>Split reading of {word}</h3>
+        <p className="ttml-dialog-note">
+          <Info size={16} />
+          Each piece is timed on its own while syncing; the word keeps one
+          start and end. Untimed pieces share the word's time evenly.
+        </p>
+        <div className="ttml-splitter" aria-label="Split points">
+          {chars.map((char, index) => (
+            <span key={index} className="ttml-split-char">
+              {index > 0 && (
+                <button
+                  className={`ttml-split-gap${offsets.has(index) ? " on" : ""}`}
+                  aria-label={`Split before letter ${index + 1}`}
+                  aria-pressed={offsets.has(index)}
+                  onClick={() => toggle(index)}
+                />
+              )}
+              {char}
+            </span>
+          ))}
+        </div>
+        <div className="ttml-dialog-row end">
+          <button
+            disabled={!suggestion.length}
+            onClick={() => setOffsets(new Set(suggestion))}
+            title="Split where each syllable starts"
+          >
+            Syllable split
+          </button>
+          <button
+            disabled={!offsets.size}
+            onClick={() => setOffsets(new Set())}
+          >
+            Join all
+          </button>
+        </div>
+        <div className="ttml-dialog-row end">
+          <button onClick={onClose}>Cancel</button>
+          <button className="primary" onClick={confirm}>
             Confirm
           </button>
         </div>

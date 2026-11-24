@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  romajiSyllables,
   readingsFrom,
   splitBrackets,
   type CreatorLine,
@@ -102,5 +103,21 @@ describe("splitBrackets", () => {
     expect(splitBrackets(opening)).toEqual([opening]);
     const open = lineOf(["Hey", "(la", "la"]);
     expect(splitBrackets(open)).toEqual([open]);
+  });
+});
+
+describe("romajiSyllables", () => {
+  const split = (reading: string) => {
+    const cuts = romajiSyllables(reading);
+    return Array.from(reading)
+      .map((char, index) => (cuts.includes(index) ? `|${char}` : char))
+      .join("");
+  };
+  it("cuts a reading where each syllable starts", () => {
+    expect(split("inochi")).toBe("i|no|chi");
+    expect(split("Konrinzai")).toBe("Kon|rin|zai");
+    expect(split("chotto")).toBe("chot|to");
+    expect(split("kyuu")).toBe("kyuu");
+    expect(split("Zero")).toBe("Ze|ro");
   });
 });

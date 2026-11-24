@@ -186,6 +186,7 @@ import {
   type MenuAction,
   type SplitChoice,
   SplitDialog,
+  ReadingSplitDialog,
   ReplaceDialog,
   type ReplaceChoice,
   WordMenu,
@@ -1014,6 +1015,9 @@ export function TtmlCreator({
     line?: boolean;
   } | null>(null);
   const [splitting, setSplitting] = useState<Cursor | null>(null);
+  const [splittingReading, setSplittingReading] = useState<Cursor | null>(
+    null,
+  );
   const [replacing, setReplacing] = useState<Cursor | null>(null);
   const openMenu = (event: ReactMouseEvent, at: Cursor) => {
     event.preventDefault();
@@ -1373,6 +1377,11 @@ export function TtmlCreator({
     const unit = line?.units[at.unit];
     if (!line || !unit) return [];
     const suggestion = suggestSplit(unit.text, learned);
+    const splitReading: MenuAction = {
+      label: "Split reading…",
+      disabled: !unit.roman,
+      run: () => setSplittingReading(at),
+    };
     const chosen =
       group.length > 1 &&
       group.some((each) => each.line === at.line && each.unit === at.unit);
@@ -1381,7 +1390,10 @@ export function TtmlCreator({
     );
     return [
       [
+        // In the romanization view the reading is what's on screen.
+        ...(syncRoman ? [splitReading] : []),
         { label: "Split word…", run: () => setSplitting(at) },
+        ...(syncRoman ? [] : [splitReading]),
         {
           label: "Auto-segment word",
           disabled: !suggestion.length,
@@ -3740,6 +3752,20 @@ export function TtmlCreator({
           onConfirm={(choice) => confirmSplit(splitting, choice)}
         />
       )}
+      {splittingReading &&
+        lines[splittingReading.line]?.units[splittingReading.unit]?.roman && (
+          <ReadingSplitDialog
+            word={lines[splittingReading.line].units[splittingReading.unit].text}
+            reading={
+              lines[splittingReading.line].units[splittingReading.unit].roman!
+            }
+            onClose={() => setSplittingReading(null)}
+            onConfirm={(reading) => {
+              setLines(setUnitRoman(lines, splittingReading, reading));
+              setSplittingReading(null);
+            }}
+          />
+        )}
       {replacing && lines[replacing.line]?.units[replacing.unit] && (
         <ReplaceDialog
           word={lines[replacing.line].units[replacing.unit].text}
