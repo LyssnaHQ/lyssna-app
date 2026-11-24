@@ -789,10 +789,24 @@ function App() {
     [center, playingUri, draftDismissed],
   );
   const lyricsSource = (draftLyrics ?? state.lyrics)?.source;
+  const [reviewerOverride, setReviewerOverride] = useState<boolean>();
+  useEffect(
+    () => setReviewerOverride(undefined),
+    [playingUri, state.settings.ttml_reviewer],
+  );
+  const draftReviewer = draftLyrics
+    ? (reviewerOverride ?? (state.settings.ttml_reviewer ?? "off") !== "off")
+    : undefined;
   const lyricsSettings = useMemo(
     () =>
-      reviewerSettings(state.settings, playingUri, lyricsSource, !!draftLyrics),
-    [state.settings, playingUri, lyricsSource, draftLyrics],
+      reviewerSettings(
+        state.settings,
+        playingUri,
+        lyricsSource,
+        !!draftLyrics,
+        draftReviewer,
+      ),
+    [state.settings, playingUri, lyricsSource, draftLyrics, draftReviewer],
   );
   const draftSettings = useMemo(
     () => reviewerSettings(state.settings, playingUri, undefined, true),
@@ -4308,6 +4322,13 @@ function App() {
                     }}
                   >
                     Original lyrics
+                  </button>
+                  <button
+                    aria-pressed={draftReviewer}
+                    title="Show the draft with the TTML Reviewer's settings"
+                    onClick={() => setReviewerOverride(!draftReviewer)}
+                  >
+                    Reviewer mode
                   </button>
                 </div>
               )}

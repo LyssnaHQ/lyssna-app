@@ -17733,6 +17733,16 @@ test("TTML Creator times words on the playing song, slows it and saves TTML", as
   const banner = page.locator(".ttml-draft-banner");
   await expect(banner).toContainText("Showing your TTML draft");
   await expect(page.getByText("ooh", { exact: true })).toBeVisible();
+  const lyricsPage = page.locator(".lyrics-page");
+  const [bannerBox, pageBox] = await Promise.all([
+    banner.boundingBox(),
+    lyricsPage.boundingBox(),
+  ]);
+  expect(bannerBox!.y).toBeGreaterThan(pageBox!.y + pageBox!.height / 2);
+  const reviewer = banner.getByRole("button", { name: "Reviewer mode" });
+  await expect(reviewer).toHaveAttribute("aria-pressed", "false");
+  await reviewer.click();
+  await expect(reviewer).toHaveAttribute("aria-pressed", "true");
   await banner.getByRole("button", { name: "Original lyrics" }).click();
   await expect(banner).toHaveCount(0);
 });

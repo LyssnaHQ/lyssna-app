@@ -1848,6 +1848,7 @@ small {
 }
 .load-ttml-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -1855,7 +1856,9 @@ small {
 }
 .dialog .load-ttml-row p {
   margin: 0;
-  min-width: 0;
+  /* The song name keeps room to be read; the buttons wrap below it. */
+  flex: 1 1 auto;
+  min-width: min(260px, 100%);
   font-size: 13.5px;
   color: light-dark(#4c4c4c, #b3b3b3);
   overflow: hidden;
@@ -8209,14 +8212,28 @@ button.contributor-avatar {
   background-clip: text;
   -webkit-background-clip: text;
 }
+/* At the bottom, clear of the lyrics toolbar and full-screen controls. */
+.lyrics-page {
+  --draft-banner-bottom: 16px;
+}
+.application:not(.immersive) .lyrics-page.toolbar-bottom {
+  --draft-banner-bottom: 64px;
+}
+.immersive .lyrics-page {
+  --draft-banner-bottom: 150px;
+}
 .ttml-draft-banner {
   position: absolute;
-  top: 14px;
+  bottom: var(--draft-banner-bottom, 16px);
   left: 50%;
   z-index: 4;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 6px;
+  max-width: calc(100% - 32px);
+  box-sizing: border-box;
   padding: 4px 4px 4px 14px;
   border: 1px solid light-dark(#00000013, #ffffff13);
   border-radius: 30px;
@@ -8237,6 +8254,10 @@ button.contributor-avatar {
 }
 .ttml-draft-banner button:hover {
   background: light-dark(#0000001f, #ffffff29);
+}
+.ttml-draft-banner button[aria-pressed="true"] {
+  background: light-dark(#161616, #f1f1f1);
+  color: light-dark(#fff, #181818);
 }
 .review-button {
   position: relative;

@@ -53,7 +53,11 @@ export function reviewerSettings(
   uri: string | undefined,
   source: string | undefined,
   draft = false,
+  /** Reviewer mode turned on or off from the draft banner. */
+  forced?: boolean,
 ): Settings {
+  if (forced !== undefined)
+    return forced ? { ...settings, ...PROFILE } : settings;
   const mode = settings.ttml_reviewer ?? "off";
   const temporary =
     draft || (!!uri && uri === temporaryUri && !!source?.startsWith("Local "));
