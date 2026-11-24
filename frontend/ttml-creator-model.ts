@@ -14,6 +14,12 @@ export interface CreatorUnit {
   roman?: string;
   /** The reading came from Auto romanize, so running it again may replace it. */
   romanAuto?: boolean;
+  /**
+   * Whether the reading starts a new word. Japanese syllables have no
+   * spaces between them, so the romanizer or the file says where words
+   * break; unknown falls back to the word's own spacing.
+   */
+  romanSpaced?: boolean;
   /** When each reading piece after the first starts; missing ones are spread evenly. */
   romanStarts?: (number | null)[];
   start?: number;
@@ -797,6 +803,7 @@ function withPieces(unit: CreatorUnit, pieces: Word[]): CreatorUnit {
   return {
     ...unit,
     roman: texts.join("|"),
+    romanSpaced: /^\s/.test(pieces[0].text),
     ...(pieces.length > 1 && {
       romanStarts: pieces.slice(1).map((piece) => piece.start_ms),
     }),
@@ -1861,8 +1868,12 @@ export function toLyrics(lines: CreatorLine[]): Lyrics {
       romanization: hasWordRoman(line)
         ? line.units
             .filter((unit) => unit.start !== undefined)
-            .map((unit) => romanParts(unit).join("") || unit.text)
-            .join(" ")
+            .map(
+              (unit, index) =>
+                (readingSpaced(unit, index) ? " " : "") +
+                (romanParts(unit).join("") || unit.text),
+            )
+            .join("")
         : (line.romanization ?? ""),
       ...(hasWordRoman(line) && {
         romanization_words: line.units.filter(timed).flatMap((unit, index) =>
@@ -1870,7 +1881,7 @@ export function toLyrics(lines: CreatorLine[]): Lyrics {
             start_ms: piece.start,
             end_ms: piece.end,
             text:
-              part === 0 && index > 0 && !unit.joined
+              part === 0 && readingSpaced(unit, index)
                 ? ` ${piece.text}`
                 : piece.text,
           })),
@@ -1907,6 +1918,10 @@ const escape = (text: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+/** Whether a word's reading stands apart from the reading before it. */
+const readingSpaced = (unit: CreatorUnit, index: number) =>
+  index > 0 && (unit.roman ? (unit.romanSpaced ?? !unit.joined) : !unit.joined);
+
 function spans(
   line: CreatorLine,
   roman = false,
@@ -1925,7 +1940,8 @@ function spans(
             `<span begin="${formatTime(piece.start)}" end="${formatTime(Math.max(piece.start, piece.end))}"${agent ? ` ttm:agent="${agent}"` : ""}>${escape(piece.text)}</span>`,
         )
         .join("");
-      return index > 0 && !unit.joined ? ` ${span}` : span;
+      const spaced = roman ? readingSpaced(unit, index) : index > 0 && !unit.joined;
+      return spaced ? ` ${span}` : span;
     })
     .join("");
 }
@@ -2285,16 +2301,23 @@ export function applyRomanized(
       return line;
     const units = line.units.map((unit, index) => {
       const reading = words[index].text.trim();
+      const spaced = index > 0 && /^\s/.test(words[index].text);
       if (
         (unit.roman && !unit.romanAuto) ||
         !reading ||
         reading === unit.text ||
-        reading === unit.roman ||
+        (reading === unit.roman && unit.romanSpaced === spaced) ||
         asked[index].text.trim() !== unit.text
       )
         return unit;
       changed = true;
-      return { ...unit, roman: reading, romanAuto: true, romanStarts: undefined };
+      return {
+        ...unit,
+        roman: reading,
+        romanAuto: true,
+        romanSpaced: spaced,
+        ...(reading !== unit.roman && { romanStarts: undefined }),
+      };
     });
     return units.some((unit, index) => unit !== line.units[index])
       ? { ...line, units }

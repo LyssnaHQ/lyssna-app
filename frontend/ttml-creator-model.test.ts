@@ -881,7 +881,7 @@ describe("TTML Creator card editing", () => {
     lines = setUnitRoman(lines, { line: 0, unit: 0 }, " mi ");
     lines = setUnitRoman(lines, { line: 0, unit: 1 }, "kan");
     lines = setUnitRoman(lines, { line: 0, unit: 2 }, "sei");
-    expect(toLyrics(lines).lines[0].romanization).toBe("mi kan sei");
+    expect(toLyrics(lines).lines[0].romanization).toBe("mikan sei");
     const ttml = toTtml(lines, meta);
     expect(ttml).toContain('<text for="L1"><span begin=');
     expect(ttml).toContain(">mi</span><span");
