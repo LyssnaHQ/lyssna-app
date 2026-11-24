@@ -9474,6 +9474,20 @@ test("Load TTML offers Spicy Lyrics' load modes, reset and saved lyrics", async 
   await expect(submit).toContainText("Only Uploaders and above");
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.evaluate(() => ((window as any).__lyssnaAccount = { role: "uploader" }));
+  // Showing Apple Music lyrics from Lyssna, the upload names them as its base.
+  await page.evaluate((uri) => {
+    (window as any).__clientTest.emit({
+      type: "lyrics",
+      uri,
+      lyrics: {
+        source: "Apple Music (via Lyssna)",
+        synced: true,
+        instrumental: false,
+        lines: [],
+        apple_original: { apple_id: "1440857781", sha256: "abc" },
+      },
+    });
+  }, track.uri);
   await page.getByTitle("Load TTML", { exact: true }).click();
   await expect(submit).toBeEnabled();
   const submitChooser = page.waitForEvent("filechooser");
@@ -9495,6 +9509,10 @@ test("Load TTML offers Spicy Lyrics' load modes, reset and saved lyrics", async 
           .at(-1)?.args,
       command,
     );
+  expect((await last("lyssna_submit")).appleOriginal).toEqual({
+    apple_id: "1440857781",
+    sha256: "abc",
+  });
   const chooser = page.waitForEvent("filechooser");
   await dialog.getByRole("button", { name: /Session Load/ }).click();
   await (

@@ -1820,6 +1820,11 @@ function App() {
         authoredAt: file.lastModified
           ? new Date(file.lastModified).toISOString()
           : undefined,
+        // A file built on the Apple Music lyrics showing now is an edit of them, credited to Apple.
+        appleOriginal:
+          stateRef.current.lyrics_uri === track.uri
+            ? stateRef.current.lyrics?.apple_original
+            : undefined,
       });
       setTtmlOpen(false);
       notify(
