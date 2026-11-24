@@ -8342,20 +8342,12 @@ button.contributor-avatar {
   white-space: nowrap;
 }
 
-.lyric-line.sung-second {
-  font-style: italic;
-}
 /* Japanese and other fonts have no italic, and the app turns off faked
    styles, so a second voice in them would not lean at all. */
-.lyric-line.sung-second,
 .ttml-line.sung-second,
 .ttml-word.sung-second,
-.lyric-syllable.sung-second,
 .ttml-voice.sung-second {
   font-synthesis: style;
-}
-.lyric-line.sung-third {
-  font-weight: 900;
 }
 
 .ttml-line.sung-second .ttml-word,
@@ -8370,17 +8362,6 @@ button.contributor-avatar {
 .ttml-line.sung-third .ttml-word.sung-first {
   font-style: normal;
   font-weight: inherit;
-}
-
-.lyric-syllable.sung-second {
-  font-style: italic;
-}
-.lyric-syllable.sung-third {
-  font-weight: 900;
-}
-.lyric-syllable.sung-first {
-  font-style: normal;
-  font-weight: 700;
 }
 
 /* An instrumental song has no lyrics to show, so the artwork stands alone in the middle. */
