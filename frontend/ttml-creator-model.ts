@@ -290,15 +290,22 @@ function balanceStyles(text: string): string[] {
  * and its Genius style: 0 plain, 1 italic, 2 bold.
  */
 function lineTokens(line: CreatorLine) {
-  const tokens: { word: string; style: number; units: number[] }[] = [];
+  const tokens: {
+    word: string;
+    style: number;
+    units: number[];
+    bracketed: boolean;
+  }[] = [];
   let italic = false;
   let bold = false;
+  let depth = 0;
   let current = "";
   let style = 0;
+  let bracketed = false;
   let units: number[] = [];
   const end = () => {
     const word = plain(current);
-    if (word) tokens.push({ word, style, units });
+    if (word) tokens.push({ word, style, units, bracketed });
     current = "";
     units = [];
   };
@@ -306,12 +313,17 @@ function lineTokens(line: CreatorLine) {
     const text = (index && !unit.joined ? " " : "") + unit.text;
     for (const char of text) {
       if (/[\p{L}\p{N}']/u.test(char)) {
-        if (!current) style = bold ? 2 : italic ? 1 : 0;
+        if (!current) {
+          style = bold ? 2 : italic ? 1 : 0;
+          bracketed = depth > 0;
+        }
         current += char;
         if (units[units.length - 1] !== index) units.push(index);
         continue;
       }
       end();
+      if (char === "(") depth++;
+      else if (char === ")") depth = Math.max(0, depth - 1);
       const mark = STYLE_MARKS[char];
       if (mark?.[0] === 1) italic = mark[1];
       else if (mark) bold = mark[1];
@@ -448,12 +460,14 @@ export function applySections(
   // lead what Genius brackets.
   const allTheirs: string[] = [];
   const allVoices: (string | undefined)[] = [];
+  const allBracketed: boolean[] = [];
   let who: string | undefined;
   for (const line of parseText(unstyled)) {
     if (line.part) who = line.singer;
     const voices = voicesOf(who ?? "");
     for (const token of lineTokens(line)) {
       allTheirs.push(token.word);
+      allBracketed.push(line.background || token.bracketed);
       allVoices.push(styleVoice(token.style, voices, headers.get(who ?? "")));
     }
   }
@@ -464,11 +478,13 @@ export function applySections(
     allOurs.push(...lineTokens(line).map((token) => token.word));
   });
   const voiced = new Map<number, string>();
+  const bracketed = new Set<number>();
   for (const [j, i] of alignWords(allOurs, allTheirs)) {
     const voice = allVoices[j];
     if (voice) voiced.set(i, voice);
+    if (allBracketed[j]) bracketed.add(i);
   }
-  return tagged.map((line, index) => {
+  const voicedLines = tagged.map((line, index) => {
     const start = startOf.get(index)!;
     const voices = sectionVoices(tagged, index);
     if (voices.length < 2) return line;
@@ -493,6 +509,60 @@ export function applySections(
         return voice === lineVoice ? bare : { ...bare, sungBy: voice };
       }),
     };
+  });
+  // What Genius brackets is a backing vocal, even when the draft sings it
+  // in the lead line.
+  const first = voicedLines.findIndex((line) => line.units.length);
+  return voicedLines.flatMap((line, index) => {
+    if (line.background) return [line];
+    const start = startOf.get(index)!;
+    const inside = new Set<number>();
+    lineTokens(line).forEach((token, offset) => {
+      if (bracketed.has(start + offset))
+        for (const unit of token.units) inside.add(unit);
+    });
+    if (!inside.size) return [line];
+    let midWord = false;
+    const marked = line.units.map((unit, at) => {
+      if (!inside.has(at)) return unit;
+      const opens = !inside.has(at - 1);
+      const closes = !inside.has(at + 1);
+      if ((opens && at > 0 && unit.joined) || (closes && line.units[at + 1]?.joined))
+        midWord = true;
+      return {
+        ...unit,
+        text: `${opens ? "(" : ""}${unit.text}${closes ? ")" : ""}`,
+      };
+    });
+    if (midWord) return [line];
+    const split = splitBrackets({ ...line, units: marked }, index === first);
+    if (split.length === 1 && !split[0].background) return [line];
+    const voices = sectionVoices(voicedLines, index);
+    const own = line.sungBy ?? voices[0];
+    return split.map((part, at) => {
+      let units = dropEndComma(part.units);
+      if (at === 0 && !part.background && units[0] !== line.units[0])
+        units = [
+          {
+            ...units[0],
+            text: units[0].text.replace(/^\p{Ll}/u, (letter) =>
+              letter.toUpperCase(),
+            ),
+          },
+          ...units.slice(1),
+        ];
+      if (voices.length < 2) return { ...part, units };
+      const sung = units.map((unit) => unit.sungBy ?? own);
+      const { sungBy: _, ...rest } = part;
+      return {
+        ...rest,
+        ...(sung[0] !== voices[0] && { sungBy: sung[0] }),
+        units: units.map((unit, at) => {
+          const { sungBy: __, ...bare } = unit;
+          return sung[at] === sung[0] ? bare : { ...bare, sungBy: sung[at] };
+        }),
+      };
+    });
   });
 }
 
