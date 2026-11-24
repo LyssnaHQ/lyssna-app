@@ -383,7 +383,7 @@ describe("TTML Creator model", () => {
     const genius = "[Verse]\nStart here\n悠久のパレード\nGo on";
     const tagged = applySections(lines, genius)!;
     expect(geniusChanges(lines, tagged, genius).differs).toEqual([
-      { line: 1, genius: "悠久のパレード", fixable: true },
+      { line: 1, text: "悠 久 の パ レー", genius: "悠久のパレード", fixable: true },
     ]);
     const fixed = fixFromGenius(tagged[1], "悠久のパレード")!;
     expect(fixed.units.map((unit) => unit.text).join("")).toBe("悠久のパレード");
@@ -505,7 +505,7 @@ describe("TTML Creator model", () => {
       missing: [],
       commas: [],
       differs: [],
-      earlier: [],
+      earlier: [{ line: 3, label: "(Run it)" }],
     });
   });
 

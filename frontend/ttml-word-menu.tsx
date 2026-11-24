@@ -472,6 +472,7 @@ export function GeniusReview({
   onMakeLeads,
   onAddMissing,
   onFix,
+  onIgnore,
 }: {
   changes: GeniusChanges;
   onGo: (line: number) => void;
@@ -482,6 +483,8 @@ export function GeniusReview({
   onAddMissing: () => void;
   /** Puts in characters a line lacks against Genius. */
   onFix: (line: number, genius: string) => void;
+  /** Stops listing a difference, where Genius has it wrong. */
+  onIgnore: (each: GeniusChanges["differs"][number]) => void;
 }) {
   const go = (line: number, label: string, key: string | number) => (
     <button
@@ -608,6 +611,13 @@ export function GeniusReview({
                     Fix
                   </button>
                 )}
+                <button
+                  className="ttml-review-chip"
+                  title="Genius has it wrong; stop pointing this out"
+                  onClick={() => onIgnore(each)}
+                >
+                  Ignore
+                </button>
               </span>
             ))}
           </div>

@@ -305,6 +305,11 @@ const rememberedEdit: {
   current?: { id: string; uri: string; baseline?: string };
 } = {};
 
+/** "Differs from Genius" items waved off, where Genius has it wrong. */
+const IGNORED_GENIUS = "lyssna.ttml.genius-ignored";
+const ignoreKey = (each: { text: string; genius: string }) =>
+  `${each.text}\u0000${each.genius}`;
+
 export function TtmlCreator({
   state,
   onPlayer,
@@ -792,6 +797,14 @@ export function TtmlCreator({
   };
   // What Sections from Genius changed, open until it's kept, undone or
   // the draft is edited (which keeps it).
+  const [ignoredGenius, setIgnoredGenius] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(IGNORED_GENIUS) ?? "[]");
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  });
   const [review, setReview] = useState<{
     before: CreatorLine[];
     genius: string;
@@ -3842,7 +3855,21 @@ export function TtmlCreator({
       )}
       {review && (
         <GeniusReview
-          changes={review.changes}
+          changes={{
+            ...review.changes,
+            differs: review.changes.differs.filter(
+              (each) => !ignoredGenius.includes(ignoreKey(each)),
+            ),
+          }}
+          onIgnore={(each) => {
+            const next = [...ignoredGenius, ignoreKey(each)].slice(-500);
+            setIgnoredGenius(next);
+            try {
+              localStorage.setItem(IGNORED_GENIUS, JSON.stringify(next));
+            } catch {
+              // Still ignored for now when storage is off.
+            }
+          }}
           onGo={(line) => {
             setCursor({ line, unit: 0 });
             centre(line);

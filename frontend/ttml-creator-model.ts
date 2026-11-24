@@ -876,6 +876,7 @@ function geniusGaps(lines: CreatorLine[], text: string) {
         const genius = parts.join(" ");
         return {
           line,
+          text: lines[line].units.map((unit) => unit.text).join(" "),
           genius,
           fixable: !!fixFromGenius(lines[line], genius),
         };
@@ -1110,7 +1111,7 @@ export interface GeniusChanges {
   /** Lines that lost a comma left at their end. */
   commas: number[];
   /** Draft lines missing some of what Genius has there. */
-  differs: { line: number; genius: string; fixable: boolean }[];
+  differs: { line: number; text: string; genius: string; fixable: boolean }[];
   /** Sections, backing vocals and singers the draft already had. */
   earlier: { line: number; label: string }[];
 }
