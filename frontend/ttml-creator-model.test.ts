@@ -354,7 +354,7 @@ describe("TTML Creator model", () => {
     const lines = fromLyrics(lyrics);
     expect(lines.map((line) => line.units.map((unit) => unit.text))).toEqual([
       ["One,", "two,", "three"],
-      ["hold", "up"],
+      ["Hold", "up"],
     ]);
     expect(lines.map((line) => [line.background, line.opposite])).toEqual([
       [false, true],

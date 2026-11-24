@@ -71,8 +71,8 @@ describe("splitBrackets", () => {
       ]),
     ).toEqual([
       [false, ["Let", "magic", "stitch"]],
-      [true, ["oh-", "oh"]],
-      [true, ["yeah!"]],
+      [true, ["Oh-", "oh"]],
+      [true, ["Yeah!"]],
     ]);
     expect(lines[1].units[0].start).toBe(200);
   });

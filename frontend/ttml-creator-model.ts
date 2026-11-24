@@ -575,7 +575,9 @@ export function splitBrackets(line: CreatorLine): CreatorLine[] {
     units
       .map((unit, index) => {
         let text = unit.text;
-        if (index === 0) text = text.slice(1);
+        // A backing line starts like any other line, with a capital.
+        if (index === 0)
+          text = text.slice(1).replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
         if (index === units.length - 1) text = text.replace(/\)$/, "");
         return { ...unit, text, joined: index > 0 && unit.joined };
       })
