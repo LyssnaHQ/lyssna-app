@@ -5178,12 +5178,10 @@ function App() {
                                         <DownloadedMark />
                                       )}
                                       <ExplicitBadge track={track} />
-                                      {!entity?.artist && (
-                                        <ArtistLinks
-                                          artists={track.artists}
-                                          onArtist={openArtist}
-                                        />
-                                      )}
+                                      <ArtistLinks
+                                        artists={track.artists}
+                                        onArtist={openArtist}
+                                      />
                                     </div>
                                   </div>
                                 </div>

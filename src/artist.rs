@@ -317,6 +317,9 @@ pub(crate) fn from_entity(artist: &Value, id: &str) -> Result<ArtistOverview> {
                             uri: format!("spotify:track:{uri}"),
                             name: value["name"].as_str()?.into(),
                             artists,
+                            duration_ms: value["duration"]["totalMilliseconds"]
+                                .as_u64()
+                                .unwrap_or_default(),
                             album: Album {
                                 id: album["uri"]
                                     .as_str()
@@ -724,7 +727,7 @@ mod tests {
             "discography":{"topTracks":{"items":[]}}
         });
         data["entities"]["items"][format!("spotify:artist:{id}")]["discography"]["topTracks"]["items"] = json!([{"track":{
-            "uri":format!("spotify:track:{id}"),"name":"Test song","playcount":"987654321",
+            "uri":format!("spotify:track:{id}"),"name":"Test song","playcount":"987654321","duration":{"totalMilliseconds":187000},
             "artists":{"items":[{"uri":format!("spotify:artist:{id}"),"profile":{"name":"Test artist"}}]},
             "albumOfTrack":{"uri":format!("spotify:album:{id}"),"name":"Test album","coverArt":{"sources":[{"url":"https://i.scdn.co/image/test","width":300}]}}
         }}]);
@@ -738,6 +741,7 @@ mod tests {
         assert_eq!(overview.popular[0].streams, Some(987654321));
         assert_eq!(overview.popular[0].track.artists[0].name, "Test artist");
         assert_eq!(overview.popular[0].track.album.images.len(), 1);
+        assert_eq!(overview.popular[0].track.duration_ms, 187000);
         assert!(
             !serde_json::to_string(&overview)
                 .unwrap()

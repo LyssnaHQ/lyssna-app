@@ -9017,10 +9017,10 @@ test("artist pages show Spotify's shelves, About card and sticky bar", async ({
     expect(Math.abs((await heading.boundingBox())!.x - aboutLeft)).toBeLessThan(
       1,
     );
-  // Popular rows carry badges, not artist names, like Spotify.
+  // Popular rows name their artists under the title, like Spotify.
   await expect(
-    page.locator(".artist-top .track-row .track-artists .artist-link"),
-  ).toHaveCount(0);
+    page.locator(".artist-top .track-row .track-artists .artist-link").first(),
+  ).toHaveText("Test artist");
   const card = page.locator(".artist-about-card");
   await expect(card.locator(".artist-rank")).toHaveText("#21in the world");
   await expect(card).toContainText("72,847,177 monthly listeners");
