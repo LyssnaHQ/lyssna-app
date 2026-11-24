@@ -99,6 +99,7 @@ import {
   romanizeRequest,
   setUnitRoman,
   romanParts,
+  romanPieces,
   hasWordRoman,
   parseText,
   applySections,
@@ -3533,6 +3534,14 @@ export function TtmlCreator({
                             cursor.line === lineIndex &&
                             cursor.unit === unitIndex;
                           const parts = romanParts(unit);
+                          const livePiece =
+                            parts.length > 1
+                              ? romanPieces(unit).findIndex(
+                                  (piece) =>
+                                    position >= piece.start &&
+                                    position < piece.end,
+                                )
+                              : -1;
                           const pieces = (
                             <span
                               className={`ttml-pieces${syncRoman ? " large" : ""}`}
@@ -3540,7 +3549,7 @@ export function TtmlCreator({
                               {parts.map((part, index) => (
                                 <span
                                   key={index}
-                                  className={`ttml-piece${selected && (cursor.part ?? 0) === index ? " current" : ""}`}
+                                  className={`ttml-piece${selected && (cursor.part ?? 0) === index ? " current" : ""}${livePiece === index ? " live" : ""}`}
                                 >
                                   {part}
                                 </span>
