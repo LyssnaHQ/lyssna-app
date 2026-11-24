@@ -3782,11 +3782,12 @@ export function TtmlCreator({
                               {!syncRoman &&
                                 (parts.length > 1 ||
                                   // Every word of a line with split readings
-                                  // gets the row, so the end times line up.
+                                  // keeps the row, blank unless split, so
+                                  // the end times line up.
                                   all.some(
                                     (each) => romanParts(each).length > 1,
                                   )) &&
-                                (parts.length ? (
+                                (parts.length > 1 ? (
                                   pieces
                                 ) : (
                                   <span
