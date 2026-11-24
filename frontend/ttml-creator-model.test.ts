@@ -1679,16 +1679,16 @@ describe("voices in a section that names several singers", () => {
     let next = setLineVoice(lines, [1], "Juice WRLD");
     next = setUnitVoice(next, [{ line: 0, unit: 1 }], "Juice WRLD");
     const ttml = toTtml(next, { name: "GO", artists: [], album: "" } as never);
+    // Voices are Lyssna's own detail; other readers see one lead side.
     expect(ttml).toContain(
-      '<p begin="00:00.000" end="00:01.500" ttm:agent="v1"',
+      '<p begin="00:00.000" end="00:01.500" ttm:agent="v1" lyssna:voice="',
     );
-    expect(ttml).toContain('ttm:agent="v2">go</span>');
+    expect(ttml).toContain('lyssna:voice="Juice WRLD">go</span>');
     expect(ttml).toContain(
-      '<span ttm:role="x-bg" begin="00:01.000" end="00:01.500" ttm:agent="v2">',
+      '<span ttm:role="x-bg" begin="00:01.000" end="00:01.500" lyssna:voice="Juice WRLD">',
     );
-    expect(ttml).toContain(
-      'xml:id="v2"><ttm:name type="full">Juice WRLD</ttm:name>',
-    );
+    expect(ttml).not.toContain('ttm:agent="v2"');
+    expect(ttml).not.toContain("ttm:name");
   });
 });
 

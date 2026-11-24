@@ -394,14 +394,32 @@ fn voice_index(
     }
 }
 
+/// The voice a node names with `lyssna:voice`, by its place in the
+/// section's list; files without it fall back to their `ttm:agent`.
+fn node_voice(
+    paragraph: roxmltree::Node<'_, '_>,
+    node: roxmltree::Node<'_, '_>,
+    artists: &HashMap<String, String>,
+) -> Option<usize> {
+    match attribute(node, "voice") {
+        Some(name) => {
+            let voices = voices(section_singer(paragraph)?);
+            let names = artist_names(name);
+            (voices.len() > 1)
+                .then(|| voices.iter().position(|voice| *voice == names))
+                .flatten()
+        }
+        None => voice_index(paragraph, attribute(node, "agent"), artists),
+    }
+}
+
 const VOICE_STYLES: [&str; 3] = ["first", "second", "third"];
 
 fn sung_by(
     paragraph: roxmltree::Node<'_, '_>,
-    agent: Option<&str>,
     artists: &HashMap<String, String>,
 ) -> Option<String> {
-    voice_index(paragraph, agent, artists)
+    node_voice(paragraph, paragraph, artists)
         .filter(|index| *index > 0)
         .and_then(|index| VOICE_STYLES.get(index))
         .map(|style| (*style).to_owned())
@@ -782,7 +800,7 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
         let end_ms = end_ms.max(start_ms);
         let opposite = attribute(paragraph, "agent")
             .is_some_and(|agent| agent != lead_agent && !agent.ends_with("000"));
-        let sung_by = sung_by(paragraph, attribute(paragraph, "agent"), &artists);
+        let sung_by = sung_by(paragraph, &artists);
         let (section, section_singer) = section_start(paragraph).unzip();
         let mut line = Line {
             start_ms,
@@ -818,12 +836,14 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
                     let id = owner.id();
                     if !backgrounds.iter().any(|(owner, _)| *owner == id) {
                         // A backing vocal can name its own voice.
-                        let voice = attribute(owner, "agent")
-                            .and_then(|agent| voice_index(paragraph, Some(agent), &artists))
+                        let own = attribute(owner, "voice").is_some()
+                            || attribute(owner, "agent").is_some();
+                        let voice = own
+                            .then(|| node_voice(paragraph, owner, &artists))
+                            .flatten()
                             .and_then(|index| VOICE_STYLES.get(index))
                             .filter(|style| **style != "first")
                             .map(|style| (*style).to_owned());
-                        let own = attribute(owner, "agent").is_some();
                         backgrounds.push((
                             id,
                             Line {
@@ -895,16 +915,18 @@ pub fn parse_ttml(source: &str, duration_ms: u64) -> Result<Lyrics> {
                     text.insert(0, ' ');
                 }
                 if !text.trim().is_empty() && word_end >= word_start {
-                    let word_agent = attribute(span, "agent");
+                    let named = attribute(span, "voice").is_some()
+                        || attribute(span, "agent")
+                            .is_some_and(|agent| Some(agent) != attribute(paragraph, "agent"));
                     target.words.push(Word {
                         start_ms: word_start,
                         end_ms: word_end,
                         text,
                         // `first` too, so a word sung by the first voice in a
                         // line another voice sings shows plain.
-                        sung_by: word_agent
-                            .filter(|agent| Some(*agent) != attribute(paragraph, "agent"))
-                            .and_then(|agent| voice_index(paragraph, Some(agent), &artists))
+                        sung_by: named
+                            .then(|| node_voice(paragraph, span, &artists))
+                            .flatten()
                             .and_then(|index| VOICE_STYLES.get(index))
                             .map(|style| (*style).to_owned()),
                     });
@@ -1943,6 +1965,27 @@ mod tests {
             .map(|piece| piece.text.as_str())
             .collect();
         assert_eq!(texts, ["mi", "kan", "sei", " no"]);
+    }
+
+    #[test]
+    fn ttml_reads_voices_from_lyssna_voice_without_duet_agents() {
+        let text = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xmlns:lyssna="https://lyssna.org/ns/ttml"><head><metadata><ttm:agent type="person" xml:id="v1"></ttm:agent></metadata></head><body><div itunes:songPart="Chorus" lyssna:singer="Aiko, Mira, Mira &amp; Aiko"><p begin="00:01.000" end="00:02.000" ttm:agent="v1" lyssna:voice="Aiko"><span begin="00:01.000" end="00:01.500">one</span> <span begin="00:01.500" end="00:02.000" lyssna:voice="Mira">two</span><span ttm:role="x-bg" begin="00:01.500" end="00:02.000" lyssna:voice="Mira &amp; Aiko"><span begin="00:01.500" end="00:02.000">(hey)</span></span></p><p begin="00:03.000" end="00:04.000" ttm:agent="v1" lyssna:voice="Mira &amp; Aiko"><span begin="00:03.000" end="00:04.000">three</span></p></div></body></tt>"#;
+        let lyrics = parse_ttml(text, 5_000).unwrap();
+        let lines: Vec<_> = lyrics
+            .lines
+            .iter()
+            .map(|line| (line.text.as_str(), line.sung_by.as_deref(), line.opposite))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                ("one two", None, false),
+                ("hey", Some("third"), false),
+                ("three", Some("third"), false)
+            ]
+        );
+        assert_eq!(lyrics.lines[0].words[0].sung_by, None);
+        assert_eq!(lyrics.lines[0].words[1].sung_by.as_deref(), Some("second"));
     }
 
     #[test]

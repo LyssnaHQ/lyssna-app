@@ -2762,12 +2762,12 @@ const readingSpaced = (unit: CreatorUnit, index: number) =>
 function spans(
   line: CreatorLine,
   roman = false,
-  agentOf: (unit: CreatorUnit) => string | undefined = () => undefined,
+  voiceOf: (unit: CreatorUnit) => string | undefined = () => undefined,
 ): string {
   return line.units
     .filter(timed)
     .map((unit, index) => {
-      const agent = agentOf(unit);
+      const voice = voiceOf(unit);
       const pieces = roman
         ? romanPieces(unit)
         : [{ text: unit.text, start: unit.start!, end: unit.end! }];
@@ -2793,7 +2793,7 @@ function spans(
       const span = whole
         .map(
           (piece) =>
-            `<span begin="${formatTime(piece.start)}" end="${formatTime(Math.max(piece.start, piece.end))}"${agent ? ` ttm:agent="${agent}"` : ""}${split}>${escape(piece.text)}</span>`,
+            `<span begin="${formatTime(piece.start)}" end="${formatTime(Math.max(piece.start, piece.end))}"${voice ? ` lyssna:voice="${escape(voice)}"` : ""}${split}>${escape(piece.text)}</span>`,
         )
         .join("");
       const spaced = roman ? readingSpaced(unit, index) : index > 0 && !unit.joined;
@@ -2844,13 +2844,6 @@ export function toTtml(
   }
   // Each artist the sections name gets a voice of their own, in order;
   // voices that are groups ("A & B") share v1000, Apple's group voice.
-  const artistAgents = new Map<string, string>();
-  for (const line of lines)
-    for (const voice of line.part && line.singer ? voicesOf(line.singer) : [])
-      if (!voice.includes(" & ") && !artistAgents.has(voice))
-        artistAgents.set(voice, `v${artistAgents.size + 1}`);
-  const agentOfVoice = (voice: string) =>
-    voice.includes(" & ") ? "v1000" : artistAgents.get(voice)!;
   const used = new Set<string>(["v1"]);
   let voices: string[] = [];
   const opposite = lines.some((line) => line.opposite);
@@ -2873,21 +2866,24 @@ export function toTtml(
     if (paragraph.section)
       voices = paragraph.section.singer ? voicesOf(paragraph.section.singer) : [];
     const first = paragraph.lead ?? paragraph.backgrounds[0];
-    const voiceOf = (sungBy?: string) =>
-      voices.length
-        ? agentOfVoice(
-            sungBy && voices.includes(sungBy) ? sungBy : voices[0],
-          )
-        : undefined;
-    const agent = voiceOf(first.sungBy) ?? (first.opposite ? "v2" : "v1");
+    // Who sings is Lyssna's own detail, so other readers see only the
+    // lead and second-singer sides the draft marks.
+    const agent = first.opposite ? "v2" : "v1";
     used.add(agent);
+    const lineVoice =
+      voices.length > 1
+        ? first.sungBy && voices.includes(first.sungBy)
+          ? first.sungBy
+          : voices[0]
+        : undefined;
     // A word or backing vocal another voice sings names its own voice.
-    const own = (sungBy?: string) => {
-      if (voices.length < 2 || !sungBy || !voices.includes(sungBy)) return;
-      const voice = agentOfVoice(sungBy);
-      used.add(voice);
-      return voice === agent ? undefined : voice;
-    };
+    const own = (sungBy?: string) =>
+      voices.length > 1 &&
+      sungBy &&
+      voices.includes(sungBy) &&
+      sungBy !== lineVoice
+        ? sungBy
+        : undefined;
     if (paragraph.lead && hasWordRoman(paragraph.lead))
       readings.push(
         `<text for="L${index + 1}">${spans(paragraph.lead, true)}</text>`,
@@ -2900,10 +2896,10 @@ export function toTtml(
       .map((line) => {
         const span = lineSpan(line, true)!;
         const voice = own(line.sungBy);
-        return `<span ttm:role="x-bg" begin="${formatTime(span.start)}" end="${formatTime(span.end)}"${voice ? ` ttm:agent="${voice}"` : ""}>${spans(line, false, (unit) => (unit.sungBy && unit.sungBy !== line.sungBy ? own(unit.sungBy) : undefined))}</span>`;
+        return `<span ttm:role="x-bg" begin="${formatTime(span.start)}" end="${formatTime(span.end)}"${voice ? ` lyssna:voice="${escape(voice)}"` : ""}>${spans(line, false, (unit) => (unit.sungBy && unit.sungBy !== line.sungBy ? own(unit.sungBy) : undefined))}</span>`;
       })
       .join("");
-    const p = `<p begin="${formatTime(begin)}" end="${formatTime(finish)}" ttm:agent="${agent}" itunes:key="L${index + 1}">${lead}${backgrounds}</p>`;
+    const p = `<p begin="${formatTime(begin)}" end="${formatTime(finish)}" ttm:agent="${agent}"${lineVoice ? ` lyssna:voice="${escape(lineVoice)}"` : ""} itunes:key="L${index + 1}">${lead}${backgrounds}</p>`;
     const last = sections.at(-1);
     if (!last || paragraph.section)
       sections.push({
@@ -2933,19 +2929,13 @@ export function toTtml(
       .flatMap((entry) => entry.values),
   );
   const metadata = [
-    ...[...used, ...(opposite && !artistAgents.size ? ["v2"] : [])]
+    ...[...used, ...(opposite ? ["v2"] : [])]
       .filter((agent, index, all) => all.indexOf(agent) === index)
       .sort()
-      .map((agent) => {
-        const name = [...artistAgents].find(([, id]) => id === agent)?.[0];
-        const type =
-          agent === "v1000"
-            ? "group"
-            : agent === "v1" || name
-              ? "person"
-              : "other";
-        return `<ttm:agent type="${type}" xml:id="${agent}">${name ? `<ttm:name type="full">${escape(name)}</ttm:name>` : ""}</ttm:agent>`;
-      }),
+      .map(
+        (agent) =>
+          `<ttm:agent type="${agent === "v1" ? "person" : "other"}" xml:id="${agent}"></ttm:agent>`,
+      ),
     ...[
       ...entries.filter((entry) => !SONG_KEYS.includes(entry.key.trim())),
       { key: "album", values: meta.album ? [meta.album] : [] },
@@ -2971,7 +2961,7 @@ export function toTtml(
       : "",
   ].join("");
   const duration = Math.max(end, meta.durationMs ?? 0);
-  return `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:amll="http://www.example.com/ns/amll" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"${lines.some((line) => line.part && line.singer) || readings.some((reading) => reading.includes("lyssna:pieces")) ? ` xmlns:lyssna="${LYSSNA_NS}"` : ""} itunes:timing="Word"><head><metadata>${metadata}</metadata></head><body dur="${formatTime(duration)}">${body}</body></tt>`;
+  return `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:amll="http://www.example.com/ns/amll" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"${lines.some((line) => line.part && line.singer) || readings.some((reading) => reading.includes("lyssna:pieces")) || body.includes("lyssna:voice") ? ` xmlns:lyssna="${LYSSNA_NS}"` : ""} itunes:timing="Word"><head><metadata>${metadata}</metadata></head><body dur="${formatTime(duration)}">${body}</body></tt>`;
 }
 
 export function fileName(meta: SongMeta): string {
