@@ -507,20 +507,27 @@
 }
 .ttml-pieces {
   display: inline-flex;
+  align-items: center;
+  align-self: center;
   gap: 2px;
   justify-content: center;
 }
 .ttml-piece {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 1.6em;
+  height: 1.5em;
   padding: 0 4px;
   border-radius: 4px;
   background: #ffffff14;
   color: #ffffffb3;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1;
 }
 .ttml-pieces.large .ttml-piece {
   font-size: 17px;
-  line-height: 1.2;
 }
 .ttml-piece.current {
   background: #ffffff40;
