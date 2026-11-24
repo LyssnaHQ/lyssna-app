@@ -48,6 +48,16 @@ fn normalize(text: &str) -> String {
         .collect()
 }
 
+/// Genius writes many artists as "宝鐘マリン (Houshou Marine)", either of
+/// which Spotify may use.
+fn names(artist: &str) -> Vec<String> {
+    let mut names = vec![normalize(artist)];
+    if let Some((_, alias)) = artist.split_once(" (") {
+        names.push(normalize(alias.trim_end_matches(')')));
+    }
+    names
+}
+
 /// The hit whose title and main artist match; otherwise the first by the
 /// artist. Only genius.com song pages are followed.
 fn pick(found: &Value, title: &str, artist: &str) -> Option<String> {
@@ -66,11 +76,12 @@ fn pick(found: &Value, title: &str, artist: &str) -> Option<String> {
     let (title, artist) = (normalize(title), normalize(artist));
     let by_artist = |result: &Value| {
         artist.is_empty()
-            || normalize(
+            || names(
                 result["primary_artist"]["name"]
                     .as_str()
                     .unwrap_or_default(),
-            ) == artist
+            )
+            .contains(&artist)
     };
     hits.iter()
         .find(|result| {
@@ -218,6 +229,20 @@ mod tests {
             Some("https://genius.com/Henry-moodie-drunk-text-lyrics")
         );
         assert_eq!(pick(&found, "drunk text", "Someone Else"), None);
+    }
+
+    #[test]
+    fn an_artist_matches_by_either_of_its_genius_names() {
+        let found = json!({"response":{"sections":[{"hits":[
+            {"result":{"title":"宝鐘マリン (Houshou Marine) - A Horny Money World ～伝説の夜～ (Romanized)","primary_artist":{"name":"Genius Romanizations"},"url":"https://genius.com/romanized"}},
+            {"result":{"title":"A Horny Money World ～伝説の夜～","primary_artist":{"name":"宝鐘マリン (Houshou Marine)"},"url":"https://genius.com/marine"}}
+        ]}]}});
+        for artist in ["Houshou Marine", "宝鐘マリン"] {
+            assert_eq!(
+                pick(&found, "A Horny Money World ～伝説の夜～", artist).as_deref(),
+                Some("https://genius.com/marine")
+            );
+        }
     }
 
     /// Live check: `cargo test genius_live -- --ignored --nocapture`.
