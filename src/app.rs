@@ -445,7 +445,7 @@ impl Lyssna {
                     self.native_status = "Connecting…".into();
                     self.navigate(self.view.clone());
                 }
-                Event::SignedOut => {
+                Event::SignedOut | Event::Switching { .. } => {
                     self.login_issue = None;
                     self.profile = None;
                     self.playlists.clear();

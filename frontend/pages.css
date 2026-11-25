@@ -617,6 +617,67 @@
 .profile-menu > button svg {
   color: light-dark(#000000b3, #ffffffb3);
 }
+/* Another account signed in here: switch to it, or remove it. */
+.profile-account {
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+}
+.profile-account:hover,
+.profile-account:focus-within {
+  background: light-dark(#0000001a, #ffffff1a);
+}
+.profile-account > button[role="menuitem"] {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 4px 0 12px;
+  font-size: 14px;
+  color: light-dark(#000000e6, #ffffffe6);
+  text-align: left;
+}
+.profile-account-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: light-dark(#0000001f, #ffffff24);
+  font-size: 11px;
+  font-weight: 700;
+}
+.profile-account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.profile-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-account-remove {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  border-radius: 50%;
+  color: light-dark(#000000b3, #ffffffb3);
+  opacity: 0;
+}
+.profile-account:is(:hover, :focus-within) .profile-account-remove {
+  opacity: 1;
+}
+.profile-account-remove:hover {
+  background: light-dark(#0000001a, #ffffff1a);
+  color: light-dark(#000, #fff);
+}
 .profile-menu hr {
   margin: 2px 0;
   border: 0;

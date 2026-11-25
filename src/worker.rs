@@ -46,6 +46,11 @@ pub enum Command {
             std::result::Result<Option<Box<crate::native_login::Authenticated>>, auth::LoginIssue>,
     },
     Logout,
+    /// Closes the current account without forgetting it, before another
+    /// signs in: the saved one just made active, or a new one.
+    SwitchAccount {
+        restoring: bool,
+    },
     Refresh,
     Library,
     Tracks {
@@ -204,6 +209,11 @@ pub enum Event {
     /// Spotify's current profile, fetched after a restored session unlocked.
     ProfileRefreshed(Profile),
     SignedOut,
+    /// The current account was closed to switch to another; `restoring`
+    /// says whether a saved one signs in next or the browser opens.
+    Switching {
+        restoring: bool,
+    },
     LoginFinished,
     LoginFailed(auth::LoginIssue),
     NativeStarting(u64),
@@ -1182,6 +1192,14 @@ impl Backend {
                 if !cancelled.load(std::sync::atomic::Ordering::Relaxed) {
                     self.establish(*result.map_err(anyhow::Error::msg)?, client_id, false)?;
                 }
+            }
+            Command::SwitchAccount { restoring } => {
+                self.library_refresh = LibraryRefresh::default();
+                self.native.take();
+                if let Some(previous) = self.spotify.take() {
+                    previous.cancel_background();
+                }
+                self.emit(Event::Switching { restoring });
             }
             Command::Logout => {
                 self.library_refresh = LibraryRefresh::default();

@@ -1001,7 +1001,11 @@ impl Desktop {
                                 }
                             }
                         }
-                        Event::SignedOut => {
+                        closed @ (Event::SignedOut | Event::Switching { .. }) => {
+                            let switching = match closed {
+                                Event::Switching { restoring } => Some(restoring),
+                                _ => None,
+                            };
                             pump.dj_requests.cancel_all();
                             pump.dj_voice.cancel_all();
                             if let Ok(mut queued) = pump.queued_native.lock() {
@@ -1009,7 +1013,7 @@ impl Desktop {
                             }
                             snapshot.profile = None;
                             snapshot.login_issue = None;
-                            snapshot.login_pending = false;
+                            snapshot.login_pending = switching.is_some();
                             snapshot.playlists.clear();
                             snapshot.home = None;
                             snapshot.home_loading = false;
@@ -1029,7 +1033,11 @@ impl Desktop {
                             snapshot.search_users.clear();
                             snapshot.search_playlists_loading = false;
                             snapshot.search_playlists_error.clear();
-                            emit(json!({"type":"signed_out"}));
+                            emit(json!({
+                                "type": "signed_out",
+                                "switching": switching.is_some(),
+                                "restoring": switching == Some(true),
+                            }));
                         }
                         Event::LoginFailed(issue) => {
                             if !snapshot.login_pending {
@@ -2063,6 +2071,11 @@ fn sign_in(client_id: String, state: State<'_, Desktop>) -> std::result::Result<
         snapshot.settings.save()?;
         snapshot.login_pending = true;
         snapshot.login_issue = None;
+        // With other accounts saved here, the browser's one may not be wanted.
+        crate::auth::PICK_ACCOUNT.store(
+            !crate::native::saved_accounts().is_empty(),
+            Ordering::Release,
+        );
         let mut old = lock(&state.0.login_cancelled)?;
         old.store(true, Ordering::Relaxed);
         *old = Arc::new(AtomicBool::new(false));
@@ -2133,6 +2146,61 @@ fn retry_sign_in(state: State<'_, Desktop>) -> std::result::Result<(), String> {
         snapshot.login_pending = true;
         snapshot.login_issue = None;
         Ok(())
+    };
+    result().map_err(error)
+}
+#[tauri::command]
+fn saved_accounts() -> Vec<Profile> {
+    crate::native::saved_accounts()
+}
+/// Closes the current account, keeping it signed in here, and signs in a
+/// saved one (by ID) or opens the browser for a new one (no ID).
+#[tauri::command]
+fn switch_account(id: Option<String>, state: State<'_, Desktop>) -> std::result::Result<(), String> {
+    let result = || -> Result<()> {
+        let mut snapshot = lock(&state.0.snapshot)?;
+        ensure!(!snapshot.login_pending, "Sign-in already active");
+        if let Some(id) = &id {
+            ensure!(
+                snapshot.profile.as_ref().is_none_or(|profile| &profile.id != id),
+                "Already using this account"
+            );
+            let profile = crate::native::saved_accounts()
+                .into_iter()
+                .find(|account| &account.id == id)
+                .context("That account is no longer signed in here")?;
+            crate::native::set_active(&profile)?;
+        }
+        state.0.dj_requests.cancel_all();
+        state.0.dj_voice.cancel_all();
+        let mut cancelled = lock(&state.0.login_cancelled)?;
+        cancelled.store(true, Ordering::Release);
+        *cancelled = Arc::new(AtomicBool::new(false));
+        crate::auth::PICK_ACCOUNT.store(id.is_none(), Ordering::Release);
+        let restoring = id.is_some();
+        state.0.commands.send(Command::SwitchAccount { restoring })?;
+        state.0.commands.send(Command::NativeLogin {
+            restoring,
+            cancelled: cancelled.clone(),
+        })?;
+        snapshot.login_pending = true;
+        snapshot.login_issue = None;
+        Ok(())
+    };
+    result().map_err(error)
+}
+/// Forgets an account that isn't in use; its login leaves the credential store.
+#[tauri::command]
+fn remove_account(id: String, state: State<'_, Desktop>) -> std::result::Result<(), String> {
+    let result = || -> Result<()> {
+        ensure!(
+            lock(&state.0.snapshot)?
+                .profile
+                .as_ref()
+                .is_none_or(|profile| profile.id != id),
+            "Log out to remove the account you're using"
+        );
+        crate::native::forget_credentials(&id)
     };
     result().map_err(error)
 }
@@ -7005,6 +7073,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             clear_audio_cache,
             prefetch_metadata,
             sign_out,
+            saved_accounts,
+            switch_account,
+            remove_account,
             browse,
             player,
             retry_audio,

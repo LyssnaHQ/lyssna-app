@@ -797,4 +797,24 @@ describe("queue across song changes", () => {
     );
     expect(state.details.queue.map((item) => item.uri)).toEqual(["c"]);
   });
+  it("switching accounts keeps the restoring screen up", () => {
+    const signedIn = reducer(emptyState, {
+      type: "session",
+      profile: { id: "first" },
+      can_follow: true,
+    } as Action);
+    const switching = reducer(signedIn, {
+      type: "signed_out",
+      switching: true,
+      restoring: true,
+    });
+    expect(switching.profile).toBeUndefined();
+    expect(switching.login_pending).toBe(true);
+    expect(sessionScreen(switching)).toBe("restoring");
+    const adding = reducer(signedIn, { type: "signed_out", switching: true });
+    expect(adding.login_pending).toBe(true);
+    expect(sessionScreen(adding)).toBe("setup");
+    const out = reducer(signedIn, { type: "signed_out" });
+    expect(out.login_pending).toBe(false);
+  });
 });

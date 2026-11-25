@@ -942,6 +942,21 @@ function App() {
     },
     [notify],
   );
+  const loadAccounts = useCallback(
+    () => rpc<Profile[]>("saved_accounts"),
+    [],
+  );
+  const removeAccount = useCallback(
+    (id: string) =>
+      rpc("remove_account", { id }).then(
+        () => undefined,
+        (error) => {
+          notify(String(error), true);
+          throw error;
+        },
+      ),
+    [notify],
+  );
   const [nightlyCommit, setNightlyCommit] = useState<string | null>(null);
   const [linkSignal, setLinkSignal] = useState(0);
   const followingNightly = state.settings.update_channel === "nightly";
@@ -3968,6 +3983,11 @@ function App() {
           <ProfileMenu
             name={profileName}
             image={profileImage}
+            current={state.profile?.id}
+            loadAccounts={loadAccounts}
+            onSwitch={(id) => void call("switch_account", { id })}
+            onAddAccount={() => void call("switch_account", { id: null })}
+            onRemoveAccount={removeAccount}
             onAction={(action) => {
               if (action === "account")
                 void call("open_link", {
@@ -7115,6 +7135,8 @@ function App() {
             );
           }}
           onCancel={() => void call("cancel_sign_in")}
+          loadAccounts={loadAccounts}
+          onSwitch={(id) => void call("switch_account", { id })}
           onOpenDashboard={() =>
             void call("open_link", {
               url: "https://developer.spotify.com/dashboard",
@@ -7609,15 +7631,30 @@ function Setup({
   onRetry,
   onCancel,
   onOpenDashboard,
+  loadAccounts,
+  onSwitch,
 }: {
   state: AppState;
   onSignIn: (id: string) => void;
   onRetry: () => void;
   onCancel: () => void;
   onOpenDashboard: () => void;
+  loadAccounts: () => Promise<Profile[]>;
+  onSwitch: (id: string) => void;
 }) {
   const [id, setId] = useState(state.settings.client_id);
   const [developerMode, setDeveloperMode] = useState(false);
+  const [accounts, setAccounts] = useState<Profile[]>([]);
+  useEffect(() => {
+    if (state.login_pending) return;
+    let live = true;
+    void loadAccounts()
+      .then((list) => live && setAccounts(list))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [state.login_pending, loadAccounts]);
   useEffect(() => {
     setId(state.settings.client_id);
   }, [state.settings.client_id]);
@@ -7659,6 +7696,19 @@ function Setup({
                   Retry saved sign-in
                 </button>
               )}
+          </div>
+        )}
+        {!state.login_pending && !developerMode && accounts.length > 0 && (
+          <div className="setup-accounts" aria-label="Accounts on this computer">
+            {accounts.map((account) => (
+              <button
+                key={account.id}
+                className="pill setup-account"
+                onClick={() => onSwitch(account.id)}
+              >
+                Continue as {account.display_name || account.id}
+              </button>
+            ))}
           </div>
         )}
         {developerMode && (

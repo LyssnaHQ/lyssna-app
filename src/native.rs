@@ -2212,10 +2212,77 @@ pub fn forget_credentials(account: &str) -> Result<()> {
             .delete_credential()
             .context("Cannot remove saved Spotify account")?;
     }
+    forget_account(account);
     match keyring::Entry::new(CREDENTIAL_SERVICE, account)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(_) => anyhow::bail!("Cannot remove saved audio login from the secure credential store"),
     }
+}
+
+fn accounts_path() -> Result<std::path::PathBuf> {
+    Ok(crate::config::data_dir()?.join("accounts.json"))
+}
+
+fn read_accounts() -> Vec<crate::model::Profile> {
+    accounts_path()
+        .ok()
+        .and_then(|path| std::fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice::<Vec<crate::model::Profile>>(&bytes).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|profile| !profile.id.is_empty())
+        .collect()
+}
+
+fn write_accounts(accounts: &[crate::model::Profile]) -> Result<()> {
+    let path = accounts_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, serde_json::to_vec(accounts)?).context("Cannot save Spotify accounts")
+}
+
+/// Puts an account first in the list of accounts signed in on this computer.
+fn remember_account(profile: &crate::model::Profile) {
+    let mut accounts = read_accounts();
+    accounts.retain(|account| account.id != profile.id);
+    accounts.insert(0, profile.clone());
+    if let Err(error) = write_accounts(&accounts) {
+        diagnostic(&format!("accounts not saved: {error:#}"));
+    }
+}
+
+fn forget_account(id: &str) {
+    let mut accounts = read_accounts();
+    let before = accounts.len();
+    accounts.retain(|account| account.id != id);
+    if accounts.len() != before
+        && let Err(error) = write_accounts(&accounts)
+    {
+        diagnostic(&format!("accounts not saved: {error:#}"));
+    }
+}
+
+/// Accounts signed in on this computer, most recently used first. Only
+/// names and pictures are kept here; logins stay in the credential store.
+pub(crate) fn saved_accounts() -> Vec<crate::model::Profile> {
+    let mut accounts = read_accounts();
+    // Installs from before the list existed know only the active account.
+    if let Ok(Some(active)) = saved_profile()
+        && !accounts.iter().any(|account| account.id == active.id)
+    {
+        accounts.insert(0, active);
+    }
+    accounts
+}
+
+/// Makes a saved account the one the next restore signs in.
+pub(crate) fn set_active(profile: &crate::model::Profile) -> Result<()> {
+    anyhow::ensure!(
+        load_credentials(&profile.id)?.is_some(),
+        "Sign in to this account again"
+    );
+    save_profile(profile)
 }
 
 pub(crate) fn saved_profile() -> Result<Option<crate::model::Profile>> {
@@ -2239,7 +2306,9 @@ pub(crate) fn save_profile(profile: &crate::model::Profile) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("Spotify credential store unavailable"))?;
     keyring::Entry::new("Lyssna/Account", "active")?
         .set_password(&serde_json::to_string(profile)?)
-        .context("Cannot save Spotify account")
+        .context("Cannot save Spotify account")?;
+    remember_account(profile);
+    Ok(())
 }
 
 pub(crate) fn save_login(
@@ -2261,6 +2330,7 @@ pub(crate) fn save_login(
     keyring::Entry::new("Lyssna/Account", "active")?
         .set_password(&serde_json::to_string(profile)?)
         .context("Cannot save Spotify account")?;
+    remember_account(profile);
     Ok(())
 }
 

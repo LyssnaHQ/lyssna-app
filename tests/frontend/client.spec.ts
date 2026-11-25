@@ -21874,3 +21874,47 @@ test("TTML Creator resets a draft to source lyrics and labels its buttons when w
   await expect(saves.locator(".ttml-label")).toBeHidden();
   await expect(saves).toBeVisible();
 });
+
+test("the account menu switches to, adds and removes accounts signed in here", async ({
+  page,
+}) => {
+  await startClient(page);
+  await page.evaluate(() => {
+    const test = (window as any).__clientTest;
+    test.answers = {
+      ...test.answers,
+      saved_accounts: [
+        { id: "test-user", display_name: "Test Listener" },
+        { id: "second", display_name: "Second Account", images: [] },
+        { id: "third", display_name: "Third Account", images: [] },
+      ],
+      remove_account: null,
+      switch_account: null,
+    };
+  });
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "Account" });
+  await expect(menu.locator(".profile-account")).toHaveCount(2);
+  await menu
+    .getByRole("button", { name: "Remove Third Account from Lyssna" })
+    .click();
+  await expect(menu.locator(".profile-account")).toHaveCount(1);
+  await menu.getByRole("menuitem", { name: "Second Account" }).click();
+  await expect(menu).toHaveCount(0);
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add account" }).click();
+  expect(await commandArgs(page, "remove_account")).toEqual([{ id: "third" }]);
+  expect(await commandArgs(page, "switch_account")).toEqual([
+    { id: "second" },
+    { id: null },
+  ]);
+  await page.evaluate(() =>
+    (window as any).__clientTest.emit({
+      type: "signed_out",
+      switching: true,
+      restoring: true,
+    }),
+  );
+  await expect(page.locator(".setup-dialog")).toHaveCount(0);
+  await expect(page.locator(".track-row")).toHaveCount(0);
+});

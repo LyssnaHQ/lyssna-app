@@ -165,6 +165,9 @@ fn authorization_url_for(flow: &Flow<'_>, verifier: &str, state: &str) -> Result
         ("code_challenge", &challenge(verifier)),
         ("state", state),
     ]);
+    if flow.client_id == AUDIO_FLOW.client_id && PICK_ACCOUNT.swap(false, Ordering::AcqRel) {
+        url.query_pairs_mut().append_pair("show_dialog", "true");
+    }
     Ok(url)
 }
 
@@ -311,6 +314,10 @@ pub fn login(client: &Client, client_id: &str, cancelled: &AtomicBool) -> Result
 /// One-time browser authorization for native audio. Returns a short-lived
 /// access token for librespot; its refresh token is discarded because
 /// librespot's own reusable credentials are stored instead.
+/// Set before adding an account: Spotify's page then asks again and offers
+/// "Not you?" instead of reusing the browser's current account.
+pub static PICK_ACCOUNT: AtomicBool = AtomicBool::new(false);
+
 pub fn authorize_audio(client: &Client, cancelled: &AtomicBool) -> Result<String> {
     Ok(authorize(client, &AUDIO_FLOW, "127.0.0.1:8898", cancelled)?.access_token)
 }

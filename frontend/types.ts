@@ -551,7 +551,10 @@ export type AppEvent =
   | { type: "info_prefetch"; info: BrowseInfo }
   | { type: "session"; profile: Profile; can_follow: boolean }
   | { type: "profile"; profile: Profile }
-  | { type: "signed_out" | "login_finished" }
+  | { type: "login_finished" }
+  /** `switching`: closed to sign in another account, a saved one when
+   *  `restoring`. */
+  | { type: "signed_out"; switching?: boolean; restoring?: boolean }
   | { type: "provider_configured"; kind?: "spicy" | "legacy" }
   | { type: "native"; ready: boolean; status: string }
   | {
