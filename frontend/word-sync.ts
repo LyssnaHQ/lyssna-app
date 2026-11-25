@@ -16,15 +16,29 @@ import {
  * estimate. Static lyrics use the track duration and text weights to estimate
  * lines first. These estimates do not detect vocals or instrumental sections.
  * Apple Music syllables that hold several words are split into words.
- * Unlike Spicy Lyrics, bracketed parts stay in their line: without word
- * timing there is no telling when a backing vocal is sung.
+ * Bracketed parts become background vocals: in estimated lines they take
+ * their share of the line's time, and in word-timed lines they keep the
+ * timing of the words they came from.
  */
 
 type Segment = { background: boolean; text: string };
 type Unit = { text: string; partOfWord: boolean };
 
-const BRACKETED = /(\[[^[\]]+\]|\([^()]+\)|\{[^{}]+\})/g;
-const BRACKETED_ONLY = /^(\[[^[\]]+\]|\([^()]+\)|\{[^{}]+\})$/;
+const BRACKETED =
+  /(\[[^[\]]+\]|\([^()]+\)|\{[^{}]+\}|\uFF08[^\uFF08\uFF09]+\uFF09|\u3010[^\u3010\u3011]+\u3011)/g;
+const BRACKETED_ONLY =
+  /^(\[[^[\]]+\]|\([^()]+\)|\{[^{}]+\}|\uFF08[^\uFF08\uFF09]+\uFF09|\u3010[^\u3010\u3011]+\u3011)$/;
+const BRACKET_PAIRS = new Map([
+  ["(", ")"],
+  ["[", "]"],
+  ["{", "}"],
+  ["\uFF08", "\uFF09"],
+  ["\u3010", "\u3011"],
+]);
+const BRACKET_CHARACTERS = /[[\](){}\uFF08\uFF09\u3010\u3011]/g;
+const OPEN_BRACKET = /[([{\uFF08\u3010]/;
+/** A gap (ms) around a bracketed line that makes it a line of its own. */
+const LONE_GAP_MS = 350;
 const CJK =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const HANGUL_ONLY = /^\p{Script=Hangul}+$/u;
@@ -57,6 +71,61 @@ function segments(text: string): Segment[] {
     } else result.push({ background: false, text: piece });
   }
   return result.length ? result : [{ background: false, text: normalized }];
+}
+
+const stripBrackets = (text: string) =>
+  normalize(text.replace(BRACKET_CHARACTERS, " "));
+const capitalize = (text: string) =>
+  text.replace(/\p{L}/u, (letter) => letter.toUpperCase());
+const allBackground = (text: string) => {
+  const parts = segments(text);
+  return parts.length > 0 && parts.every((part) => part.background);
+};
+/** Text without its bracketed parts, or as it is when it has none. */
+function leadText(text: string) {
+  const parts = segments(text);
+  if (!parts.some((part) => part.background)) return text;
+  return parts
+    .filter((part) => !part.background)
+    .map((part) => part.text)
+    .join(" ");
+}
+
+/** A background vocal split off `line`, timed with its own words. */
+function backingLine(line: Line, words: Word[]): Line {
+  return {
+    ...line,
+    start_ms: words[0].start_ms,
+    end_ms: words.at(-1)!.end_ms,
+    text: words.map((word) => word.text).join(""),
+    words,
+    translation: "",
+    romanization: "",
+    romanization_words: undefined,
+    reading: undefined,
+    background: true,
+    section: undefined,
+    section_singer: undefined,
+  };
+}
+
+/**
+ * A line sung only in brackets stays a line of its own when its neighbours
+ * are bracketed too, or when it stands apart in a gap.
+ */
+function keepsOwnLine(lines: Line[], index: number) {
+  const previous = lines[index - 1],
+    line = lines[index],
+    next = lines[index + 1];
+  if (
+    (previous && allBackground(previous.text)) ||
+    (next && allBackground(next.text))
+  )
+    return true;
+  return (
+    (!!previous && line.start_ms - previous.end_ms > LONE_GAP_MS) ||
+    (!!next && next.start_ms - line.end_ms > LONE_GAP_MS)
+  );
 }
 
 function hyphenUnits(token: string): Unit[] {
@@ -269,14 +338,75 @@ export function convertToWordSync(lyrics: Lyrics, durationMs = 0): Lyrics {
     const end = lyrics.estimated_lines
       ? line.end_ms
       : effectiveLineEnd(source, index);
-    const words = buildWords(normalize(line.text), line.start_ms, end);
-    if (!words.length) return;
-    output.push({
+    const parts = line.background ? [] : segments(line.text);
+    if (!parts.some((part) => part.background)) {
+      const words = buildWords(normalize(line.text), line.start_ms, end);
+      if (!words.length) return;
+      output.push({
+        ...line,
+        end_ms: end,
+        text: words.map((word) => word.text).join(""),
+        words,
+      });
+      return;
+    }
+    // Each part takes its share of the line; bracketed parts become
+    // background vocals sung in that share.
+    const ranges = distribute(
+      line.start_ms,
+      end,
+      parts.map((part) => textWeight(part.text)),
+    );
+    const lead: Word[] = [];
+    const backing: Line[] = [];
+    parts.forEach((part, at) => {
+      const range = ranges[at];
+      if (part.background) {
+        const words = buildWords(capitalize(part.text), range.start, range.end);
+        if (words.length) backing.push(backingLine(line, words));
+        return;
+      }
+      const words = buildWords(part.text, range.start, range.end);
+      if (lead.length && words[0]) words[0].text = ` ${words[0].text}`;
+      lead.push(...words);
+    });
+    const ownLine = (words: Word[]): Line => ({
       ...line,
-      end_ms: end,
+      start_ms: words[0].start_ms,
+      end_ms: words.at(-1)!.end_ms,
       text: words.map((word) => word.text).join(""),
       words,
+      romanization: leadText(line.romanization),
+      romanization_words: undefined,
+      reading: line.reading && {
+        ...line.reading,
+        text: leadText(line.reading.text),
+      },
     });
+    if (lead.length) {
+      output.push(ownLine(lead), ...backing);
+      return;
+    }
+    if (!backing.length) return;
+    const previous = [...output].reverse().find((item) => !item.background);
+    if (
+      !keepsOwnLine(source, index) &&
+      previous &&
+      previous.opposite === line.opposite &&
+      !line.section
+    ) {
+      output.push(...backing);
+      return;
+    }
+    output.push(
+      ownLine(
+        buildWords(
+          capitalize(stripBrackets(line.text)),
+          line.start_ms,
+          end,
+        ),
+      ),
+    );
   });
   return { ...lyrics, lines: output, estimated_words: true };
 }
@@ -321,6 +451,146 @@ export function splitMergedWords(lyrics: Lyrics): Lyrics {
   return split ? { ...lyrics, lines, split_words: true } : lyrics;
 }
 
+/** Where each outermost bracketed part of `text` starts and ends. */
+function bracketRanges(text: string) {
+  const ranges: { start: number; end: number }[] = [];
+  const open: { start: number; close: string }[] = [];
+  for (let index = 0; index < text.length; index++) {
+    const close = BRACKET_PAIRS.get(text[index]);
+    if (close) open.push({ start: index, close });
+    else if (open.at(-1)?.close === text[index]) {
+      const { start } = open.pop()!;
+      if (!open.length && stripBrackets(text.slice(start, index + 1)))
+        ranges.push({ start, end: index + 1 });
+    }
+  }
+  return ranges;
+}
+
+/**
+ * Splits a word-timed line's bracketed words from the rest. Words keep their
+ * timing; one that holds both halves gives each half its whole time.
+ */
+function separateBrackets(words: Word[]) {
+  const joined = words.map((word) => word.text).join("");
+  const ranges = bracketRanges(joined);
+  if (!ranges.length) return null;
+  type Piece = { word: Word; text: string; from: number; to: number };
+  const lead: Piece[] = [];
+  const groups: Piece[][] = ranges.map(() => []);
+  let offset = 0,
+    at = 0;
+  for (const word of words) {
+    const end = offset + word.text.length;
+    let start = offset;
+    while (start < end) {
+      const range = ranges[at];
+      const background = !!range && start >= range.start;
+      const limit = Math.min(
+        end,
+        range ? (background ? range.end : range.start) : end,
+      );
+      const slice = joined.slice(start, limit);
+      const text = background ? stripBrackets(slice) : slice.trim();
+      if (text) {
+        const skip = slice.search(/[^\s[\](){}\uFF08\uFF09\u3010\u3011]/);
+        (background ? groups[at] : lead).push({
+          word,
+          text,
+          from: start + Math.max(0, skip),
+          to: limit,
+        });
+      }
+      if (range && limit === range.end) at++;
+      start = limit;
+    }
+    offset = end;
+  }
+  // Pieces apart in the original, or with a bracketed part between them,
+  // are separate words.
+  const build = (pieces: Piece[], capital: boolean): Word[] =>
+    pieces.map((piece, index) => {
+      const gap = index ? joined.slice(pieces[index - 1].to, piece.from) : "";
+      const spaced = index > 0 && /[\s[\](){}\uFF08\uFF09\u3010\u3011]/.test(gap);
+      const text = index === 0 && capital ? capitalize(piece.text) : piece.text;
+      return { ...piece.word, text: `${spaced ? " " : ""}${text}` };
+    });
+  return {
+    lead: build(lead, false),
+    backing: groups
+      .filter((group) => group.length)
+      .map((group) => build(group, true)),
+  };
+}
+
+/** Sources whose word-timed lines mark backing vocals with brackets. */
+const bracketsBacking = (lyrics: Lyrics) =>
+  isAppleMusic(lyrics) || lyrics.source === "lrcred";
+
+/**
+ * Bracketed words in word-timed lines become background vocals. A line
+ * sung only in brackets is usually a backing phrase before the next line,
+ * so it goes with that line and keeps its own timing.
+ */
+export function extractBracketBacking(lyrics: Lyrics): Lyrics {
+  if (!bracketsBacking(lyrics)) return lyrics;
+  const marked = (line: Line) =>
+    !line.background && line.words.some((word) => OPEN_BRACKET.test(word.text));
+  if (!lyrics.lines.some(marked)) return lyrics;
+  const lines: Line[] = [];
+  let pending: Line[] = [];
+  let section: Pick<Line, "section" | "section_singer"> | null = null;
+  let changed = false;
+  for (const line of lyrics.lines) {
+    const split = marked(line) ? separateBrackets(line.words) : null;
+    if (!split) {
+      lines.push(line);
+      if (!line.background && pending.length) {
+        lines.push(...pending);
+        pending = [];
+      }
+      continue;
+    }
+    changed = true;
+    const backing = split.backing.map((words) => backingLine(line, words));
+    if (!split.lead.length) {
+      pending.push(...backing);
+      if (line.section && !section)
+        section = { section: line.section, section_singer: line.section_singer };
+      continue;
+    }
+    const reading = line.reading && {
+      ...line.reading,
+      text: leadText(line.reading.text),
+      words: line.reading.words.length
+        ? (separateBrackets(line.reading.words)?.lead ?? line.reading.words)
+        : line.reading.words,
+    };
+    lines.push(
+      {
+        ...line,
+        ...(section && !line.section ? section : {}),
+        start_ms: split.lead[0].start_ms,
+        end_ms: split.lead.at(-1)!.end_ms,
+        text: split.lead.map((word) => word.text).join(""),
+        words: split.lead,
+        romanization: leadText(line.romanization),
+        romanization_words: undefined,
+        reading,
+      },
+      ...pending,
+      ...backing,
+    );
+    pending = [];
+    section = null;
+  }
+  if (pending.length) {
+    if (!lines.some((line) => !line.background)) return lyrics;
+    lines.push(...pending);
+  }
+  return changed ? { ...lyrics, lines } : lyrics;
+}
+
 const merged = new WeakMap<Lyrics, Lyrics>();
 const cache = new WeakMap<Lyrics, { durationMs: number; lyrics: Lyrics }>();
 /** Lyrics as displayed: converted when word sync is on and applies. */
@@ -338,7 +608,11 @@ export function displayLyrics<T extends Lyrics | null | undefined>(
   if (!lyrics || !wordSync) return lyrics;
   if (!needsWordSync(lyrics, durationMs)) {
     let split = merged.get(lyrics);
-    if (!split) merged.set(lyrics, (split = splitMergedWords(lyrics)));
+    if (!split)
+      merged.set(
+        lyrics,
+        (split = splitMergedWords(extractBracketBacking(lyrics))),
+      );
     return split as T;
   }
   const timingDuration = lyrics.synced ? 0 : durationMs;

@@ -4,6 +4,7 @@ import {
   displayLyrics,
   distribute,
   effectiveLineEnd,
+  extractBracketBacking,
   needsWordSync,
   splitMergedWords,
   splitUnits,
@@ -111,7 +112,7 @@ describe("word sync", () => {
     expect(displayLyrics(blank, true, false, 180000)).toBe(blank);
   });
 
-  it("keeps bracketed parts in their line, as untimed words can't place them", () => {
+  it("makes bracketed parts background vocals", () => {
     const converted = convertToWordSync(
       lyrics(
         line("Hold on (hold on)", 1000, 3000),
@@ -120,8 +121,9 @@ describe("word sync", () => {
     );
     expect(converted.lines.map((item) => [item.text, item.background])).toEqual(
       [
-        ["Hold on (hold on)", false],
-        ["(say it)", false],
+        ["Hold on", false],
+        ["Hold on", true],
+        ["Say it", true],
       ],
     );
     expect(converted.estimated_words).toBe(true);
@@ -226,4 +228,82 @@ describe("Apple Music merged words", () => {
     expect(displayLyrics(merged, false)).toBe(merged);
     expect(displayLyrics(merged, true).lines[0].words).toHaveLength(2);
   });
+describe("bracketed backing vocals", () => {
+  const texts = (result: Lyrics) =>
+    result.lines.map((item) => [item.text, item.background]);
+  it("turns bracketed parts of an estimated line into background vocals", () => {
+    const result = convertToWordSync(
+      lyrics(line("I go (yeah) home", 0, 3000)),
+    );
+    expect(texts(result)).toEqual([
+      ["I go home", false],
+      ["Yeah", true],
+    ]);
+    const [lead, backing] = result.lines;
+    expect(lead.words.map((word) => word.text)).toEqual(["I", " go", " home"]);
+    expect(backing.start_ms).toBeGreaterThan(lead.start_ms);
+    expect(backing.end_ms).toBeLessThan(lead.end_ms);
+    expect(backing.words.every((word) => word.estimated)).toBe(true);
+  });
+  it("hangs a bracket-only line on the line before it", () => {
+    const result = convertToWordSync(
+      lyrics(
+        line("Hello there", 0, 2000),
+        line("(oh no)", 2000, 3000),
+        line("Come back", 3000, 4000),
+      ),
+    );
+    expect(texts(result)).toEqual([
+      ["Hello there", false],
+      ["Oh no", true],
+      ["Come back", false],
+    ]);
+  });
+  it("keeps a bracket-only line on its own when it stands apart", () => {
+    const result = convertToWordSync(
+      lyrics(line("(intro)", 0, 1000), line("Hello", 3000, 4000)),
+    );
+    expect(texts(result)).toEqual([
+      ["Intro", false],
+      ["Hello", false],
+    ]);
+  });
+  it("splits bracketed words out of word-timed lines, keeping their timing", () => {
+    const word = (text: string, start: number, end: number) => ({
+      text,
+      start_ms: start,
+      end_ms: end,
+    });
+    const timed = {
+      ...lyrics(
+        { ...line("I go (yeah yeah)", 0, 2000), words: [word("I", 0, 400), word(" go", 400, 800), word(" (yeah", 800, 1400), word(" yeah)", 1400, 2000)] },
+        { ...line("(Waking up)", 2500, 3000), words: [word("(Waking", 2500, 2800), word(" up)", 2800, 3000)] },
+        { ...line("Go", 3000, 3500), words: [word("Go", 3000, 3500)] },
+      ),
+      source: "apple_music",
+    };
+    const result = extractBracketBacking(timed);
+    expect(texts(result)).toEqual([
+      ["I go", false],
+      ["Yeah yeah", true],
+      ["Go", false],
+      ["Waking up", true],
+    ]);
+    expect(result.lines[0].end_ms).toBe(800);
+    expect(result.lines[1].words.map((item) => [item.text, item.start_ms])).toEqual([
+      ["Yeah", 800],
+      [" yeah", 1400],
+    ]);
+    expect(result.lines[3].start_ms).toBe(2500);
+    // Other sources keep their brackets.
+    const other = { ...timed, source: "lyssna" };
+    expect(extractBracketBacking(other)).toBe(other);
+    expect(displayLyrics(timed, true).lines.map((item) => item.text)).toEqual([
+      "I go",
+      "Yeah yeah",
+      "Go",
+      "Waking up",
+    ]);
+  });
+});
 });
