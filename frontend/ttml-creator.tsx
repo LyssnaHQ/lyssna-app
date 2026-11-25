@@ -85,6 +85,7 @@ import {
   fixFromGenius,
   type GeniusChanges,
   bracketsToBackground,
+  splitAllWords,
   readingsFrom,
   insertBlankLine,
   joinHyphenated,
@@ -1696,6 +1697,32 @@ export function TtmlCreator({
       `Moved ${next.length - lines.length} bracketed ${next.length - lines.length === 1 ? "part" : "parts"} to background lines.`,
     );
   };
+  const splitAll = () => {
+    const next = splitAllWords(lines, (text) =>
+      cutAt(text, suggestSplit(text, learned)),
+    );
+    if (next === lines) {
+      notify("No words to split into syllables.");
+      return;
+    }
+    const added =
+      next.reduce((sum, line) => sum + line.units.length, 0) -
+      lines.reduce((sum, line) => sum + line.units.length, 0);
+    restructure(next);
+    notify(
+      `Split words into ${added} more ${added === 1 ? "syllable" : "syllables"}. ${MODIFIER}+Z undoes it.`,
+    );
+  };
+  const splitAllButton = (
+    <button
+      onClick={splitAll}
+      disabled={!lines.length}
+      title="Split every word into syllables. Words you already split stay as they are."
+    >
+      <Wand2 size={15} />
+      Split all syllables
+    </button>
+  );
   const bracketsButton = (
     <button
       onClick={splitBackingVocals}
@@ -3162,6 +3189,7 @@ export function TtmlCreator({
                   Edit as text
                 </button>
                 {bracketsButton}
+                {splitAllButton}
                 <button
                   className={wordRoman ? "active" : ""}
                   aria-pressed={wordRoman}
@@ -3287,6 +3315,7 @@ export function TtmlCreator({
                   Edit as text
                 </button>
                 {bracketsButton}
+                {splitAllButton}
                 <button
                   onClick={() => void autoRomanize()}
                   disabled={romanNote === "Romanizing…"}

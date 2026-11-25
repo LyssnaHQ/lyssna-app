@@ -2078,6 +2078,31 @@ export function splitMatching(
   }));
 }
 
+/**
+ * Cuts every whole word with `cut`. Words already split into syllables keep
+ * the split they have. Returns `lines` itself when nothing changed.
+ */
+export function splitAllWords(
+  lines: CreatorLine[],
+  cut: (text: string) => string[],
+): CreatorLine[] {
+  let changed = false;
+  const next = lines.map((line) => {
+    let lineChanged = false;
+    const units = line.units.flatMap((unit, index) => {
+      if (unit.joined || line.units[index + 1]?.joined) return [unit];
+      const parts = cut(unit.text).filter(Boolean);
+      if (parts.length < 2) return [unit];
+      lineChanged = true;
+      return divided(unit, parts);
+    });
+    if (!lineChanged) return line;
+    changed = true;
+    return { ...line, units };
+  });
+  return changed ? next : lines;
+}
+
 /** A line split in two ends where a comma stood; the comma goes. */
 function dropEndComma(units: CreatorUnit[]): CreatorUnit[] {
   const last = units[units.length - 1];

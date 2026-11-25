@@ -80,6 +80,7 @@ import {
   romanizeRequest,
   setLineText,
   setUnitRoman,
+  splitAllWords,
   splitMatching,
   splitUnit,
   toLyrics,
@@ -1399,6 +1400,14 @@ describe("TTML Creator word menu", () => {
     expect(toText(splitMatching(lines, "baby", cut, true))).toBe(
       "Ba|by ba|by BA|BY",
     );
+  });
+
+  it("splits every whole word and leaves split words alone", () => {
+    const lines = parseText("hello ba|by go\nwonder");
+    const cut = (text: string) => [text.slice(0, 2), text.slice(2)];
+    expect(toText(splitAllWords(lines, cut))).toBe("he|llo ba|by go\nwo|nder");
+    const whole = parseText("go to");
+    expect(splitAllWords(whole, cut)).toBe(whole);
   });
 
   it("moves words to a new line and duplicates lines", () => {
