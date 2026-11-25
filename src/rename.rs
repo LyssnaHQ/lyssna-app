@@ -2,8 +2,7 @@
 //! moves what SpotiFlex kept under its name to Lyssna's: settings, caches,
 //! the interface's storage, the sign-in startup entry and, on Windows, the
 //! install itself. The interface's storage also moves from earlier app
-//! identifiers to the current one. Saved credentials move when first read (see
-//! `credential`).
+//! identifiers. Saved credentials move when first read (see `credential`).
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -58,6 +57,11 @@ fn folders() -> Vec<(PathBuf, PathBuf)> {
             base.data_local_dir(),
             base.cache_dir(),
         ] {
+            // Keep Windows WebView2 profiles intact for the desktop migration.
+            // Tauri still keeps window placement under the roaming identifier.
+            if cfg!(all(windows, feature = "desktop")) && dir == base.data_local_dir() {
+                continue;
+            }
             for former in FORMER_IDENTIFIERS {
                 pairs.push((dir.join(former), dir.join(IDENTIFIER)));
             }
@@ -79,6 +83,71 @@ fn folders() -> Vec<(PathBuf, PathBuf)> {
         new
     });
     pairs
+}
+
+/// Choose the Windows WebView2 folder before any window opens.
+#[cfg(all(windows, feature = "desktop"))]
+pub(crate) fn webview_directory() -> anyhow::Result<PathBuf> {
+    use anyhow::Context;
+
+    let base = directories::BaseDirs::new().context("Cannot locate local application data")?;
+    let local = base.data_local_dir();
+    let directory = local.join(NAME);
+    let destination = directory.join("EBWebView");
+    if destination.is_dir() {
+        return Ok(directory);
+    }
+
+    // Use the newest available profile. Browser databases from different
+    // profiles cannot be merged file by file.
+    for identifier in std::iter::once(IDENTIFIER).chain(FORMER_IDENTIFIERS.into_iter().rev()) {
+        let previous = local.join(identifier);
+        let source = previous.join("EBWebView");
+        if source.is_dir() {
+            if let Err(error) = copy_webview_profile(&source, &destination) {
+                let message = format!(
+                    "Cannot migrate WebView2 profile {} to {}: {error}",
+                    source.display(),
+                    destination.display()
+                );
+                eprintln!("{message}");
+                crate::native::diagnostic(&message);
+                // Open with the existing profile and retry at the next launch.
+                return Ok(previous);
+            }
+            break;
+        }
+    }
+    Ok(directory)
+}
+
+#[cfg(all(windows, feature = "desktop"))]
+fn copy_webview_profile(from: &Path, to: &Path) -> io::Result<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    // A WebView2 process from the previous launch can still be closing.
+    match fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(from.join("lockfile"))
+    {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    // Publish only a complete copy. Keep the original usable by older builds.
+    let staging = to.with_extension("migrating");
+    match fs::remove_dir_all(&staging) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    let result = copy_folder(from, &staging).and_then(|()| fs::rename(&staging, to));
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&staging);
+    }
+    result
 }
 
 /// Move a folder to Lyssna's name. When Lyssna already has one (a build

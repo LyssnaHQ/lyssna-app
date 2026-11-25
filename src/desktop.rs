@@ -5346,6 +5346,21 @@ fn profile_window_script() -> &'static str {
     });
     &SCRIPT
 }
+
+#[cfg(windows)]
+struct WebviewProfile(std::path::PathBuf);
+
+fn webview_window<'a>(
+    app: &'a tauri::AppHandle,
+    label: &str,
+    url: tauri::WebviewUrl,
+) -> tauri::WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
+    let builder = tauri::WebviewWindowBuilder::new(app, label, url);
+    #[cfg(windows)]
+    let builder = builder.data_directory(app.state::<WebviewProfile>().0.clone());
+    builder
+}
+
 /// Cinema Lyrics, as the pixels-spicy-lyrics fork's: the full screen lyrics
 /// in a normal window of their own, framed so it moves, resizes and maximizes
 /// like any other, and remembered where it was last left. The button toggles
@@ -5358,7 +5373,7 @@ async fn toggle_cinema_lyrics(app: tauri::AppHandle) -> std::result::Result<(), 
             window.close()?;
             return Ok(());
         }
-        tauri::WebviewWindowBuilder::new(
+        webview_window(
             &app,
             LABEL,
             tauri::WebviewUrl::App("index.html?view=cinema".into()),
@@ -5386,7 +5401,7 @@ async fn open_lyrics_popout(app: tauri::AppHandle) -> std::result::Result<(), St
             window.set_focus()?;
             return Ok(());
         }
-        tauri::WebviewWindowBuilder::new(
+        webview_window(
             &app,
             LABEL,
             tauri::WebviewUrl::App("index.html?view=lyrics-popout".into()),
@@ -5463,9 +5478,9 @@ async fn open_creator_profile(
         // windows instead of behind them, where it lost focus and closed.
         let main = caller;
         let listens = app.clone();
-        let window = tauri::WebviewWindowBuilder::new(
+        let window = webview_window(
             &app,
-            label,
+            &label,
             tauri::WebviewUrl::External("about:blank".parse()?),
         )
         .title(title)
@@ -5647,7 +5662,7 @@ async fn open_song_page(
         let main = caller;
         let listens = app.clone();
         let window =
-            tauri::WebviewWindowBuilder::new(&app, LABEL, tauri::WebviewUrl::External(url))
+            webview_window(&app, LABEL, tauri::WebviewUrl::External(url))
                 .title("Lyssna lyrics")
                 .decorations(false)
                 .resizable(false)
@@ -6705,6 +6720,21 @@ pub const QUIT_ARG: &str = "--quit";
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     use tauri_plugin_window_state::StateFlags;
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    let context = {
+        let mut context = context;
+        let main = context
+            .config_mut()
+            .app
+            .windows
+            .iter_mut()
+            .find(|window| window.label == "main")
+            .context("Missing main window configuration")?;
+        // Tauri normally creates the main window before the setup hook.
+        main.create = false;
+        context
+    };
     let app = tauri::Builder::default()
         // Opening Lyssna again, as from the Start menu while it sits in
         // the tray, shows the running window instead of a second copy.
@@ -6757,6 +6787,21 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Lyssna opened by a `lyssna://` link: acted on once ready.
             if let Some(link) = crate::links::from_args(std::env::args()) {
                 crate::links::keep(link);
+            }
+            #[cfg(windows)]
+            {
+                let directory = crate::rename::webview_directory()?;
+                app.manage(WebviewProfile(directory.clone()));
+                let main = app
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .find(|window| window.label == "main")
+                    .context("Missing main window configuration")?;
+                tauri::WebviewWindowBuilder::from_config(app, main)?
+                    .data_directory(directory)
+                    .build()?;
             }
             // Installed copies open `lyssna://` links; a debug build from
             // `target` would take them from the installed one.
@@ -7028,7 +7073,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             app_update,
             media_state
         ])
-        .build(tauri::generate_context!())?;
+        .build(context)?;
     app.run(|app, event| {
         // macOS hands `lyssna://` links to the running app.
         #[cfg(target_os = "macos")]
