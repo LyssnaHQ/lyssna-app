@@ -229,7 +229,6 @@ import {
   addedLabel,
   collectionQueue,
   collectionTracks,
-  genresFor,
   nextHeaderSort,
   headerSorts,
   type SortColumn,
@@ -854,7 +853,6 @@ function App() {
   const heroRef = useRef<HTMLElement>(null);
   const [songSearch, setSongSearch] = useState(false);
   const [songQuery, setSongQuery] = useState(""),
-    [songGenre, setSongGenre] = useState(""),
     [songAge, setSongAge] = useState(""),
     [songLength, setSongLength] = useState("");
   // Each page remembers its own sort across restarts, like Spotify.
@@ -881,7 +879,6 @@ function App() {
   useEffect(() => {
     setSongSearch(false);
     setSongQuery("");
-    setSongGenre("");
     setSongAge("");
     setSongLength("");
   }, [state.route]);
@@ -2526,7 +2523,6 @@ function App() {
       : entity?.playlist?.owner === "Spotify");
   const filtering = !!(
     songQuery.trim() ||
-    songGenre ||
     songAge ||
     songLength ||
     songSort !== "order"
@@ -2554,7 +2550,7 @@ function App() {
     : collection
       ? collectionTracks(state.tracks, state.facts, {
           query: songQuery,
-          genre: songGenre,
+          genre: "",
           age: songAge,
           length: songLength,
           sort: songSort,
@@ -2628,9 +2624,6 @@ function App() {
       </button>
     );
   };
-  const songGenres = [
-    ...new Set(state.tracks.flatMap((track) => genresFor(track, state.facts))),
-  ].sort();
   const librarySort = state.settings.library_sort ?? "recents";
   const libraryView = state.settings.library_view ?? "list";
   // DJ only plays in Lyssna's own player, so Soloist leaves it out.
@@ -4985,12 +4978,9 @@ function App() {
                             )}
                             <SongSortMenu
                               sort={songSort}
-                              genre={songGenre}
                               age={songAge}
                               length={songLength}
-                              genres={songGenres}
                               onSort={setSongSort}
-                              onGenre={setSongGenre}
                               onAge={setSongAge}
                               onLength={setSongLength}
                             />

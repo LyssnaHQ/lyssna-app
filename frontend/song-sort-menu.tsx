@@ -17,27 +17,21 @@ const SORTS = [
 
 /**
  * Spotify-style "Recently added ☰" button: one popover holding the playlist
- * sort plus the genre, release-age and length filters, so the action bar stays on
+ * sort plus the release-age and length filters, so the action bar stays on
  * one line.
  */
 export function SongSortMenu({
   sort,
-  genre,
   age,
   length,
-  genres,
   onSort,
-  onGenre,
   onAge,
   onLength,
 }: {
   sort: string;
-  genre: string;
   age: string;
   length: string;
-  genres: string[];
   onSort: (value: string) => void;
-  onGenre: (value: string) => void;
   onAge: (value: string) => void;
   onLength: (value: string) => void;
 }) {
@@ -65,7 +59,7 @@ export function SongSortMenu({
       sort
     ] ??
     "Custom order";
-  const filtered = !!(genre || age || length);
+  const filtered = !!(age || length);
   return (
     <div className="sort-menu-root" ref={root}>
       <button
@@ -92,20 +86,6 @@ export function SongSortMenu({
             </button>
           ))}
           <hr />
-          <label>
-            <span className="sort-menu-heading">Genre</span>
-            <select
-              aria-label="Genre"
-              value={genre}
-              onChange={(event) => onGenre(event.target.value)}
-            >
-              <option value="">All genres</option>
-              {genres.map((name) => (
-                <option key={name}>{name}</option>
-              ))}
-              <option value="unknown">Unknown genre</option>
-            </select>
-          </label>
           <label>
             <span className="sort-menu-heading">Release age</span>
             <select
