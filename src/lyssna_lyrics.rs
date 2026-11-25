@@ -223,10 +223,13 @@ pub fn fetch(
 struct Revision {
     source: String,
     status: String,
+    #[serde(default)]
+    timing_kind: String,
 }
 
 /// The lyrics' contributors are accounts only. When they don't add up to the whole song, the rest
-/// is a sync that came from outside Lyssna: Apple Music's, when the song's history has one.
+/// is a sync that came from outside Lyssna: Apple Music's, when the song's history has one it
+/// synced word by word. Line-by-line Apple lyrics are only the starting point, never credited.
 fn credit_apple_music(client: &Client, lyrics: &mut Lyrics) {
     let Some(song) = lyrics.song_id.clone() else {
         return;
@@ -238,12 +241,17 @@ fn credit_apple_music(client: &Client, lyrics: &mut Lyrics) {
     let Ok(Some(revisions)) = view::<Vec<Revision>>(client, &url) else {
         return;
     };
-    if revisions.iter().any(|revision| {
-        revision.source == "apple_music"
-            && matches!(revision.status.as_str(), "approved" | "current")
-    }) {
+    if apple_synced_words(&revisions) {
         lyrics.credits.push(credit);
     }
+}
+
+fn apple_synced_words(revisions: &[Revision]) -> bool {
+    revisions.iter().any(|revision| {
+        revision.source == "apple_music"
+            && revision.timing_kind == "word"
+            && matches!(revision.status.as_str(), "approved" | "current")
+    })
 }
 
 /// Apple Music's share: what the accounts leave over, when that is anything at all.
@@ -536,6 +544,24 @@ pub fn record_view(client: &Client, song_id: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_word_synced_apple_music_keeps_a_credit() {
+        let revision = |source: &str, timing_kind: &str| super::Revision {
+            source: source.into(),
+            status: "approved".into(),
+            timing_kind: timing_kind.into(),
+        };
+        assert!(super::apple_synced_words(&[revision(
+            "apple_music",
+            "word"
+        )]));
+        assert!(!super::apple_synced_words(&[revision(
+            "apple_music",
+            "line"
+        )]));
+        assert!(!super::apple_synced_words(&[revision("community", "word")]));
+    }
+
     #[test]
     fn apple_lyrics_for_another_recording_are_refused() {
         let ttml = |dur: &str| {
