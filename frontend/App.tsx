@@ -82,6 +82,7 @@ import {
   HideArtworkIcon,
   PINNABLE_EFFECTS,
   RetryIcon,
+  SourceIcon,
   SwapSidesIcon,
   TranslateIcon,
   UploadIcon,
@@ -711,10 +712,14 @@ function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [ttmlOpen, setTtmlOpen] = useState<false | "load" | "database">(false);
   const [songSource, setSongSource] = useState<string | null>(null);
+  const [sourceMenu, setSourceMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const songSourceUri = state.playback.item?.uri;
   useEffect(() => {
     setSongSource(null);
-    if (!ttmlOpen || !songSourceUri) return;
+    if (!songSourceUri) return;
     let active = true;
     void rpc<string | null>("lyrics_song_source", { uri: songSourceUri }).then(
       (source) => {
@@ -725,7 +730,24 @@ function App() {
     return () => {
       active = false;
     };
-  }, [ttmlOpen, songSourceUri]);
+  }, [songSourceUri]);
+  const lyricSources = [
+    ...(state.settings.lyrics_source_order ?? DEFAULT_SOURCES),
+    ...DEFAULT_SOURCES,
+  ]
+    .filter((id, index, all) => SOURCES[id] && all.indexOf(id) === index)
+    .map((id) => ({ id, name: SOURCES[id].name }));
+  const chooseSongSource = (source: string | null) => {
+    setSourceMenu(null);
+    void call("set_lyrics_song_source", { source }).then(() => {
+      setSongSource(source);
+      notify(
+        source
+          ? `${SOURCES[source]?.name ?? source} lyrics for this song whenever it has them.`
+          : "This song follows your source order again.",
+      );
+    });
+  };
   // undefined while checking, null when signed out of Lyssna.
   const [lyssnaRole, setLyssnaRole] = useState<string | null | undefined>();
   const reviewer = canReview(lyssnaRole);
@@ -4403,6 +4425,27 @@ function App() {
                 })}
                 <span className="toolbar-divider" aria-hidden="true" />
                 <button
+                  className={`icon-button ${songSource || sourceMenu ? "active" : ""}`}
+                  title="Lyrics source"
+                  data-icon="source"
+                  aria-haspopup="menu"
+                  aria-expanded={!!sourceMenu}
+                  onClick={(event) => {
+                    if (sourceMenu) return setSourceMenu(null);
+                    const box = event.currentTarget.getBoundingClientRect();
+                    setSourceMenu({ x: box.left, y: box.bottom + 8 });
+                    if (songSourceUri)
+                      void rpc<string | null>("lyrics_song_source", {
+                        uri: songSourceUri,
+                      }).then(
+                        (source) => setSongSource(source ?? null),
+                        () => {},
+                      );
+                  }}
+                >
+                  <SourceIcon />
+                </button>
+                <button
                   className="icon-button"
                   title="Load TTML"
                   data-icon="upload"
@@ -5924,6 +5967,40 @@ function App() {
           }}
         />
       )}
+      {sourceMenu && (
+        <>
+          <div
+            className="popover-dismiss"
+            onClick={() => setSourceMenu(null)}
+          />
+          <div
+            className="song-menu popover source-menu"
+            role="menu"
+            aria-label="Lyrics source"
+            style={{ left: sourceMenu.x, top: sourceMenu.y }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setSourceMenu(null);
+            }}
+          >
+            {[{ id: null, name: "Your source order" }, ...lyricSources].map(
+              ({ id, name }) => (
+                <button
+                  key={id ?? ""}
+                  role="menuitemradio"
+                  aria-checked={songSource === id}
+                  className={songSource === id ? "active" : ""}
+                  onClick={() => chooseSongSource(id)}
+                >
+                  {name}
+                  {songSource === id && (
+                    <Check className="menu-chevron" size={16} />
+                  )}
+                </button>
+              ),
+            )}
+          </div>
+        </>
+      )}
       {songMenu && (
         <>
           <div
@@ -6691,25 +6768,6 @@ function App() {
           onLoad={(file, mode) => importFile(file, mode)}
           reviewer={state.settings.ttml_reviewer ?? "off"}
           onReviewer={(ttml_reviewer) => updateSettings({ ttml_reviewer })}
-          sources={[
-            ...(state.settings.lyrics_source_order ?? DEFAULT_SOURCES),
-            ...DEFAULT_SOURCES,
-          ]
-            .filter(
-              (id, index, all) => SOURCES[id] && all.indexOf(id) === index,
-            )
-            .map((id) => ({ id, name: SOURCES[id].name }))}
-          songSource={songSource}
-          onSongSource={(source) =>
-            void call("set_lyrics_song_source", { source }).then(() => {
-              setSongSource(source);
-              notify(
-                source
-                  ? `${SOURCES[source]?.name ?? source} lyrics for this song whenever it has them.`
-                  : "This song follows your source order again.",
-              );
-            })
-          }
           onSubmit={(file) =>
             state.playback.item
               ? submitToLyssna(file, state.playback.item)

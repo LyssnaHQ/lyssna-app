@@ -129,6 +129,19 @@ export const SwapSidesIcon = () => (
 );
 
 /** An arrow that lifts out of its tray on hover. */
+/** Lines and a note: the note lifts on hover. */
+export const SourceIcon = () => (
+  <Icon name="source">
+    <path d="M16 5H3" />
+    <path d="M11 12H3" />
+    <path d="M11 19H3" />
+    <g className="part-note">
+      <path d="M21 16V5" />
+      <circle cx="18" cy="16" r="3" />
+    </g>
+  </Icon>
+);
+
 export const UploadIcon = () => (
   <Icon name="upload">
     <g className="part-arrow">

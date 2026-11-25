@@ -78,15 +78,7 @@ export function LoadTtml({
   initialView = "load",
   reviewer,
   onReviewer,
-  sources,
-  songSource,
-  onSongSource,
 }: {
-  /** Every lyrics source, in the user's order. */
-  sources: { id: string; name: string }[];
-  /** The source chosen for the playing song, or null for the usual order. */
-  songSource: string | null;
-  onSongSource: (source: string | null) => void;
   reviewer: ReviewerMode;
   onReviewer: (mode: ReviewerMode) => void;
   onSubmit: (file: File) => Promise<void>;
@@ -240,32 +232,6 @@ export function LoadTtml({
                 </span>
               </button>
             </div>
-            <section
-              className="load-ttml-reviewer"
-              aria-labelledby="ttml-song-source-title"
-            >
-              <div className="load-ttml-reviewer-row">
-                <span>
-                  <strong id="ttml-song-source-title">Lyrics source</strong>
-                  <small>
-                    Show this song's lyrics from one source whenever it has
-                    them, instead of your usual order.
-                  </small>
-                </span>
-                <Picker
-                  label="Lyrics source for this song"
-                  options={[
-                    ["", "Your order"],
-                    ...sources.map(
-                      (source) => [source.id, source.name] as [string, string],
-                    ),
-                  ]}
-                  value={songSource ?? ""}
-                  disabled={busy}
-                  onChange={(source) => onSongSource(source || null)}
-                />
-              </div>
-            </section>
             <section
               className="load-ttml-reviewer"
               aria-labelledby="ttml-reviewer-title"

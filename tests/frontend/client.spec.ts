@@ -21681,53 +21681,42 @@ test("TTML Creator clears the whole draft after a second click", async ({
   await expect(creator.locator(".ttml-card")).toHaveCount(0);
 });
 
-test("Load TTML chooses the lyrics source for the playing song", async ({
+test("the lyrics toolbar chooses the lyrics source for the playing song", async ({
   page,
 }) => {
   await startClient(page);
-  await playLyricTrack(page, false);
   await page.evaluate(() => {
     const test = (window as any).__clientTest;
     test.answers = { ...test.answers, lyrics_song_source: "apple" };
   });
+  await playLyricTrack(page, false);
   if (!(await page.locator(".lyrics-page").count()))
     await page.getByTitle("Lyrics", { exact: true }).click();
-  await page.getByTitle("Load TTML", { exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Load TTML" });
-  const source = dialog.getByRole("button", {
-    name: "Lyrics source for this song",
-  });
+  const button = page.getByTitle("Lyrics source", { exact: true });
+  const menu = page.getByRole("menu", { name: "Lyrics source" });
   const choose = async (name: string) => {
-    await source.click();
-    await dialog
-      .getByRole("listbox", { name: "Lyrics source for this song" })
-      .getByRole("option", { name, exact: true })
-      .click();
+    await button.click();
+    await menu.getByRole("menuitemradio", { name, exact: true }).click();
+    await expect(menu).toHaveCount(0);
   };
-  await expect(source).toHaveText("Apple Music");
-  // The dialog scrolls under its header, so the menu stays below the header
-  // and inside the dialog even with little room above it.
-  await page.setViewportSize({ width: 1280, height: 640 });
-  await dialog.evaluate((box) => (box.scrollTop = 10));
-  await source.click();
-  const menu = dialog.getByRole("listbox", {
-    name: "Lyrics source for this song",
-  });
-  const fits = await menu.evaluate((list) => {
-    const box = list.closest(".load-ttml")!;
-    const inner = list.getBoundingClientRect();
-    const head = box.querySelector(".load-ttml-head")!.getBoundingClientRect();
-    return (
-      inner.top >= head.bottom &&
-      inner.bottom <= box.getBoundingClientRect().bottom
-    );
-  });
-  expect(fits).toBe(true);
-  await source.click();
+  await button.click();
+  await expect(
+    menu.getByRole("menuitemradio", { name: "Apple Music", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  const below = await menu.evaluate(
+    (list) =>
+      list.getBoundingClientRect().top >=
+      document
+        .querySelector('[data-icon="source"]')!
+        .getBoundingClientRect().bottom,
+  );
+  expect(below).toBe(true);
+  await page.locator(".popover-dismiss").click();
+  await expect(menu).toHaveCount(0);
+  await expect(button).toHaveClass(/active/);
   await choose("lrc.red");
-  await expect(source).toHaveText("lrc.red");
-  await choose("Your order");
-  await expect(source).toHaveText("Your order");
+  await choose("Your source order");
+  await expect(button).not.toHaveClass(/active/);
   expect(await commandArgs(page, "set_lyrics_song_source")).toEqual([
     { source: "lrcred" },
     { source: null },
