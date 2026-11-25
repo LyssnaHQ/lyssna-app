@@ -139,6 +139,7 @@ fn restore_playback(snapshot: &mut Snapshot, value: crate::resume::LastPlayed) {
     };
     snapshot.observed_at = now_ms();
     snapshot.lyrics = None;
+    snapshot.lyric_error.clear();
     snapshot.canvas_url = None;
     snapshot.details = PlayingDetails::default();
 }
@@ -975,6 +976,7 @@ impl Desktop {
                             snapshot.narrating = false;
                             snapshot.native_ready = false;
                             snapshot.lyrics = None;
+                            snapshot.lyric_error.clear();
                             snapshot.canvas_url = None;
                             snapshot.details = PlayingDetails::default();
                             snapshot.tracks.clear();

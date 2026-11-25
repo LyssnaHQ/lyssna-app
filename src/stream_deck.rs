@@ -5,8 +5,8 @@
 //! plugin reads them and must send the key before anything else. Messages
 //! are one JSON object per line. The plugin sends commands; Lyssna sends
 //! the player state whenever it changes, and the playing song's synced
-//! lyrics when they arrive. No Spotify credentials or tokens ever pass
-//! through it.
+//! lyrics when they arrive. Protocol 2 also reports lyrics availability.
+//! No Spotify credentials or tokens ever pass through it.
 
 use super::{Command, Desktop, PlayerRequest, lock, player};
 use anyhow::{Context, Result};
@@ -53,6 +53,22 @@ struct DeckState {
     observed_at: u64,
 }
 
+#[derive(Default, PartialEq)]
+struct TrackLyricsStatus {
+    uri: Option<String>,
+    status: LyricsStatus,
+}
+
+#[derive(Default, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LyricsStatus {
+    #[default]
+    Unknown,
+    Available,
+    Instrumental,
+    NotFound,
+}
+
 #[derive(Clone, PartialEq, Serialize)]
 struct DeckTrack {
     uri: String,
@@ -90,15 +106,22 @@ struct DeckLine {
     opposite: bool,
 }
 
+struct Client {
+    id: u64,
+    protocol: u64,
+    stream: TcpStream,
+}
+
 #[derive(Default)]
 struct Shared {
     audio_owner: Option<u64>,
     /// Connected plugins, by connection number.
-    clients: Vec<(u64, TcpStream)>,
+    clients: Vec<Client>,
     next_client: u64,
     state: DeckState,
     /// The lyrics line last sent, so a new plugin gets it on connect.
     lyrics: String,
+    lyrics_status: TrackLyricsStatus,
     saved: HashMap<String, bool>,
     /// Volume before Mute, to restore.
     unmuted: Option<u8>,
@@ -163,7 +186,7 @@ pub(super) fn start(app: tauri::AppHandle) -> Result<()> {
                 let Some(desktop) = app.try_state::<Desktop>() else {
                     continue;
                 };
-                let (next, lyrics) = {
+                let (next, lyrics, lyrics_status) = {
                     let Ok(snapshot) = lock(&desktop.0.snapshot) else {
                         continue;
                     };
@@ -174,7 +197,7 @@ pub(super) fn start(app: tauri::AppHandle) -> Result<()> {
                         lyrics_seen = seen;
                         lyrics_line(read_lyrics(&snapshot).as_ref())
                     });
-                    (read_state(&snapshot), lyrics)
+                    (read_state(&snapshot), lyrics, read_lyrics_status(&snapshot))
                 };
                 // Ask once per song whether it is in Liked Songs.
                 if let Some(track) = &next.track
@@ -197,14 +220,19 @@ pub(super) fn start(app: tauri::AppHandle) -> Result<()> {
                 if next != shared.state {
                     shared.state = next;
                     let line = state_line(&shared.state);
-                    send(&mut shared, &line);
+                    send(&mut shared, &line, 1);
+                }
+                if lyrics_status != shared.lyrics_status {
+                    let line = lyrics_status_line(&lyrics_status);
+                    shared.lyrics_status = lyrics_status;
+                    send(&mut shared, &line, 2);
                 }
                 if let Some(line) = lyrics
                     && line != shared.lyrics
                 {
                     shared.lyrics = line;
                     let line = shared.lyrics.clone();
-                    send(&mut shared, &line);
+                    send(&mut shared, &line, 1);
                 }
             }
         });
@@ -290,6 +318,24 @@ fn read_lyrics(snapshot: &super::Snapshot) -> Option<DeckLyrics> {
     deck_lyrics(&track.uri, snapshot.lyrics.as_ref()?)
 }
 
+fn read_lyrics_status(snapshot: &super::Snapshot) -> TrackLyricsStatus {
+    let Some(track) = &snapshot.playback.item else {
+        return TrackLyricsStatus::default();
+    };
+    let status = match &snapshot.lyrics {
+        Some(lyrics) if lyrics.instrumental => LyricsStatus::Instrumental,
+        Some(lyrics) if lyrics.lines.iter().any(|line| !line.text.trim().is_empty()) => {
+            LyricsStatus::Available
+        }
+        None if snapshot.lyric_error == crate::lyric_sources::NO_LYRICS => LyricsStatus::NotFound,
+        _ => LyricsStatus::Unknown,
+    };
+    TrackLyricsStatus {
+        uri: Some(track.uri.clone()),
+        status,
+    }
+}
+
 /// Synced lines with words to show, background vocals and duet sides
 /// included.
 fn deck_lyrics(uri: &str, lyrics: &crate::lyrics::Lyrics) -> Option<DeckLyrics> {
@@ -345,10 +391,17 @@ fn lyrics_line(lyrics: Option<&DeckLyrics>) -> String {
     }
 }
 
-fn send(shared: &mut Shared, line: &str) {
-    shared
-        .clients
-        .retain_mut(|(_, client)| client.write_all(line.as_bytes()).is_ok());
+fn lyrics_status_line(lyrics: &TrackLyricsStatus) -> String {
+    format!(
+        "{}\n",
+        json!({"type": "lyrics_status", "uri": lyrics.uri, "status": lyrics.status})
+    )
+}
+
+fn send(shared: &mut Shared, line: &str, minimum_protocol: u64) {
+    shared.clients.retain_mut(|client| {
+        client.protocol < minimum_protocol || client.stream.write_all(line.as_bytes()).is_ok()
+    });
 }
 
 fn state_line(state: &DeckState) -> String {
@@ -374,7 +427,8 @@ fn serve(
         "Wrong Stream Deck key"
     );
     reader.get_ref().set_read_timeout(None)?;
-    let requests = hello["protocol"].as_u64().unwrap_or(1) >= 2;
+    let protocol = hello["protocol"].as_u64().unwrap_or(1).max(1);
+    let requests = protocol >= 2;
     #[cfg(windows)]
     let window = if requests {
         app.get_webview_window("main")
@@ -396,15 +450,22 @@ fn serve(
         let mut writer = stream.try_clone()?;
         if requests {
             writer.set_write_timeout(Some(Duration::from_secs(2)))?;
-            writer.write_all(format!("{}\n", json!({"type":"ready", "protocol":2, "pid":std::process::id(), "windowHandle":window, "capabilities":["audio-analysis"]})).as_bytes())?;
+            writer.write_all(format!("{}\n", json!({"type":"ready", "protocol":2, "pid":std::process::id(), "windowHandle":window, "capabilities":["audio-analysis", "lyrics-status"]})).as_bytes())?;
         }
         writer.write_all(state_line(&shared.state).as_bytes())?;
+        if requests {
+            writer.write_all(lyrics_status_line(&shared.lyrics_status).as_bytes())?;
+        }
         if !shared.lyrics.is_empty() {
             writer.write_all(shared.lyrics.as_bytes())?;
         }
         shared.next_client += 1;
         let id = shared.next_client;
-        shared.clients.push((id, writer));
+        shared.clients.push(Client {
+            id,
+            protocol,
+            stream: writer,
+        });
         id
     };
     let mut control = local_control::Session::new(app, shared, id);
@@ -419,12 +480,12 @@ fn serve(
                 let mut shared = shared
                     .lock()
                     .map_err(|_| anyhow::anyhow!("State unavailable"))?;
-                let (_, writer) = shared
+                let client = shared
                     .clients
                     .iter_mut()
-                    .find(|(client, _)| *client == id)
+                    .find(|client| client.id == id)
                     .context("Local control client disconnected")?;
-                writer.write_all(format!("{response}\n").as_bytes())?;
+                client.stream.write_all(format!("{response}\n").as_bytes())?;
             } else if message["type"] == "command"
                 && let Some(name) = message["command"].as_str()
             {
@@ -435,7 +496,7 @@ fn serve(
     drop(control);
     // A plugin that leaves is dropped at once, not at the next update.
     if let Ok(mut shared) = shared.lock() {
-        shared.clients.retain(|(client, _)| *client != id);
+        shared.clients.retain(|client| client.id != id);
     }
     result
 }

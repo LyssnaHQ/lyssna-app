@@ -56,6 +56,25 @@ Search and metadata replies use the same track shape as state events:
 `uri`, `name`, `artists`, `image`, `duration_ms`. Position is paired with
 `observed_at` in Unix milliseconds so a client can advance the clock while playing.
 
+When `ready.capabilities` includes `lyrics-status`, Lyssna sends a `lyrics_status`
+event on connect and whenever the current track or its lyrics status changes,
+including while paused.
+
+```json
+{"type":"lyrics_status","uri":"spotify:track:0123456789abcdefghijkl","status":"instrumental"}
+```
+
+| `status` | Meaning |
+| --- | --- |
+| `available` | Lyrics were found, including plain lyrics without timing. |
+| `instrumental` | The lyrics source identifies the track as instrumental. |
+| `not_found` | Lyssna's lyrics lookup found no lyrics. |
+| `unknown` | Lyssna has no result yet, or the lookup reported a failure. `uri` is `null` when no track is loaded. |
+
+To hide a lyrics display, use `instrumental` or `not_found` for the matching
+track URI. The `lyrics` event still carries synced lines and can contain `null`
+while a lookup is pending or when only plain lyrics are available.
+
 The ready message's optional `capabilities` list advertises `audio-analysis` when
 source analysis is available. Send `{"type":"request","id":1,"action":"audio-analysis","uri":"spotify:track:0123456789abcdefghijkl"}`
 on a separate authenticated connection to keep playback commands responsive.
