@@ -1523,8 +1523,9 @@ fn fetch_sources(
                 crate::lyric_sources::spotify(&native, &track)
             }),
             "lrclib" => cache.get("lrclib", &|| crate::lyric_sources::lrclib(&client, &track)),
-            // Renamed when background brackets parsing changed.
-            "lyssna" => cache.get("lyssna-2", &|| {
+            // Renamed when background brackets parsing changed, and again
+            // when line-by-line Apple Music lyrics stopped being credited.
+            "lyssna" => cache.get("lyssna-3", &|| {
                 crate::lyssna_lyrics::fetch(
                     &client,
                     || {
