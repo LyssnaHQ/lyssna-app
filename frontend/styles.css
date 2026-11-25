@@ -2616,6 +2616,26 @@ small {
 .track-table.compact .track-name {
   font-size: 14px;
 }
+/* The explicit tag leads the title in a compact row, as in Spotify,
+   inside the title's column so the artists stay lined up. */
+.track-table.compact .track-cell > div:last-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+.track-table.compact .track-cell .explicit-badge {
+  grid-area: 1 / 1;
+  justify-self: start;
+  font-size: 13px;
+}
+.track-table.compact .track-cell .track-name {
+  grid-area: 1 / 1;
+}
+.track-table.compact .track-cell .explicit-badge + .track-name {
+  padding-left: 26px;
+}
+.track-table.compact .track-cell .track-artists {
+  grid-area: 1 / 2;
+}
 .track-table.compact .track-artists {
   margin-top: 0;
   font-size: 14px;

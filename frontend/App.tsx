@@ -5233,6 +5233,9 @@ function App() {
                                     }
                                   />
                                   <div>
+                                    {compactSongs && (
+                                      <ExplicitBadge track={track} />
+                                    )}
                                     <button
                                       className="text-link track-name"
                                       onClick={(event) => {
@@ -5257,7 +5260,9 @@ function App() {
                                       {downloads.songs.has(track.uri) && (
                                         <DownloadedMark />
                                       )}
-                                      <ExplicitBadge track={track} />
+                                      {!compactSongs && (
+                                        <ExplicitBadge track={track} />
+                                      )}
                                       <ArtistLinks
                                         artists={track.artists}
                                         onArtist={openArtist}
