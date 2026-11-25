@@ -45,6 +45,45 @@ export function rowRange(
  * 800 rendered rows held about 600 MB in the WebView. Returns the rows to
  * render and the row height for the spacers around them.
  */
+/** Where the first row sits in the scroller's content, below the header. */
+export function rowsTop(scroll: HTMLElement, list: HTMLElement) {
+  const head = list.querySelector<HTMLElement>(".track-table-head");
+  return (
+    list.getBoundingClientRect().top -
+    scroll.getBoundingClientRect().top +
+    scroll.scrollTop +
+    (head
+      ? head.offsetHeight +
+        (parseFloat(getComputedStyle(head).marginBottom) || 0)
+      : 0)
+  );
+}
+
+// The page's sticky bar covers the top of the scroller once shown.
+const covered = (scroll: HTMLElement) =>
+  scroll.querySelector<HTMLElement>(".artist-sticky.shown")?.offsetHeight ?? 0;
+
+/**
+ * How many rows sit above the visible top of the scroller, fractionally, so
+ * a change of row height can scroll back to the same song.
+ */
+export function rowsScrolled(scroll: HTMLElement, list: HTMLElement) {
+  const height = list.querySelector<HTMLElement>(".track-row")?.offsetHeight;
+  if (!height) return 0;
+  const top = scroll.scrollTop + covered(scroll);
+  return Math.max(0, (top - rowsTop(scroll, list)) / height);
+}
+
+export function scrollToRows(
+  scroll: HTMLElement,
+  list: HTMLElement,
+  rows: number,
+) {
+  const height = list.querySelector<HTMLElement>(".track-row")?.offsetHeight;
+  if (!height || rows <= 0) return;
+  scroll.scrollTop = rowsTop(scroll, list) + rows * height - covered(scroll);
+}
+
 export function useRowWindow(
   scroller: RefObject<HTMLDivElement | null>,
   table: RefObject<HTMLDivElement | null>,
@@ -65,19 +104,10 @@ export function useRowWindow(
       rowHeight.current =
         list.querySelector<HTMLElement>(".track-row")?.offsetHeight ||
         rowHeight.current;
-      const head = list.querySelector<HTMLElement>(".track-table-head");
-      const listTop =
-        list.getBoundingClientRect().top -
-        scroll.getBoundingClientRect().top +
-        scroll.scrollTop +
-        (head
-          ? head.offsetHeight +
-            (parseFloat(getComputedStyle(head).marginBottom) || 0)
-          : 0);
       const next = rowRange(
         scroll.scrollTop,
         scroll.clientHeight,
-        listTop,
+        rowsTop(scroll, list),
         rowHeight.current,
         count,
       );

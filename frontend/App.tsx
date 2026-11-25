@@ -72,7 +72,7 @@ import { isJamLink } from "./jam-link";
 import { listen } from "@tauri-apps/api/event";
 import type { CinemaRequest } from "./cinema";
 import { startIdleTrim } from "./memory-trim";
-import { useRowWindow } from "./track-window";
+import { rowsScrolled, scrollToRows, useRowWindow } from "./track-window";
 import { animateLayout } from "./layout-transition";
 import {
   CinemaIcon,
@@ -3458,8 +3458,16 @@ function App() {
     mainScroll,
     trackTable,
     listedTracks.length,
-    `${center}:${state.route}`,
+    `${center}:${state.route}:${compactSongs}`,
   );
+  // Switching between List and Compact keeps the same song at the top.
+  const rowsAbove = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const rows = rowsAbove.current;
+    rowsAbove.current = null;
+    if (rows != null && mainScroll.current && trackTable.current)
+      scrollToRows(mainScroll.current, trackTable.current, rows);
+  }, [compactSongs]);
   const selectRow = (
     index: number,
     keys: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean },
@@ -4984,9 +4992,14 @@ function App() {
                               age={songAge}
                               length={songLength}
                               view={state.settings.songs_view ?? "list"}
-                              onView={(songs_view) =>
-                                updateSettings({ songs_view })
-                              }
+                              onView={(songs_view) => {
+                                if (mainScroll.current && trackTable.current)
+                                  rowsAbove.current = rowsScrolled(
+                                    mainScroll.current,
+                                    trackTable.current,
+                                  );
+                                updateSettings({ songs_view });
+                              }}
                               onSort={setSongSort}
                               onAge={setSongAge}
                               onLength={setSongLength}

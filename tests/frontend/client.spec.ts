@@ -3310,6 +3310,49 @@ test("playlist search spans unloaded pages and play counts drive sorting", async
   await expect(page.locator(".track-table.compact")).toHaveCount(0);
 });
 
+test("switching to the compact view keeps the same song at the top", async ({
+  page,
+}) => {
+  await startClient(page);
+  await page
+    .locator(".library-item")
+    .filter({ hasText: "Liked Songs" })
+    .click();
+  await expect(page.locator(".track-row").first()).toBeVisible();
+  await page.getByTitle("Sort and filter", { exact: true }).click();
+  // Dispatched clicks, so Playwright doesn't scroll the menu into view.
+  const view = (name: string) =>
+    page.getByRole("button", { name, exact: true }).dispatchEvent("click");
+  // The first song below the scroller's top and the page's sticky bar.
+  const topSong = () =>
+    page.evaluate(() => {
+      const scroll = document.querySelector(".browse-scroll")!;
+      const top = Math.max(
+        scroll.getBoundingClientRect().top,
+        document.querySelector(".artist-sticky.shown")?.getBoundingClientRect()
+          .bottom ?? 0,
+      );
+      return [...document.querySelectorAll(".track-row")]
+        .find((row) => row.getBoundingClientRect().top >= top - 4)
+        ?.querySelector(".track-name")?.textContent;
+    });
+  await page.evaluate(() => {
+    const scroll = document.querySelector(".browse-scroll")!;
+    const row = document.querySelectorAll<HTMLElement>(".track-row")[12];
+    scroll.scrollTop +=
+      row.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+  });
+  await page.waitForTimeout(300);
+  const before = await topSong();
+  expect(before).toBeTruthy();
+  await view("Compact");
+  await expect(page.locator(".track-table.compact")).toHaveCount(1);
+  await expect.poll(topSong).toBe(before);
+  await view("List");
+  await expect(page.locator(".track-table.compact")).toHaveCount(0);
+  await expect.poll(topSong).toBe(before);
+});
+
 test("Now playing and each page's sort are saved for the next launch", async ({
   page,
 }) => {
