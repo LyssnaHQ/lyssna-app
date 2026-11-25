@@ -288,6 +288,32 @@ fn soloist_playback(state: crate::soloist_link::State) -> crate::model::Playback
     }
 }
 
+/// Why Soloist can't take a command yet, from what its supervisor reports.
+fn soloist_not_ready(status: Option<&crate::soloist::Status>) -> String {
+    use crate::soloist::Status;
+    match status {
+        Some(Status::NeedsKey) => {
+            "Spotify Soloist needs its API key. Add it in Settings under Soloist.".into()
+        }
+        Some(Status::Installing) => {
+            "Spotify Soloist is still downloading. Try again in a moment.".into()
+        }
+        Some(Status::NeedsPairing) => format!(
+            "Spotify Soloist isn't signed in yet. Pick \"{}\" once as the device in a Spotify app on your phone or computer.",
+            crate::soloist::DEVICE_NAME
+        ),
+        Some(Status::Unsupported) => "Spotify Soloist isn't available on this computer.".into(),
+        Some(Status::Failed(reason)) => format!("Spotify Soloist couldn't start: {reason}"),
+        Some(Status::Ready) => format!(
+            "Spotify Soloist is signed in, but Spotify hasn't listed \"{}\" yet. Try again in a moment.",
+            crate::soloist::DEVICE_NAME
+        ),
+        Some(Status::Starting) | None => {
+            "Spotify Soloist is still starting. Try again in a moment.".into()
+        }
+    }
+}
+
 /// Soloist's device ID while Soloist plays for this computer.
 fn soloist_in_use(inner: &Inner) -> Option<String> {
     let on = inner
@@ -355,13 +381,29 @@ fn watch_soloist(inner: Arc<Inner>, app: tauri::AppHandle) {
             if ready
                 && (!known || looked_up.is_none_or(|at| at.elapsed() > Duration::from_secs(60)))
             {
+                let first = looked_up.is_none();
                 looked_up = Some(Instant::now());
-                let id = inner.controls.devices().ok().and_then(|devices| {
-                    devices
-                        .into_iter()
-                        .find(|device| device.name == crate::soloist::DEVICE_NAME)
-                        .and_then(|device| device.id)
-                });
+                let id = match inner.controls.devices() {
+                    Ok(devices) => {
+                        let id = devices
+                            .iter()
+                            .find(|device| device.name == crate::soloist::DEVICE_NAME)
+                            .and_then(|device| device.id.clone());
+                        if id.is_none() && first {
+                            native::diagnostic(&format!(
+                                "soloist signed in but not among {} Connect devices",
+                                devices.len()
+                            ));
+                        }
+                        id
+                    }
+                    Err(error) => {
+                        if first {
+                            native::diagnostic(&format!("soloist device lookup failed: {error}"));
+                        }
+                        None
+                    }
+                };
                 if let Ok(mut device) = inner.soloist_device.lock() {
                     *device = id;
                 }
@@ -2735,9 +2777,12 @@ fn player(
             return Ok(());
         }
         let (local, target) = if soloist {
+            let status = lock(&state.0.soloist)?
+                .as_ref()
+                .map(|supervisor| supervisor.status());
             let id = lock(&state.0.soloist_device)?
                 .clone()
-                .context("Spotify Soloist is still starting. Try again in a moment.")?;
+                .with_context(|| soloist_not_ready(status.as_ref()))?;
             if matches!(action, PlayerAction::Transfer(_)) {
                 action = PlayerAction::Transfer(id.clone());
             }
@@ -5663,51 +5708,50 @@ async fn open_song_page(
         }
         let main = caller;
         let listens = app.clone();
-        let window =
-            webview_window(&app, LABEL, tauri::WebviewUrl::External(url))
-                .title("Lyssna lyrics")
-                .decorations(false)
-                .resizable(false)
-                .skip_taskbar(true)
-                .shadow(false)
-                .visible(false)
-                .theme(Some(tauri::Theme::Dark))
-                .background_color(tauri::window::Color(0x0a, 0x0a, 0x0b, 0xff))
-                .parent(&main)?
-                .additional_browser_args(BROWSER_ARGS)
-                .initialization_script(SONG_SHEET_SCRIPT)
-                .on_navigation(move |url| {
-                    if let Some(uri) = listen_uri(url) {
-                        let _ = listens.emit("lyssna", json!({"type":"play_uri","uri":uri}));
-                        return false;
-                    }
-                    if closes_sheet(url) {
-                        let app = listens.clone();
-                        tauri::async_runtime::spawn(async move {
-                            if let Some(window) = app.get_webview_window(LABEL) {
-                                let _ = window.close();
-                            }
-                        });
-                        return false;
-                    }
-                    if let Some(page) = browser_page(url) {
-                        if page.scheme() == "https" {
-                            let _ = webbrowser::open(page.as_str());
+        let window = webview_window(&app, LABEL, tauri::WebviewUrl::External(url))
+            .title("Lyssna lyrics")
+            .decorations(false)
+            .resizable(false)
+            .skip_taskbar(true)
+            .shadow(false)
+            .visible(false)
+            .theme(Some(tauri::Theme::Dark))
+            .background_color(tauri::window::Color(0x0a, 0x0a, 0x0b, 0xff))
+            .parent(&main)?
+            .additional_browser_args(BROWSER_ARGS)
+            .initialization_script(SONG_SHEET_SCRIPT)
+            .on_navigation(move |url| {
+                if let Some(uri) = listen_uri(url) {
+                    let _ = listens.emit("lyssna", json!({"type":"play_uri","uri":uri}));
+                    return false;
+                }
+                if closes_sheet(url) {
+                    let app = listens.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(window) = app.get_webview_window(LABEL) {
+                            let _ = window.close();
                         }
-                        return false;
+                    });
+                    return false;
+                }
+                if let Some(page) = browser_page(url) {
+                    if page.scheme() == "https" {
+                        let _ = webbrowser::open(page.as_str());
                     }
-                    if url.scheme() == "https"
-                        && url.host_str() == Some("lyssna.org")
-                        && (url.path().starts_with("/song/") || url.path().starts_with("/u/"))
-                    {
-                        return true;
-                    }
-                    if url.scheme() == "https" {
-                        let _ = webbrowser::open(url.as_str());
-                    }
-                    false
-                })
-                .build()?;
+                    return false;
+                }
+                if url.scheme() == "https"
+                    && url.host_str() == Some("lyssna.org")
+                    && (url.path().starts_with("/song/") || url.path().starts_with("/u/"))
+                {
+                    return true;
+                }
+                if url.scheme() == "https" {
+                    let _ = webbrowser::open(url.as_str());
+                }
+                false
+            })
+            .build()?;
         if let Err(problem) = place_sheet(&main, &window, 1200., 860.) {
             let _ = window.close();
             return Err(problem);
