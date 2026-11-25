@@ -153,7 +153,12 @@ function ReviewSongRow({ submission }: { submission: ReviewSubmission }) {
           <span>{song.artists.map((artist) => artist.name).join(", ")}</span>
         )}
         <small>
-          {submission.kind === "edit" ? "Edit" : "New"} · {who(submission)} ·
+          {submission.instrumental
+            ? "Instrumental"
+            : submission.kind === "edit"
+              ? "Edit"
+              : "New"}{" "}
+          · {who(submission)} ·
           Tier {submission.submitter_tier} · {ago(submission.submitted_at)}
           {submission.major_rewrite
             ? " · Major rewrite"
@@ -422,7 +427,12 @@ function ReviewDetail({
         </button>
       </header>
       <p className="review-meta">
-        {submission.kind === "edit" ? "Edit" : "New lyrics"} by{" "}
+        {submission.instrumental
+          ? "Marked instrumental"
+          : submission.kind === "edit"
+            ? "Edit"
+            : "New lyrics"}{" "}
+        by{" "}
         {who(submission)} · Tier {submission.submitter_tier} ·{" "}
         {ago(submission.submitted_at)}
       </p>
@@ -434,14 +444,22 @@ function ReviewDetail({
         >
           <Play size={14} /> {playingIt ? "Playing" : "Play song"}
         </button>
-        <button
-          disabled={!uri || !ttml}
-          onClick={() => uri && ttml && onOpen({ submission, uri, ttml })}
-        >
-          <SquarePen size={14} />{" "}
-          {editing ? "Opened in editor" : "Open in editor"}
-        </button>
+        {!submission.instrumental && (
+          <button
+            disabled={!uri || !ttml}
+            onClick={() => uri && ttml && onOpen({ submission, uri, ttml })}
+          >
+            <SquarePen size={14} />{" "}
+            {editing ? "Opened in editor" : "Open in editor"}
+          </button>
+        )}
       </div>
+      {submission.instrumental && (
+        <p className="review-instrumental">
+          No lyrics sent. The submitter says this song is instrumental. Play it
+          and approve if nobody sings in it.
+        </p>
+      )}
       {submission.kind === "edit" && (
         <section className="review-section">
           <h4>Changes</h4>
@@ -544,7 +562,7 @@ function ReviewDetail({
             </button>
           ))}
         </div>
-        {outcome === "approve" && (
+        {outcome === "approve" && !submission.instrumental && (
           <>
             <small className="review-label">Quality</small>
             <div
@@ -607,21 +625,24 @@ function ReviewDetail({
                 disabled={busy}
                 onClick={() => void decide("approve")}
               >
-                <CircleCheck size={14} /> Approve
+                <CircleCheck size={14} />{" "}
+                {submission.instrumental ? "Approve as instrumental" : "Approve"}
               </button>
-              <button
-                disabled={busy || !fixed}
-                title={
-                  fixed
-                    ? "Approve, then submit your corrections as an edit credited to you"
-                    : "Open it in the editor and make corrections first"
-                }
-                onClick={() =>
-                  void decide("approve", () => onSubmitFix(editorTtml()))
-                }
-              >
-                <SquarePen size={14} /> Fix and approve
-              </button>
+              {!submission.instrumental && (
+                <button
+                  disabled={busy || !fixed}
+                  title={
+                    fixed
+                      ? "Approve, then submit your corrections as an edit credited to you"
+                      : "Open it in the editor and make corrections first"
+                  }
+                  onClick={() =>
+                    void decide("approve", () => onSubmitFix(editorTtml()))
+                  }
+                >
+                  <SquarePen size={14} /> Fix and approve
+                </button>
+              )}
             </>
           ) : outcome === "request-changes" ? (
             <button

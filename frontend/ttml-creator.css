@@ -2385,6 +2385,14 @@
   padding: 0;
   list-style: none;
 }
+.review-instrumental {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  color: #d6d6d6;
+  font-size: 13px;
+}
 .review-meta,
 .review-empty {
   margin: 0;
@@ -2393,6 +2401,7 @@
 }
 .review-detail {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 .review-section {

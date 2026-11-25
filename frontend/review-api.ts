@@ -29,6 +29,8 @@ export interface ReviewSubmission {
   song_id: string;
   song_title: string;
   kind: "new" | "edit";
+  /** Says the song has no lyrics; it carries no TTML. */
+  instrumental?: boolean;
   base_revision_id?: string;
   head_revision_id?: string;
   submitter_id: string;

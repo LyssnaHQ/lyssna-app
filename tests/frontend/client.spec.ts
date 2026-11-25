@@ -17570,6 +17570,71 @@ test("reviewers see waiting submissions and decide them from the TTML Creator", 
   });
 });
 
+test("instrumental submissions review without lyrics and long titles stay in the panel", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const host = window as any;
+    host.__lyssnaAccount = { role: "reviewer" };
+    const submission = {
+      id: "0b9f6c1e-8a51-4e8f-9a52-3a1f0d6e2c45",
+      song_id: "1b9f6c1e-8a51-4e8f-9a52-3a1f0d6e2c45",
+      song_title:
+        "aren't the stars so pretty tonight? (an unusually long instrumental title)",
+      kind: "new",
+      instrumental: true,
+      submitter_id: "u2",
+      submitter_name: "rain",
+      submitter_tier: 3,
+      status: "pending",
+      proposed_links: [
+        { platform: "spotify", external_id: "0123456789abcdefghijkl" },
+      ],
+      major_rewrite: false,
+      light_review: false,
+      priority: true,
+      submitted_at: new Date(Date.now() - 3600_000).toISOString(),
+      head_score: 0,
+      head_votes: 0,
+    };
+    host.__lyssnaReview = (args: any) => {
+      if (args.path.startsWith("/v1/queue"))
+        return args.path.includes("priority") ? [submission] : [];
+      if (args.path.endsWith("/comments")) return [];
+      return { ...submission, status: "approved" };
+    };
+  });
+  await startClient(page);
+  await playLyricTrack(page);
+  await openSettings(page, "Sources");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page.getByRole("button", { name: "Review submissions, 1 waiting" }).click();
+  const queue = page.getByRole("region", { name: "Review submissions" });
+  await expect(queue).toContainText("Instrumental · @rain · Tier 3");
+  await queue.locator(".review-list button").first().click();
+  const panel = page.getByRole("complementary", { name: "Review" });
+  await expect(panel).toContainText("Marked instrumental by @rain");
+  await expect(panel).toContainText("No lyrics sent.");
+  await expect(panel.getByRole("button", { name: "Open in editor" })).toHaveCount(0);
+  await expect(panel.getByRole("radio", { name: "Clean" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Fix and approve" })).toBeHidden();
+  await expect(
+    panel.getByRole("button", { name: "Approve as instrumental" }),
+  ).toBeVisible();
+  const fits = await panel.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return [...element.querySelectorAll(".review-head button, .review-reply button")].every(
+      (button) => button.getBoundingClientRect().right <= box.right,
+    );
+  });
+  expect(fits).toBe(true);
+  await panel.screenshot({ path: "test-results/review-instrumental.png" });
+});
+
 test("TTML Creator times words on the playing song, slows it and saves TTML", async ({
   page,
 }) => {
