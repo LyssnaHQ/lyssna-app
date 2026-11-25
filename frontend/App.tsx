@@ -7654,7 +7654,7 @@ function Setup({
     if (state.login_pending) return;
     let live = true;
     void loadAccounts()
-      .then((list) => live && setAccounts(list))
+      .then((list) => live && setAccounts(list ?? []))
       .catch(() => {});
     return () => {
       live = false;
