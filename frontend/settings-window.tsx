@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   AppWindow,
+  AudioLines,
   FileText,
   FlaskConical,
   ChevronLeft,
@@ -25,6 +26,27 @@ import {
   X,
   AlignLeft,
   Wrench,
+  ArrowDownUp,
+  AudioWaveform,
+  Code,
+  Eye,
+  EyeOff,
+  Hammer,
+  HardDrive,
+  Headphones,
+  Languages,
+  LayoutTemplate,
+  ListMusic,
+  Monitor,
+  PenLine,
+  Power,
+  RefreshCw,
+  Sparkles,
+  Speaker,
+  Timer,
+  Type,
+  UserRound,
+  type LucideIcon,
 } from "lucide-react";
 import type { AppState } from "./state";
 import type {
@@ -98,6 +120,7 @@ export const SOURCES: Record<string, { name: string; help: string }> = {
 
 const TABS = [
   ["General", Settings2],
+  ["Playback", AudioLines],
   ["Appearance", Palette],
   ["Library", LibraryBig],
   ["Lyrics", AlignLeft],
@@ -106,6 +129,32 @@ const TABS = [
   ["Sources", FileText],
   ["Advanced", Wrench],
 ] as const;
+const SECTION_ICONS: Record<string, LucideIcon> = {
+  Account: UserRound,
+  "Startup and window behaviour": Power,
+  Updates: RefreshCw,
+  Player: Speaker,
+  "Quality and crossfade": AudioWaveform,
+  Output: Headphones,
+  "Downloads and storage": HardDrive,
+  Theme: Palette,
+  Font: Type,
+  "Your Library": LibraryBig,
+  Look: Eye,
+  Timing: Timer,
+  "Romanization and translations": Languages,
+  Scrolling: ArrowDownUp,
+  Display: Monitor,
+  "Lyric effects": Sparkles,
+  "Lyrics layout": LayoutTemplate,
+  "Lyric sources": ListMusic,
+  "Your lyrics": FileText,
+  "TTML Creator": PenLine,
+  Builds: Hammer,
+  "Settings window": AppWindow,
+  Developer: Code,
+  "Hidden settings": EyeOff,
+};
 /** About opens from the footer card rather than the tab bar. */
 export type SettingsTab = (typeof TABS)[number][0] | "About";
 type Tab = SettingsTab;
@@ -517,166 +566,6 @@ export function SettingsWindow({
     ],
     [
       "General",
-      "Playback",
-      [
-        <SoloistRows
-          key="soloist"
-          settings={settings}
-          status={state.soloist}
-          keysRefused={!!state.keys_refused}
-          onSettings={onSettings}
-          onCall={onCall}
-          onOpen={onOpen}
-          onNotice={onNotice}
-        />,
-        <SettingRow
-          key="output"
-          label="Audio output"
-          help="Speakers or headphones for this computer."
-          keywords="device speaker headphones sound"
-          unavailable={soloistPlays}
-        >
-          <select
-            className="settings-select"
-            aria-label="Audio output"
-            value={settings.audio_output || ""}
-            onChange={(event) =>
-              onSettings({ audio_output: event.target.value || null })
-            }
-          >
-            <option value="">System default</option>
-            {settings.audio_output &&
-              !audioOutputs?.includes(settings.audio_output) && (
-                <option value={settings.audio_output}>
-                  {settings.audio_output}
-                  {audioOutputs ? " (unavailable)" : ""}
-                </option>
-              )}
-            {audioOutputs?.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </SettingRow>,
-        <SettingRow
-          key="audio-quality"
-          label="Streaming quality"
-          help={
-            soloistPlays
-              ? "Higher sounds better and uses more data. Spotify Soloist picks this up the next time playback is paused."
-              : "Higher sounds better and uses more data. Changes from the next song."
-          }
-          keywords="audio quality bitrate kbps streaming sound very high data"
-        >
-          <QualitySelect
-            label="Streaming quality"
-            value={settings.audio_quality ?? "very_high"}
-            onChange={(audio_quality) => onSettings({ audio_quality })}
-          />
-        </SettingRow>,
-        flag(
-          "crossfade",
-          "Crossfade songs",
-          soloistPlays
-            ? "Fade each song into the next when one runs into the other, as Spotify does. Spotify Soloist picks this up the next time playback is paused."
-            : "Fade each song into the next when one runs into the other, as Spotify does.",
-          "crossfade fade transition gapless overlap blend",
-        ),
-        settings.crossfade ? (
-          <SettingRow
-            key="crossfade-seconds"
-            label={`Crossfade length: ${settings.crossfade_seconds || 5} s`}
-            help="How long the end of one song overlaps the start of the next."
-            keywords="crossfade seconds length duration"
-          >
-            <span className="settings-range">
-              <input
-                type="range"
-                aria-label="Crossfade seconds"
-                min="1"
-                max="12"
-                value={settings.crossfade_seconds || 5}
-                style={
-                  {
-                    "--fill": `${(((settings.crossfade_seconds || 5) - 1) / 11) * 100}%`,
-                  } as CSSProperties
-                }
-                onChange={(event) =>
-                  onSettings({ crossfade_seconds: Number(event.target.value) })
-                }
-              />
-            </span>
-          </SettingRow>
-        ) : null,
-        settings.crossfade
-          ? flag(
-              "crossfade_picked",
-              "Crossfade when you pick or skip",
-              "Also fade when you play a song yourself or skip forward or back. Off starts the new song straight away.",
-              "crossfade manual pick skip click play song",
-              soloistPlays,
-            )
-          : null,
-        <SettingRow
-          key="refresh"
-          label="New headphones or speakers"
-          help="Find outputs you connected while Lyssna was open."
-          keywords="audio output device refresh"
-          unavailable={soloistPlays}
-        >
-          <button
-            className="pill outline"
-            onClick={() => setAudioRefresh((value) => value + 1)}
-          >
-            Refresh outputs
-          </button>
-        </SettingRow>,
-        <SettingRow
-          key="test"
-          label="Check output"
-          help="Play two quiet tones on the selected output."
-          keywords="audio output test sound"
-          unavailable={soloistPlays}
-        >
-          <button
-            className="pill outline"
-            disabled={testingOutput}
-            onClick={async () => {
-              setTestingOutput(true);
-              try {
-                if (await onCall<boolean>("test_audio_output"))
-                  onNotice("Test sound sent to the selected output");
-              } finally {
-                setTestingOutput(false);
-              }
-            }}
-          >
-            {testingOutput ? "Playing test sound…" : "Test output"}
-          </button>
-        </SettingRow>,
-        <SettingRow
-          key="native"
-          label="Native audio"
-          help={
-            <span className={state.native_ready ? "native-ready" : ""}>
-              {state.native_status}
-            </span>
-          }
-          keywords="native audio reconnect playback engine"
-          unavailable={soloistPlays}
-        >
-          <button
-            className="pill outline"
-            onClick={() => void onCall("retry_audio")}
-          >
-            Reconnect native audio
-          </button>
-        </SettingRow>,
-      ],
-    ],
-    [
-      "General",
       "Startup and window behaviour",
       [
         <SettingRow
@@ -709,109 +598,6 @@ export function SettingsWindow({
               "",
               "close minimize minimise tray background notification area system tray quit keep playing",
             ),
-      ],
-    ],
-    [
-      "General",
-      "Storage",
-      [
-        <SettingRow
-          key="cache"
-          label={`Cache: ${cacheBytes === null ? "…" : `${Math.round(cacheBytes / 1_048_576).toLocaleString()} MB`}`}
-          help="Songs you have played, kept so they start faster and use less data."
-          keywords="cache storage disk offline data clear"
-        >
-          <button
-            className="pill outline"
-            disabled={clearingCache || !cacheBytes}
-            onClick={() => {
-              setClearingCache(true);
-              void onCall<number>("clear_audio_cache")
-                .then((freed) => {
-                  setCacheBytes(0);
-                  onNotice(
-                    `Cleared ${Math.round((freed ?? 0) / 1_048_576).toLocaleString()} MB of cached songs.`,
-                  );
-                })
-                .finally(() => setClearingCache(false));
-            }}
-          >
-            Clear cache
-          </button>
-        </SettingRow>,
-        <SettingRow
-          key="download-quality"
-          label="Download quality"
-          help="Higher sounds better and takes more space. Songs already downloaded keep theirs."
-          keywords="download quality bitrate kbps offline storage very high"
-        >
-          <QualitySelect
-            label="Download quality"
-            value={settings.download_quality ?? "very_high"}
-            onChange={(download_quality) => onSettings({ download_quality })}
-          />
-        </SettingRow>,
-        <SettingRow
-          key="downloads"
-          label={`Downloads: ${downloadBytes === null ? "…" : `${Math.round(downloadBytes / 1_048_576).toLocaleString()} MB`}`}
-          help="Songs you downloaded to play without a connection."
-          keywords="downloads offline storage remove delete disk"
-        >
-          <button
-            className="pill outline"
-            disabled={!downloadBytes}
-            onClick={() =>
-              void onCall<boolean>("offline_remove_all").then((removed) => {
-                if (!removed) return;
-                setDownloadBytes(0);
-                onNotice("Removed all downloads.");
-              })
-            }
-          >
-            Remove all downloads
-          </button>
-        </SettingRow>,
-        <SettingRow
-          key="offline-location"
-          label="Offline storage location"
-          help={downloadFolder || "…"}
-          keywords="downloads offline storage location folder move drive change"
-        >
-          <button
-            className="pill outline"
-            disabled={movingDownloads}
-            onClick={() => {
-              setMovingDownloads(true);
-              void onCall<string | null>("offline_move")
-                .then((folder) => {
-                  if (folder) {
-                    setDownloadFolder(folder);
-                    onNotice("Moved downloads.");
-                  }
-                })
-                .finally(() => setMovingDownloads(false));
-            }}
-          >
-            {movingDownloads ? "Moving…" : "Change location"}
-          </button>
-        </SettingRow>,
-        <SettingRow
-          key="lyrics-cache"
-          label="Lyrics cache"
-          help="Saved lyrics are reused for three days. Clear them to fetch newly uploaded lyrics for every song. Imported lyrics are kept."
-          keywords="lyrics cache clear refresh upload spicy stale"
-        >
-          <button
-            className="pill outline"
-            onClick={() =>
-              void onCall("clear_lyrics_cache").then(() =>
-                onNotice("Cleared saved lyrics."),
-              )
-            }
-          >
-            Clear lyrics
-          </button>
-        </SettingRow>,
       ],
     ],
     [
@@ -881,6 +667,281 @@ export function SettingsWindow({
             />
           </SettingRow>
         ) : null,
+      ],
+    ],
+    [
+      "Playback",
+      "Player",
+      [
+        <SoloistRows
+          key="soloist"
+          settings={settings}
+          status={state.soloist}
+          keysRefused={!!state.keys_refused}
+          onSettings={onSettings}
+          onCall={onCall}
+          onOpen={onOpen}
+          onNotice={onNotice}
+        />,
+        <SettingRow
+          key="native"
+          label="Native audio"
+          help={
+            <span className={state.native_ready ? "native-ready" : ""}>
+              {state.native_status}
+            </span>
+          }
+          keywords="native audio reconnect playback engine"
+          unavailable={soloistPlays}
+        >
+          <button
+            className="pill outline"
+            onClick={() => void onCall("retry_audio")}
+          >
+            Reconnect native audio
+          </button>
+        </SettingRow>,
+      ],
+    ],
+    [
+      "Playback",
+      "Quality and crossfade",
+      [
+        <SettingRow
+          key="audio-quality"
+          label="Streaming quality"
+          help={
+            soloistPlays
+              ? "Higher sounds better and uses more data. Spotify Soloist picks this up the next time playback is paused."
+              : "Higher sounds better and uses more data. Changes from the next song."
+          }
+          keywords="audio quality bitrate kbps streaming sound very high data"
+        >
+          <QualitySelect
+            label="Streaming quality"
+            value={settings.audio_quality ?? "very_high"}
+            onChange={(audio_quality) => onSettings({ audio_quality })}
+          />
+        </SettingRow>,
+        flag(
+          "crossfade",
+          "Crossfade songs",
+          soloistPlays
+            ? "Fade each song into the next when one runs into the other, as Spotify does. Spotify Soloist picks this up the next time playback is paused."
+            : "Fade each song into the next when one runs into the other, as Spotify does.",
+          "crossfade fade transition gapless overlap blend",
+        ),
+        settings.crossfade ? (
+          <SettingRow
+            key="crossfade-seconds"
+            label={`Crossfade length: ${settings.crossfade_seconds || 5} s`}
+            help="How long the end of one song overlaps the start of the next."
+            keywords="crossfade seconds length duration"
+          >
+            <span className="settings-range">
+              <input
+                type="range"
+                aria-label="Crossfade seconds"
+                min="1"
+                max="12"
+                value={settings.crossfade_seconds || 5}
+                style={
+                  {
+                    "--fill": `${(((settings.crossfade_seconds || 5) - 1) / 11) * 100}%`,
+                  } as CSSProperties
+                }
+                onChange={(event) =>
+                  onSettings({ crossfade_seconds: Number(event.target.value) })
+                }
+              />
+            </span>
+          </SettingRow>
+        ) : null,
+        settings.crossfade
+          ? flag(
+              "crossfade_picked",
+              "Crossfade when you pick or skip",
+              "Also fade when you play a song yourself or skip forward or back. Off starts the new song straight away.",
+              "crossfade manual pick skip click play song",
+              soloistPlays,
+            )
+          : null,
+      ],
+    ],
+    [
+      "Playback",
+      "Output",
+      [
+        <SettingRow
+          key="output"
+          label="Audio output"
+          help="Speakers or headphones for this computer."
+          keywords="device speaker headphones sound"
+          unavailable={soloistPlays}
+        >
+          <select
+            className="settings-select"
+            aria-label="Audio output"
+            value={settings.audio_output || ""}
+            onChange={(event) =>
+              onSettings({ audio_output: event.target.value || null })
+            }
+          >
+            <option value="">System default</option>
+            {settings.audio_output &&
+              !audioOutputs?.includes(settings.audio_output) && (
+                <option value={settings.audio_output}>
+                  {settings.audio_output}
+                  {audioOutputs ? " (unavailable)" : ""}
+                </option>
+              )}
+            {audioOutputs?.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </SettingRow>,
+        <SettingRow
+          key="refresh"
+          label="New headphones or speakers"
+          help="Find outputs you connected while Lyssna was open."
+          keywords="audio output device refresh"
+          unavailable={soloistPlays}
+        >
+          <button
+            className="pill outline"
+            onClick={() => setAudioRefresh((value) => value + 1)}
+          >
+            Refresh outputs
+          </button>
+        </SettingRow>,
+        <SettingRow
+          key="test"
+          label="Check output"
+          help="Play two quiet tones on the selected output."
+          keywords="audio output test sound"
+          unavailable={soloistPlays}
+        >
+          <button
+            className="pill outline"
+            disabled={testingOutput}
+            onClick={async () => {
+              setTestingOutput(true);
+              try {
+                if (await onCall<boolean>("test_audio_output"))
+                  onNotice("Test sound sent to the selected output");
+              } finally {
+                setTestingOutput(false);
+              }
+            }}
+          >
+            {testingOutput ? "Playing test sound…" : "Test output"}
+          </button>
+        </SettingRow>,
+      ],
+    ],
+    [
+      "Playback",
+      "Downloads and storage",
+      [
+        <SettingRow
+          key="download-quality"
+          label="Download quality"
+          help="Higher sounds better and takes more space. Songs already downloaded keep theirs."
+          keywords="download quality bitrate kbps offline storage very high"
+        >
+          <QualitySelect
+            label="Download quality"
+            value={settings.download_quality ?? "very_high"}
+            onChange={(download_quality) => onSettings({ download_quality })}
+          />
+        </SettingRow>,
+        <SettingRow
+          key="downloads"
+          label={`Downloads: ${downloadBytes === null ? "…" : `${Math.round(downloadBytes / 1_048_576).toLocaleString()} MB`}`}
+          help="Songs you downloaded to play without a connection."
+          keywords="downloads offline storage remove delete disk"
+        >
+          <button
+            className="pill outline"
+            disabled={!downloadBytes}
+            onClick={() =>
+              void onCall<boolean>("offline_remove_all").then((removed) => {
+                if (!removed) return;
+                setDownloadBytes(0);
+                onNotice("Removed all downloads.");
+              })
+            }
+          >
+            Remove all downloads
+          </button>
+        </SettingRow>,
+        <SettingRow
+          key="offline-location"
+          label="Offline storage location"
+          help={downloadFolder || "…"}
+          keywords="downloads offline storage location folder move drive change"
+        >
+          <button
+            className="pill outline"
+            disabled={movingDownloads}
+            onClick={() => {
+              setMovingDownloads(true);
+              void onCall<string | null>("offline_move")
+                .then((folder) => {
+                  if (folder) {
+                    setDownloadFolder(folder);
+                    onNotice("Moved downloads.");
+                  }
+                })
+                .finally(() => setMovingDownloads(false));
+            }}
+          >
+            {movingDownloads ? "Moving…" : "Change location"}
+          </button>
+        </SettingRow>,
+        <SettingRow
+          key="cache"
+          label={`Cache: ${cacheBytes === null ? "…" : `${Math.round(cacheBytes / 1_048_576).toLocaleString()} MB`}`}
+          help="Songs you have played, kept so they start faster and use less data."
+          keywords="cache storage disk offline data clear"
+        >
+          <button
+            className="pill outline"
+            disabled={clearingCache || !cacheBytes}
+            onClick={() => {
+              setClearingCache(true);
+              void onCall<number>("clear_audio_cache")
+                .then((freed) => {
+                  setCacheBytes(0);
+                  onNotice(
+                    `Cleared ${Math.round((freed ?? 0) / 1_048_576).toLocaleString()} MB of cached songs.`,
+                  );
+                })
+                .finally(() => setClearingCache(false));
+            }}
+          >
+            Clear cache
+          </button>
+        </SettingRow>,
+        <SettingRow
+          key="lyrics-cache"
+          label="Lyrics cache"
+          help="Saved lyrics are reused for three days. Clear them to fetch newly uploaded lyrics for every song. Imported lyrics are kept."
+          keywords="lyrics cache clear refresh upload spicy stale"
+        >
+          <button
+            className="pill outline"
+            onClick={() =>
+              void onCall("clear_lyrics_cache").then(() =>
+                onNotice("Cleared saved lyrics."),
+              )
+            }
+          >
+            Clear lyrics
+          </button>
+        </SettingRow>,
       ],
     ],
     [
@@ -1084,18 +1145,6 @@ export function SettingsWindow({
     ],
     [
       "Lyrics",
-      "TTML Creator",
-      [
-        flag(
-          "ttml_creator",
-          "TTML Creator",
-          "Add a button beside Lyrics in the playback bar that turns the lyrics page into a word-by-word TTML maker for the playing song. No download needed, and it can slow the song down while you time it.",
-          "ttml creator maker editor sync timing word by word karaoke amll make lyrics",
-        ),
-      ],
-    ],
-    [
-      "Lyrics",
       "Look",
       [
         <SettingRow
@@ -1222,14 +1271,8 @@ export function SettingsWindow({
     ],
     [
       "Lyrics",
-      "Display",
+      "Timing",
       [
-        flag(
-          "lyrics_discord_usernames",
-          "Discord usernames in credits",
-          "Credit community lyrics makers by their Discord username instead of their display name. Their Discord ID is looked up on an unofficial third-party service.",
-          "discord username display name community credits maker uploader",
-        ),
         <OffsetSetting
           key="offset"
           settings={settings}
@@ -1243,6 +1286,24 @@ export function SettingsWindow({
           "Clicking a floating word seeks 300 ms early, so a speaker that fades in after a seek is at full volume when the word begins.",
           "seek fade in compensation click lyric early volume",
         ),
+        flag(
+          "experimental_word_sync",
+          "Experimental word sync",
+          "Estimate word timing for line-synced or plain lyrics. Timing may be off.",
+          "word timing estimate",
+        ),
+        flag(
+          "lyrics_keep_overlaps",
+          "Keep overlapping lines",
+          "In Minimal lyrics mode, a line sung over an earlier one stays dimmed instead of fading away.",
+          "minimal overlapping lines background vocals keep",
+        ),
+      ],
+    ],
+    [
+      "Lyrics",
+      "Romanization and translations",
+      [
         flag(
           "romanized",
           "Show romanized lyrics",
@@ -1273,11 +1334,51 @@ export function SettingsWindow({
           "Show translations that come with the lyrics under each line.",
           "translation translate language",
         ),
+      ],
+    ],
+    [
+      "Lyrics",
+      "Scrolling",
+      [
         flag(
-          "experimental_word_sync",
-          "Experimental word sync",
-          "Estimate word timing for line-synced or plain lyrics. Timing may be off.",
-          "word timing estimate",
+          "lyrics_early_scroll",
+          "Early scroll",
+          "Start moving to the next line a moment before it is sung.",
+          "scroll ahead",
+        ),
+        range(
+          "lyrics_early_scroll_ms",
+          "Early scroll time",
+          "How far ahead Early scroll moves to the next line.",
+          "scroll ahead lead milliseconds",
+          [0, 800, 10],
+          200,
+          " ms",
+          !settings.lyrics_early_scroll,
+        ),
+        flag(
+          "lyrics_smooth_scroll",
+          "Smooth scrolling",
+          "Glide between lines on a spring. Off uses plain smooth scrolling.",
+          "smooth scroll spring glide",
+        ),
+        flag(
+          "lyrics_follow_button",
+          "Show scroll to active button",
+          "While you scroll through lyrics, show a button that returns to the current line.",
+          "scroll return follow current line button arrow",
+        ),
+      ],
+    ],
+    [
+      "Lyrics",
+      "Display",
+      [
+        flag(
+          "lyrics_discord_usernames",
+          "Discord usernames in credits",
+          "Credit community lyrics makers by their Discord username instead of their display name. Their Discord ID is looked up on an unofficial third-party service.",
+          "discord username display name community credits maker uploader",
         ),
         flag(
           "lyrics_simple",
@@ -1308,40 +1409,6 @@ export function SettingsWindow({
               "%",
             )
           : null,
-        flag(
-          "lyrics_keep_overlaps",
-          "Keep overlapping lines",
-          "In Minimal lyrics mode, a line sung over an earlier one stays dimmed instead of fading away.",
-          "minimal overlapping lines background vocals keep",
-        ),
-        flag(
-          "lyrics_early_scroll",
-          "Early scroll",
-          "Start moving to the next line a moment before it is sung.",
-          "scroll ahead",
-        ),
-        range(
-          "lyrics_early_scroll_ms",
-          "Early scroll time",
-          "How far ahead Early scroll moves to the next line.",
-          "scroll ahead lead milliseconds",
-          [0, 800, 10],
-          200,
-          " ms",
-          !settings.lyrics_early_scroll,
-        ),
-        flag(
-          "lyrics_smooth_scroll",
-          "Smooth scrolling",
-          "Glide between lines on a spring. Off uses plain smooth scrolling.",
-          "smooth scroll spring glide",
-        ),
-        flag(
-          "lyrics_follow_button",
-          "Show scroll to active button",
-          "While you scroll through lyrics, show a button that returns to the current line.",
-          "scroll return follow current line button arrow",
-        ),
         flag(
           "lyrics_right_align",
           "Right align lyrics",
@@ -1769,6 +1836,18 @@ export function SettingsWindow({
       ],
     ],
     [
+      "Sources",
+      "TTML Creator",
+      [
+        flag(
+          "ttml_creator",
+          "TTML Creator",
+          "Add a button beside Lyrics in the playback bar that turns the lyrics page into a word-by-word TTML maker for the playing song. No download needed, and it can slow the song down while you time it.",
+          "ttml creator maker editor sync timing word by word karaoke amll make lyrics",
+        ),
+      ],
+    ],
+    [
       "About",
       "About",
       [
@@ -2107,7 +2186,13 @@ export function SettingsWindow({
                       key={`${key}-${title}`}
                       className="lyrics-settings-section"
                     >
-                      <h3>{title}</h3>
+                      <h3>
+                        {(() => {
+                          const Icon = SECTION_ICONS[title];
+                          return Icon && <Icon size={14} aria-hidden="true" />;
+                        })()}
+                        {title}
+                      </h3>
                       <div className="lyrics-settings-group">{rows}</div>
                     </section>
                   ))}

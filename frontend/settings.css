@@ -270,7 +270,7 @@
   isolation: isolate;
   display: flex;
   flex-direction: column;
-  width: min(840px, calc(100vw - 48px));
+  width: min(900px, calc(100vw - 48px));
   /* Fixed height so switching tabs does not resize the window. */
   height: min(720px, calc(100vh - 96px));
   overflow: hidden;
@@ -456,21 +456,31 @@
   margin-bottom: 24px;
 }
 .lyrics-settings-section {
-  margin-top: 16px;
+  margin-top: 22px;
+}
+.lyrics-settings [role="tabpanel"] > .lyrics-settings-section:first-child {
+  margin-top: 12px;
 }
 .lyrics-settings-section:not(:has(.setting-row)) {
   display: none;
 }
 .lyrics-settings-section h3 {
-  margin: 0 0 8px 6px;
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 9px 4px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: light-dark(#00000080, #ffffff80);
 }
+.lyrics-settings-section h3 svg {
+  flex-shrink: 0;
+  color: light-dark(#000000a6, #ffffffa6);
+}
 .lyrics-settings-group {
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(135deg, light-dark(#0000000d, #ffffff0d), light-dark(#00000004, #ffffff04));
   border: 1px solid light-dark(#00000017, #ffffff17);
   box-shadow: 0 1px 0 #ffffff0a inset;
@@ -487,13 +497,28 @@
 .lyrics-settings .setting-row + .setting-row {
   border-top: 1px solid light-dark(#0000000d, #ffffff0d);
 }
+.lyrics-settings-group > .setting-row {
+  transition: background 0.15s;
+}
+.lyrics-settings-group > .setting-row:hover {
+  background: light-dark(#00000006, #ffffff06);
+}
+.lyrics-settings-group > .setting-row:first-child {
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+.lyrics-settings-group > .setting-row:last-child {
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
 .lyrics-settings .setting-label {
   font-size: 13.5px;
   font-weight: 600;
   color: light-dark(#000, #fff);
 }
 .lyrics-settings .setting-help {
-  margin-top: 2px;
+  max-width: 62ch;
+  margin-top: 3px;
   font-size: 12px;
   color: light-dark(#000000a6, #ffffffa6);
 }
