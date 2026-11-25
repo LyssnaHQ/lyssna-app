@@ -136,6 +136,9 @@ struct SpircTask {
     context_resolver: ContextResolver,
 
     emit_set_queue_events: bool,
+    /// A skip past the last song while autoplay is still loading, and
+    /// whether it should play; it happens once autoplay arrives.
+    skip_after_autoplay: Option<bool>,
 
     shutdown: bool,
     session: Session,
@@ -923,6 +926,7 @@ impl Spirc {
             context_resolver: ContextResolver::new(session.clone()),
 
             emit_set_queue_events,
+            skip_after_autoplay: None,
 
             shutdown: false,
             session,
@@ -1347,6 +1351,7 @@ impl SpircTask {
                 self.context_resolver.mark_next_unavailable(&why);
                 self.context_resolver.remove_used_and_invalid();
                 error!("{why}");
+                self.finish_skip_after_autoplay();
                 return false;
             }
             Ok(ctx) => ctx,
@@ -1385,7 +1390,28 @@ impl SpircTask {
         }
 
         self.context_resolver.remove_used_and_invalid();
+        if update_state || !self.context_resolver.has_next() {
+            self.finish_skip_after_autoplay();
+        }
         update_state
+    }
+
+    /// Carries out a skip that waited for autoplay, or stops as before when
+    /// autoplay brought nothing to skip to.
+    fn finish_skip_after_autoplay(&mut self) {
+        if self.context_resolver.has_next() && !self.connect_state.has_next_tracks(None) {
+            return;
+        }
+        let Some(play) = self.skip_after_autoplay.take() else {
+            return;
+        };
+        if self.connect_state.has_next_tracks(None) {
+            if let Err(why) = self.handle_next(None, play) {
+                error!("skipping once autoplay arrived failed: {why}");
+            }
+        } else {
+            self.handle_stop();
+        }
     }
 
     /// Emit set queue event via PlayerEvent
@@ -2095,6 +2121,7 @@ impl SpircTask {
     }
 
     fn handle_transfer(&mut self, mut transfer: TransferState) -> Result<(), Error> {
+        self.skip_after_autoplay = None;
         let mut ctx_uri = match transfer.current_session.context.uri {
             None => Err(SpircError::NoUri("transfer context"))?,
             // can apparently happen when a state is transferred and was started with "uris" via the api
@@ -2533,6 +2560,7 @@ impl SpircTask {
         page: Option<ContextPage>,
         fallback_index: Option<usize>,
     ) -> Result<(), Error> {
+        self.skip_after_autoplay = None;
         let prepared_uri = cmd
             .options
             .prepared_context
@@ -3121,6 +3149,7 @@ impl SpircTask {
     /// paused, as Spotify's clients do; one that follows a song ending or
     /// failing keeps the current play state.
     fn handle_next(&mut self, track_uri: Option<String>, play: bool) -> Result<(), Error> {
+        self.skip_after_autoplay = None;
         let continue_playing = play || self.connect_state.is_playing();
 
         let current_uri = self.connect_state.current_track(|t| &t.uri);
@@ -3144,6 +3173,14 @@ impl SpircTask {
             self.add_autoplay_resolving_when_required();
             self.load_track(continue_playing, 0)
         } else {
+            // At the end of a context autoplay may still be loading; skipping
+            // before it arrives must not stop playback.
+            self.add_autoplay_resolving_when_required();
+            if self.context_resolver.has_next() {
+                info!("Skipping once autoplay arrives.");
+                self.skip_after_autoplay = Some(continue_playing);
+                return Ok(());
+            }
             info!("Not playing next track because there are no more tracks left in queue.");
             self.handle_stop();
             Ok(())
@@ -3497,6 +3534,7 @@ mod shuffle_tests {
             player_events,
             context_resolver: ContextResolver::new(session.clone()),
             emit_set_queue_events: true,
+            skip_after_autoplay: None,
             shutdown: false,
             session,
             transfer_state: None,
