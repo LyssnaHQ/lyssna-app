@@ -2790,8 +2790,12 @@ fn player(
             );
         let native_busy =
             snapshot.playback.device.name == native::device_name() && state.0.controls.has_track();
-        let soloist = snapshot.settings.soloist
-            && routes_to_soloist(&request.command, local || on_soloist, native_busy);
+        // Spotify Free has no Connect device of its own; Soloist plays all.
+        let free = FREE_ACCOUNT.load(Ordering::Acquire);
+        ensure!(!free || snapshot.settings.soloist, native::FREE_PLAYBACK);
+        let soloist = free
+            || snapshot.settings.soloist
+                && routes_to_soloist(&request.command, local || on_soloist, native_busy);
         let resume_from = snapshot.playback.item.as_ref().map(|track| {
             (
                 track.uri.clone(),
@@ -2849,7 +2853,17 @@ fn player(
         }
         if soloist
             && lock(&state.0.soloist_link)?.as_ref().is_some_and(|link| {
-                if link.active() && link.loaded() || on_soloist && link.live() {
+                if free && link.live() {
+                    match &action {
+                        PlayerAction::Play(None) if !(link.active() && link.loaded()) => {
+                            resume_from
+                                .as_ref()
+                                .is_some_and(|(uri, position)| link.resume(uri, *position))
+                        }
+                        PlayerAction::Transfer(_) => link.activate(),
+                        _ => link.send(&action) || link.start_free(&action),
+                    }
+                } else if link.active() && link.loaded() || on_soloist && link.live() {
                     link.send(&action)
                 } else if matches!(action, PlayerAction::Play(None))
                     && let Some((uri, position)) = resume_from.as_ref()

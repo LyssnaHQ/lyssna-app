@@ -2832,6 +2832,29 @@ async fn run(
     };
     let (spirc, task) = match connection {
         Ok(Ok(connection)) => connection,
+        // Spotify keeps its Connect devices from Free accounts; Soloist
+        // plays for them while this session still serves browsing.
+        Ok(Err(error))
+            if error.kind == ErrorKind::PermissionDenied
+                && !session.is_invalid()
+                && session.username() == account
+                && free_account(&session).await =>
+        {
+            diagnostic("spotify free account: playback through soloist only");
+            return serve_free(
+                &session,
+                FreeServices {
+                    commands,
+                    playlists,
+                    metadata,
+                    shared_session,
+                    ready,
+                    stopped,
+                },
+                emit,
+            )
+            .await;
+        }
         failure => {
             session.shutdown();
             return Outcome::Failed(match failure {
@@ -2966,17 +2989,11 @@ async fn run(
                     local_player.preload_at(prepared.uri, prepared.position_ms);
                 }
             }
-            Some(request)=metadata.recv()=>{let session=session.clone();tokio::spawn(async move{let result=async {let uri=librespot_core::SpotifyUri::from_uri(&request.uri)?;let bytes=if matches!(request.kind,librespot_protocol::extension_kind::ExtensionKind::ARTIST_V4|librespot_protocol::extension_kind::ExtensionKind::ALBUM_V4){let kind=if request.kind==librespot_protocol::extension_kind::ExtensionKind::ARTIST_V4{"artist"}else{"album"};let id=request.uri.rsplit(":").next().context("Missing catalogue ID")?;let data=crate::catalogue::page(&session,kind,id,request.offset).await?;serde_json::to_vec(&data)?.into()}else if request.kind==librespot_protocol::extension_kind::ExtensionKind::CANVAS_V1{let text=uri.to_uri();let mut body=vec![10,(text.len()+2)as u8,10,text.len()as u8];body.extend_from_slice(text.as_bytes());session.spclient().request(&reqwest::Method::POST,"/canvaz-cache/v0/canvases",None,Some(&body)).await?}else{session.spclient().get_metadata(request.kind,&uri).await?};anyhow::ensure!(bytes.len()<=1_000_000,"Metadata response too large");Ok::<_,anyhow::Error>(bytes.to_vec())};let result=tokio::time::timeout(Duration::from_secs(8),result).await.map_err(|_|"Metadata request timed out".to_owned()).and_then(|value|value.map_err(|error|error.to_string()));let _=request.reply.send(result);});}
+            Some(request) = metadata.recv() => serve_metadata(&session, request),
             _=intent_tick.tick()=>{},
             _=dj_prewarm.tick(),if audio_playing=>{let _=spirc.prewarm_dj();},
             Some(())=audible_seeks.recv()=>{if let Some((uri,position_ms))=pending_seek.take(){emit(NativeEvent::Position{uri,position_ms,playing:Some(audio_playing),seeked:true});}}
-            Some(request)=playlists.recv()=>{
-                let session=session.clone();
-                tokio::spawn(async move{
-                    let result=tokio::time::timeout(Duration::from_secs(22),crate::native_browse::read_range(&session,&request.id,request.offset,request.limit)).await.map_err(|_|"Spotify browsing request timed out".to_owned()).and_then(|result|result.map_err(|error|error.to_string()));
-                    let _=request.reply.send(result);
-                });
-            }
+            Some(request) = playlists.recv() => serve_playlist(&session, request),
             _ = &mut *stopped => {
                 let _ = spirc.shutdown();
                 let _ = tokio::time::timeout(Duration::from_secs(2), &mut task).await;
@@ -3184,6 +3201,140 @@ async fn run(
     } else {
         Outcome::Stopped
     }
+}
+
+/// Whether Spotify reports `session`'s account as Free. It sends the account
+/// type shortly after sign-in.
+async fn free_account(session: &Session) -> bool {
+    for _ in 0..30 {
+        if let Some(kind) = session.user_data().attributes.get("type") {
+            return kind == "free" || kind == "open";
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    false
+}
+
+/// Browsing for a Free account, which has no Connect device of its own.
+struct FreeServices<'a> {
+    commands: &'a mut async_channel::UnboundedReceiver<PlayerAction>,
+    playlists: &'a mut async_channel::UnboundedReceiver<PlaylistRead>,
+    metadata: &'a mut async_channel::UnboundedReceiver<MetadataRead>,
+    shared_session: &'a Mutex<Option<Session>>,
+    ready: &'a AtomicBool,
+    stopped: &'a mut oneshot::Receiver<()>,
+}
+
+pub(crate) const FREE_PLAYBACK: &str =
+    "Spotify Free plays through Spotify Soloist. Turn it on in Settings > Playback.";
+
+async fn serve_free(
+    session: &Session,
+    services: FreeServices<'_>,
+    emit: &impl Fn(NativeEvent),
+) -> Outcome {
+    let FreeServices {
+        commands,
+        playlists,
+        metadata,
+        shared_session,
+        ready,
+        stopped,
+    } = services;
+    if let Ok(mut shared) = shared_session.lock() {
+        *shared = Some(session.clone());
+    }
+    ready.store(true, Ordering::Release);
+    emit(NativeEvent::Ready(session.device_id().to_owned()));
+    let mut session_watch = tokio::time::interval(Duration::from_secs(1));
+    let mut internet_watch = tokio::time::interval(Duration::from_secs(2));
+    let lost = loop {
+        tokio::select! {
+            Some(request) = metadata.recv() => serve_metadata(session, request),
+            Some(request) = playlists.recv() => serve_playlist(session, request),
+            Some(_) = commands.recv() => emit(NativeEvent::ControlError(FREE_PLAYBACK.into())),
+            _ = &mut *stopped => break false,
+            _ = session_watch.tick(), if session.is_invalid() => {
+                diagnostic("free account session closed by Spotify");
+                break true;
+            }
+            _ = internet_watch.tick() => {
+                if offline_run::internet_lost().await {
+                    diagnostic("free account session dropped: no internet");
+                    break true;
+                }
+            }
+        }
+    };
+    session.shutdown();
+    if lost {
+        Outcome::Failed(Failure::transient("Native audio disconnected"))
+    } else {
+        Outcome::Stopped
+    }
+}
+
+fn serve_metadata(session: &Session, request: MetadataRead) {
+    let session = session.clone();
+    tokio::spawn(async move {
+        let result = async {
+            use librespot_protocol::extension_kind::ExtensionKind;
+            let uri = librespot_core::SpotifyUri::from_uri(&request.uri)?;
+            let bytes = if matches!(
+                request.kind,
+                ExtensionKind::ARTIST_V4 | ExtensionKind::ALBUM_V4
+            ) {
+                let kind = if request.kind == ExtensionKind::ARTIST_V4 {
+                    "artist"
+                } else {
+                    "album"
+                };
+                let id = request
+                    .uri
+                    .rsplit(':')
+                    .next()
+                    .context("Missing catalogue ID")?;
+                let data = crate::catalogue::page(&session, kind, id, request.offset).await?;
+                serde_json::to_vec(&data)?.into()
+            } else if request.kind == ExtensionKind::CANVAS_V1 {
+                let text = uri.to_uri();
+                let mut body = vec![10, (text.len() + 2) as u8, 10, text.len() as u8];
+                body.extend_from_slice(text.as_bytes());
+                session
+                    .spclient()
+                    .request(
+                        &reqwest::Method::POST,
+                        "/canvaz-cache/v0/canvases",
+                        None,
+                        Some(&body),
+                    )
+                    .await?
+            } else {
+                session.spclient().get_metadata(request.kind, &uri).await?
+            };
+            anyhow::ensure!(bytes.len() <= 1_000_000, "Metadata response too large");
+            Ok::<_, anyhow::Error>(bytes.to_vec())
+        };
+        let result = tokio::time::timeout(Duration::from_secs(8), result)
+            .await
+            .map_err(|_| "Metadata request timed out".to_owned())
+            .and_then(|value| value.map_err(|error| error.to_string()));
+        let _ = request.reply.send(result);
+    });
+}
+
+fn serve_playlist(session: &Session, request: PlaylistRead) {
+    let session = session.clone();
+    tokio::spawn(async move {
+        let result = tokio::time::timeout(
+            Duration::from_secs(22),
+            crate::native_browse::read_range(&session, &request.id, request.offset, request.limit),
+        )
+        .await
+        .map_err(|_| "Spotify browsing request timed out".to_owned())
+        .and_then(|result| result.map_err(|error| error.to_string()));
+        let _ = request.reply.send(result);
+    });
 }
 
 impl Drop for NativePlayer {

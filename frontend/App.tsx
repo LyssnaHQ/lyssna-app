@@ -7687,7 +7687,9 @@ function Setup({
           {state.login_issue ? "Reconnect Spotify" : "Log in to Lyssna"}
         </h1>
         <p>Use your Spotify account to play your music.</p>
-        <p className="setup-premium">Spotify Premium required</p>
+        <p className="setup-premium">
+          Spotify Premium, or Spotify Free with Spotify Soloist
+        </p>
         {state.login_issue && (
           <div className="setup-recovery" role="alert">
             <p>{state.login_issue.message}</p>

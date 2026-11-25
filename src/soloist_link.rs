@@ -218,6 +218,31 @@ impl Link {
             .all(|command| self.commands.send(command).is_ok())
     }
 
+    /// Starts what `action` picks, for a Spotify Free account, which has no
+    /// Connect device of its own to send it through. Soloist plays one URI:
+    /// a playlist or album starts from its top and skips forward to the
+    /// chosen song once Soloist lists it; other lists play their chosen song
+    /// with the rest queued after it.
+    pub fn start_free(&self, action: &PlayerAction) -> bool {
+        let Some(start) = FreeStart::from(action) else {
+            return false;
+        };
+        if !self.live() {
+            return false;
+        }
+        let before = queued_uris();
+        if self
+            .commands
+            .send(command("play", json!({"uri": start.uri})))
+            .is_err()
+        {
+            return false;
+        }
+        let commands = self.commands.clone();
+        thread::spawn(move || start.finish(&commands, before));
+        true
+    }
+
     /// Makes Soloist the account's active device.
     pub fn activate(&self) -> bool {
         self.live() && self.commands.send(command("activate", json!({}))).is_ok()
@@ -501,15 +526,127 @@ fn commands(action: &PlayerAction) -> Vec<Value> {
     }
 }
 
-/// Skips forward to a song in Soloist's queue. Connect's skip to a named
-/// song makes Soloist stop instead.
-fn skips_to(uri: &str, upcoming: &[Track]) -> Vec<Value> {
+/// How a Spotify Free account starts a pick in Soloist.
+#[derive(Debug, PartialEq)]
+struct FreeStart {
+    /// What Soloist plays: a song, playlist or album.
+    uri: String,
+    /// The song to skip forward to after a playlist or album starts.
+    skip_to: Option<String>,
+    /// Songs to queue after it.
+    queue: Vec<String>,
+    position_ms: u64,
+}
+
+impl FreeStart {
+    fn from(action: &PlayerAction) -> Option<Self> {
+        let playable = |uri: &str| {
+            [
+                "spotify:track:",
+                "spotify:album:",
+                "spotify:playlist:",
+                "spotify:episode:",
+            ]
+            .iter()
+            .any(|prefix| uri.starts_with(prefix))
+        };
+        let list = |uris: &[String], offset: usize, context: Option<&String>, position_ms| {
+            let chosen = uris.get(offset)?.clone();
+            if let Some(context) = context.filter(|context| playable(context)) {
+                return Some(Self {
+                    uri: context.clone(),
+                    skip_to: Some(chosen),
+                    queue: Vec::new(),
+                    position_ms,
+                });
+            }
+            Some(Self {
+                queue: uris[offset + 1..]
+                    .iter()
+                    .filter(|uri| uri.starts_with("spotify:track:"))
+                    .take(QUEUE_LENGTH)
+                    .cloned()
+                    .collect(),
+                uri: chosen,
+                skip_to: None,
+                position_ms,
+            })
+        };
+        let start = match action {
+            PlayerAction::Play(Some(uri)) => Self {
+                uri: uri.clone(),
+                skip_to: None,
+                queue: Vec::new(),
+                position_ms: 0,
+            },
+            PlayerAction::PlayContext { context, offset } => Self {
+                uri: context.clone(),
+                skip_to: offset.clone(),
+                queue: Vec::new(),
+                position_ms: 0,
+            },
+            PlayerAction::PlayUris {
+                uris,
+                offset,
+                context,
+            } => list(uris, *offset, context.as_ref(), 0)?,
+            PlayerAction::Resume {
+                uris,
+                offset,
+                position_ms,
+                context,
+                ..
+            } => list(uris, *offset, context.as_ref(), *position_ms)?,
+            _ => return None,
+        };
+        playable(&start.uri).then_some(start)
+    }
+
+    fn finish(self, commands: &mpsc::Sender<Value>, before: Option<Vec<String>>) {
+        if let Some(target) = &self.skip_to {
+            // Soloist lists the new queue once the playlist or album loads.
+            let waited = Instant::now();
+            let upcoming = loop {
+                if let Some(now) = queued_uris().filter(|now| Some(now) != before.as_ref()) {
+                    break now;
+                }
+                if waited.elapsed() > Duration::from_secs(5) {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(50));
+            };
+            for skip in skip_commands(target, &upcoming) {
+                let _ = commands.send(skip);
+            }
+        }
+        for uri in &self.queue {
+            let _ = commands.send(command("add_to_queue", json!({"uri": uri})));
+        }
+        if self.position_ms > 0 {
+            thread::sleep(Duration::from_millis(400));
+            let _ = commands.send(command("seek", json!({"position_ms": self.position_ms})));
+        }
+    }
+}
+
+fn queued_uris() -> Option<Vec<String>> {
+    queue().map(|(tracks, _)| tracks.into_iter().map(|track| track.uri).collect())
+}
+
+fn skip_commands(uri: &str, upcoming: &[String]) -> Vec<Value> {
     upcoming
         .iter()
-        .position(|track| track.uri == uri)
+        .position(|queued| queued == uri)
         .map_or_else(Vec::new, |index| {
             vec![command("skip_next", json!({})); index + 1]
         })
+}
+
+/// Skips forward to a song in Soloist's queue. Connect's skip to a named
+/// song makes Soloist stop instead.
+fn skips_to(uri: &str, upcoming: &[Track]) -> Vec<Value> {
+    let uris: Vec<String> = upcoming.iter().map(|track| track.uri.clone()).collect();
+    skip_commands(uri, &uris)
 }
 
 #[derive(Deserialize)]
@@ -708,6 +845,57 @@ impl Playback {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_accounts_start_playlists_at_the_picked_song_and_queue_other_lists() {
+        let songs: Vec<String> = (0..4).map(|n| format!("spotify:track:{n}")).collect();
+        let playlist = "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M".to_owned();
+        assert_eq!(
+            FreeStart::from(&PlayerAction::PlayUris {
+                uris: songs.clone(),
+                offset: 2,
+                context: Some(playlist.clone()),
+            }),
+            Some(FreeStart {
+                uri: playlist.clone(),
+                skip_to: Some("spotify:track:2".into()),
+                queue: Vec::new(),
+                position_ms: 0,
+            })
+        );
+        // Soloist cannot play Liked Songs as a whole.
+        assert_eq!(
+            FreeStart::from(&PlayerAction::Resume {
+                uris: songs.clone(),
+                offset: 1,
+                position_ms: 30_000,
+                context: Some("spotify:user:someone:collection".into()),
+                queued: Vec::new(),
+                listed: false,
+            }),
+            Some(FreeStart {
+                uri: "spotify:track:1".into(),
+                skip_to: None,
+                queue: vec!["spotify:track:2".into(), "spotify:track:3".into()],
+                position_ms: 30_000,
+            })
+        );
+        assert_eq!(
+            FreeStart::from(&PlayerAction::PlayContext {
+                context: playlist.clone(),
+                offset: Some("spotify:track:9".into()),
+            })
+            .and_then(|start| start.skip_to),
+            Some("spotify:track:9".into())
+        );
+        assert!(FreeStart::from(&PlayerAction::Play(Some("spotify:artist:x".into()))).is_none());
+        assert!(FreeStart::from(&PlayerAction::Pause).is_none());
+        assert_eq!(
+            skip_commands("spotify:track:3", &songs).len(),
+            4,
+            "skips past every song before it"
+        );
+    }
 
     #[test]
     fn queue_reply_keeps_upcoming_songs_and_counts_queued_ones() {

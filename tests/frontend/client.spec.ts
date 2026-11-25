@@ -745,7 +745,7 @@ test("bundled lyrics stay ready after sign-out and another sign-in", async ({
     page.getByRole("dialog", { name: "Lyssna settings" }),
   ).toHaveCount(0);
   await expect(page.getByRole("dialog")).toContainText(
-    "Spotify Premium required",
+    "Spotify Premium, or Spotify Free with Spotify Soloist",
   );
   await page.keyboard.press("Escape");
   await expect(page.locator(".setup-backdrop")).toBeVisible();
@@ -777,7 +777,7 @@ test("first-run Spotify sign-in needs no developer Client ID", async ({
     (window as any).__clientTest.emit({ type: "signed_out" }),
   );
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Spotify Premium required");
+  await expect(dialog).toContainText("Spotify Premium, or Spotify Free with Spotify Soloist");
   await expect(dialog.locator("#client-id")).toHaveCount(0);
   // Signed out, the top bar keeps only the app menu and window controls.
   await expect(page.getByPlaceholder("What do you want to play?")).toBeHidden();
@@ -879,7 +879,7 @@ test("failed saved sign-in stays locked, supports retry and cancellable fresh si
   );
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("alert")).toContainText("Cannot reach Spotify");
-  await expect(dialog).toContainText("Spotify Premium required");
+  await expect(dialog).toContainText("Spotify Premium, or Spotify Free with Spotify Soloist");
   await page.keyboard.press("Escape");
   await page.locator(".setup-backdrop").click({ position: { x: 2, y: 2 } });
   await expect(dialog).toBeVisible();
@@ -8344,7 +8344,7 @@ test("folder picker follows library updates and closes on sign-out", async ({
   );
   await expect(picker).toHaveCount(0);
   await expect(page.getByRole("dialog")).toContainText(
-    "Spotify Premium required",
+    "Spotify Premium, or Spotify Free with Spotify Soloist",
   );
   await page.evaluate((playlist) => {
     const emit = (window as any).__clientTest.emit;
@@ -8849,7 +8849,7 @@ test("folder deletion closes on sign-out and cannot carry into another account",
   );
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("dialog")).toContainText(
-    "Spotify Premium required",
+    "Spotify Premium, or Spotify Free with Spotify Soloist",
   );
   await page.evaluate(({ playlists, folders }) => {
     const emit = (window as any).__clientTest.emit;
