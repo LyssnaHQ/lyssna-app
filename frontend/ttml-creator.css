@@ -2475,7 +2475,8 @@
   font-size: 13px;
 }
 .review-decide textarea {
-  min-height: 60px;
+  min-height: 128px;
+  line-height: 1.45;
   resize: vertical;
 }
 .review-decide {
