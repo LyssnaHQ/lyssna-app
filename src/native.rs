@@ -2340,7 +2340,10 @@ enum Outcome {
 }
 
 pub(crate) fn sign_in_error(error: librespot_core::Error) -> anyhow::Error {
-    diagnostic(&format!("sign-in refused: {:?} {}", error.kind, error.error));
+    diagnostic(&format!(
+        "sign-in refused: {:?} {}",
+        error.kind, error.error
+    ));
     let failure = Failure::from_connection(error);
     if failure.rejected_credentials {
         crate::auth::SignInRequired::NativeRejected.into()
@@ -2385,14 +2388,21 @@ impl Failure {
             "Spotify rejected the audio login".into()
         } else if message == "Login failed with reason: Premium account required" {
             "Spotify reports this audio account requires Premium".into()
+        } else if message == TRAVEL_RESTRICTION {
+            "Spotify blocks this Free account in the country you're connecting from.              Spotify Free works outside the account's country for 14 days; set the              country you're in on your Spotify account page, then try again."
+                .into()
         } else {
-            format!("Spotify audio connection failed: {} ({message})", error.kind)
+            format!(
+                "Spotify audio connection failed: {} ({message})",
+                error.kind
+            )
         };
         Self {
             reason,
             rejected_credentials,
             retryable: !rejected_credentials
                 && message != "Login failed with reason: Premium account required"
+                && message != TRAVEL_RESTRICTION
                 && matches!(
                     error.kind,
                     ErrorKind::Unavailable
@@ -2405,6 +2415,9 @@ impl Failure {
         }
     }
 }
+
+/// Spotify Free's limit on use outside the account's country.
+const TRAVEL_RESTRICTION: &str = "Login failed with reason: Travel restriction";
 
 fn connect_with_credentials(
     stored: Option<Credentials>,
@@ -4953,6 +4966,10 @@ mod tests {
             "Login failed with reason: Premium account required",
         ));
         assert!(!premium.rejected_credentials);
+        let abroad =
+            Failure::from_connection(librespot_core::Error::permission_denied(TRAVEL_RESTRICTION));
+        assert!(!abroad.rejected_credentials && !abroad.retryable);
+        assert!(abroad.reason.contains("country"));
         let unrelated = Failure::from_connection(librespot_core::Error::permission_denied(
             "different permission failure",
         ));
