@@ -208,6 +208,11 @@ pub enum Event {
     Session(Profile),
     /// Spotify's current profile, fetched after a restored session unlocked.
     ProfileRefreshed(Profile),
+    /// Whether the signed-in account is on Spotify Free, once Spotify says.
+    AccountPlan {
+        account: String,
+        free: bool,
+    },
     SignedOut,
     /// The current account was closed to switch to another; `restoring`
     /// says whether a saved one signs in next or the browser opens.
@@ -886,6 +891,22 @@ impl Backend {
             .map(|settings| settings.client_id)
             .unwrap_or_default();
         self.profile = profile;
+        // Spotify sends the account's plan shortly after it signs in.
+        let session = login.connection.0.clone();
+        let account = self.profile.id.clone();
+        let events = self.events.clone();
+        let context = self.context.clone();
+        thread::spawn(move || {
+            for _ in 0..60 {
+                if let Some(kind) = session.user_data().attributes.get("type").cloned() {
+                    let free = kind == "free" || kind == "open";
+                    let _ = events.send(Event::AccountPlan { account, free });
+                    context.request_repaint();
+                    return;
+                }
+                thread::sleep(Duration::from_millis(250));
+            }
+        });
         self.start_audio_with_login(Some(login))?;
         self.spotify = Some(Spotify::native(
             self.client.clone(),

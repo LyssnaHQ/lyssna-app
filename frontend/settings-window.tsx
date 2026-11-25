@@ -282,6 +282,12 @@ export function SettingsWindow({
   }, []);
   const settings = state.settings;
   const soloistPlays = settings.soloist ? SOLOIST_PLAYS : undefined;
+  // Spotify Free plays up to High without crossfade; the choices stay saved
+  // for a Premium account.
+  const free = !!state.free_account;
+  const needsPremium = free
+    ? "Needs Spotify Premium. Your choice comes back on a Premium account."
+    : undefined;
   const [audioOutputs, setAudioOutputs] = useState<string[] | null>(null);
   const [audioRefresh, setAudioRefresh] = useState(0);
   const [testingOutput, setTestingOutput] = useState(false);
@@ -711,18 +717,20 @@ export function SettingsWindow({
           key="audio-quality"
           label="Streaming quality"
           help={
-            soloistPlays
-              ? "Higher sounds better and uses more data. Lossless needs Spotify Premium. Spotify Soloist picks this up the next time playback is paused."
-              : settings.audio_quality === "lossless"
-                ? "Lossless plays through Spotify Soloist. Lyssna's own player uses Very high until Soloist is on."
-                : "Higher sounds better and uses more data. Changes from the next song."
+            free
+              ? "Spotify Free plays up to High (160 kbps). Your choice comes back on a Premium account."
+              : soloistPlays
+                ? "Higher sounds better and uses more data. Lossless needs Spotify Premium. Spotify Soloist picks this up the next time playback is paused."
+                : settings.audio_quality === "lossless"
+                  ? "Lossless plays through Spotify Soloist. Lyssna's own player uses Very high until Soloist is on."
+                  : "Higher sounds better and uses more data. Changes from the next song."
           }
           keywords="audio quality bitrate kbps streaming sound very high lossless flac data"
         >
           <QualitySelect
             label="Streaming quality"
             value={settings.audio_quality ?? "very_high"}
-            lossless={!!soloistPlays}
+            lossless={!!soloistPlays && !free}
             onChange={(audio_quality) => onSettings({ audio_quality })}
           />
         </SettingRow>,
@@ -733,8 +741,9 @@ export function SettingsWindow({
             ? "Fade each song into the next when one runs into the other, as Spotify does. Spotify Soloist picks this up the next time playback is paused."
             : "Fade each song into the next when one runs into the other, as Spotify does.",
           "crossfade fade transition gapless overlap blend",
+          needsPremium,
         ),
-        settings.crossfade ? (
+        settings.crossfade && !free ? (
           <SettingRow
             key="crossfade-seconds"
             label={`Crossfade length: ${settings.crossfade_seconds || 5} s`}
@@ -760,7 +769,7 @@ export function SettingsWindow({
             </span>
           </SettingRow>
         ) : null,
-        settings.crossfade
+        settings.crossfade && !free
           ? flag(
               "crossfade_picked",
               "Crossfade when you pick or skip",

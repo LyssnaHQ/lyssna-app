@@ -79,6 +79,13 @@ impl AudioQuality {
             Self::VeryHigh | Self::Lossless => 320,
         }
     }
+    /// The best a Free account gets: up to High.
+    pub fn for_free(self) -> Self {
+        match self {
+            Self::VeryHigh | Self::Lossless => Self::High,
+            other => other,
+        }
+    }
     /// The value Spotify's own prefs store for this level.
     pub fn spotify_level(self) -> u8 {
         match self {
@@ -818,6 +825,9 @@ mod tests {
         settings.clean_lyrics_options();
         assert_eq!(settings.audio_quality, AudioQuality::Lossless);
         assert_eq!(settings.download_quality, AudioQuality::VeryHigh);
+        assert_eq!(AudioQuality::Lossless.for_free(), AudioQuality::High);
+        assert_eq!(AudioQuality::VeryHigh.for_free(), AudioQuality::High);
+        assert_eq!(AudioQuality::Normal.for_free(), AudioQuality::Normal);
     }
 
     #[test]

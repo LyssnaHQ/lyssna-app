@@ -21925,3 +21925,28 @@ test("the account menu switches to, adds and removes accounts signed in here", a
   await expect(page.locator(".setup-dialog")).toHaveCount(0);
   await expect(page.locator(".track-row")).toHaveCount(0);
 });
+
+test("Spotify Free caps quality at High and turns crossfade off, keeping the choices", async ({
+  page,
+}) => {
+  await startClient(page);
+  await page.evaluate(() => {
+    const test = (window as any).__clientTest;
+    test.emit({ type: "account_plan", free: true });
+  });
+  await openSettings(page, "Playback");
+  await page.getByLabel("Play through Spotify Soloist").check();
+  const quality = page.getByLabel("Streaming quality", { exact: true });
+  await expect(quality.locator('option[value="lossless"]')).toHaveCount(0);
+  await expect(
+    page.locator(".setting-row", { hasText: "Streaming quality" }),
+  ).toContainText("Spotify Free plays up to High");
+  const crossfade = page.locator(".setting-row", { hasText: "Crossfade songs" });
+  await expect(crossfade).toHaveClass(/unavailable/);
+  await expect(crossfade).toContainText("Needs Spotify Premium");
+  await page.evaluate(() =>
+    (window as any).__clientTest.emit({ type: "account_plan", free: false }),
+  );
+  await expect(quality.locator('option[value="lossless"]')).toHaveCount(1);
+  await expect(crossfade).not.toHaveClass(/unavailable/);
+});

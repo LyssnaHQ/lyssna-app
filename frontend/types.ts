@@ -418,6 +418,8 @@ export interface Snapshot {
   provider_builtin?: boolean;
   provider_kind?: "spicy" | "legacy";
   login_pending: boolean;
+  /** The signed-in account is on Spotify Free. */
+  free_account?: boolean;
   can_follow: boolean;
   lyrics?: Lyrics;
   lyrics_uri?: string;
@@ -552,6 +554,7 @@ export type AppEvent =
   | { type: "session"; profile: Profile; can_follow: boolean }
   | { type: "profile"; profile: Profile }
   | { type: "login_finished" }
+  | { type: "account_plan"; free: boolean }
   /** `switching`: closed to sign in another account, a saved one when
    *  `restoring`. */
   | { type: "signed_out"; switching?: boolean; restoring?: boolean }

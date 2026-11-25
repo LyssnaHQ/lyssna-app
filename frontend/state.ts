@@ -491,6 +491,8 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     case "login_finished":
       return { ...state, login_pending: false, restoring_session: false };
+    case "account_plan":
+      return { ...state, free_account: action.free };
     case "soloist":
       return {
         ...state,

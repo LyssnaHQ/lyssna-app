@@ -62,6 +62,8 @@ pub struct Snapshot {
     provider_builtin: bool,
     provider_kind: Option<String>,
     login_pending: bool,
+    /// The signed-in account is on Spotify Free.
+    free_account: bool,
     login_issue: Option<auth::LoginIssue>,
     can_follow: bool,
     lyrics: Option<Lyrics>,
@@ -181,7 +183,7 @@ fn set_soloist(inner: &Inner, wanted: bool) {
     };
     if wanted && slot.is_none() {
         if let Ok(snapshot) = inner.snapshot.lock() {
-            crate::soloist::set_crossfade(snapshot.settings.active_crossfade_seconds());
+            crate::soloist::set_crossfade(soloist_crossfade(&snapshot.settings));
             apply_quality(&snapshot.settings);
         }
         *slot = Some(crate::soloist::Supervisor::start());
@@ -672,6 +674,7 @@ impl Desktop {
                 provider_builtin: crate::provider::builtin_configured(),
                 provider_kind: crate::provider::kind(),
                 login_pending: true,
+                free_account: false,
                 login_issue: None,
                 can_follow: false,
                 lyrics: None,
@@ -926,6 +929,20 @@ impl Desktop {
                                 );
                             }
                         }
+                        Event::AccountPlan { account, free } => {
+                            if snapshot
+                                .profile
+                                .as_ref()
+                                .is_none_or(|profile| profile.id != account)
+                            {
+                                continue;
+                            }
+                            snapshot.free_account = free;
+                            FREE_ACCOUNT.store(free, Ordering::Release);
+                            apply_quality(&snapshot.settings);
+                            crate::soloist::set_crossfade(soloist_crossfade(&snapshot.settings));
+                            emit(json!({"type":"account_plan","free":free}));
+                        }
                         Event::ProfileRefreshed(profile) => {
                             if snapshot.profile.as_ref().map(|old| &old.id) == Some(&profile.id) {
                                 let _ = crate::native::save_profile(&profile);
@@ -1026,6 +1043,8 @@ impl Desktop {
                             snapshot.profile = None;
                             snapshot.login_issue = None;
                             snapshot.login_pending = switching.is_some();
+                            snapshot.free_account = false;
+                            FREE_ACCOUNT.store(false, Ordering::Release);
                             snapshot.playlists.clear();
                             snapshot.home = None;
                             snapshot.home_loading = false;
@@ -3649,11 +3668,26 @@ fn stop_clip(state: State<'_, Desktop>) -> std::result::Result<(), String> {
     }
     Ok(())
 }
+/// Spotify Free plays up to High and has no crossfade. The chosen settings
+/// stay saved and apply again on a Premium account.
+static FREE_ACCOUNT: AtomicBool = AtomicBool::new(false);
 fn apply_quality(settings: &crate::config::Settings) {
-    librespot_playback::player::BITRATE_KBPS
-        .store(settings.audio_quality.kbps(), Ordering::Relaxed);
-    crate::soloist::set_quality(settings.audio_quality.spotify_level());
+    let free = FREE_ACCOUNT.load(Ordering::Acquire);
+    let playing = if free {
+        settings.audio_quality.for_free()
+    } else {
+        settings.audio_quality
+    };
+    librespot_playback::player::BITRATE_KBPS.store(playing.kbps(), Ordering::Relaxed);
+    crate::soloist::set_quality(playing.spotify_level());
     crate::offline_sync::set_quality(settings.download_quality.kbps());
+}
+fn soloist_crossfade(settings: &crate::config::Settings) -> u8 {
+    if FREE_ACCOUNT.load(Ordering::Acquire) {
+        0
+    } else {
+        settings.active_crossfade_seconds()
+    }
 }
 /// TTML Creator repeats one song and stops at its end; a crossfade would
 /// fade out its last seconds into its own start.
@@ -3671,7 +3705,7 @@ fn apply_crossfade(
     controls.set_crossfade(account, seconds, settings.crossfade_picked);
     // Soloist takes a new crossfade only by restarting, which drops its song
     // and position; the creator plays the song itself while Soloist waits.
-    crate::soloist::set_crossfade(settings.active_crossfade_seconds());
+    crate::soloist::set_crossfade(soloist_crossfade(settings));
 }
 #[tauri::command]
 fn hold_crossfade(held: bool, state: State<'_, Desktop>) -> std::result::Result<(), String> {

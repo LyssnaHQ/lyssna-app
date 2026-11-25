@@ -434,7 +434,8 @@ impl Lyssna {
                 | Event::PageChanged(..)
                 | Event::TrackInfo { .. }
                 | Event::Songwriters { .. }
-                | Event::ProfileRefreshed(..) => {}
+                | Event::ProfileRefreshed(..)
+                | Event::AccountPlan { .. } => {}
                 Event::Session(profile) => {
                     if !self.login_pending {
                         continue;
