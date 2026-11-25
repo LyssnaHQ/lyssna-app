@@ -87,6 +87,8 @@ import {
   type GeniusChanges,
   bracketsToBackground,
   splitAllWords,
+  hasJapanese,
+  splitJapanese,
   readingsFrom,
   insertBlankLine,
   joinHyphenated,
@@ -1724,6 +1726,24 @@ export function TtmlCreator({
       Split all syllables
     </button>
   );
+  const splitSymbols = () => {
+    const next = splitJapanese(lines);
+    if (next === lines) {
+      notify("Every Japanese word is already split per symbol.");
+      return;
+    }
+    restructure(next);
+    notify(`Split Japanese words per symbol. ${MODIFIER}+Z undoes it.`);
+  };
+  const splitJapaneseButton = hasJapanese(lines) && (
+    <button
+      onClick={splitSymbols}
+      title="Split every Japanese word into one piece per symbol. Small kana stay with the sound before them; words with a reading stay whole."
+    >
+      <Languages size={15} />
+      Split Japanese per symbol
+    </button>
+  );
   const bracketsButton = (
     <button
       onClick={splitBackingVocals}
@@ -3205,6 +3225,7 @@ export function TtmlCreator({
                 </button>
                 {bracketsButton}
                 {splitAllButton}
+                {splitJapaneseButton}
                 <button
                   className={wordRoman ? "active" : ""}
                   aria-pressed={wordRoman}
@@ -3331,6 +3352,7 @@ export function TtmlCreator({
                 </button>
                 {bracketsButton}
                 {splitAllButton}
+                {splitJapaneseButton}
                 <button
                   onClick={() => void autoRomanize()}
                   disabled={romanNote === "Romanizing…"}

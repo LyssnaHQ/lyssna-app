@@ -2103,6 +2103,39 @@ export function splitAllWords(
   return changed ? next : lines;
 }
 
+const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
+/** Whether any word is Japanese; kana tells it apart from Chinese. */
+export const hasJapanese = (lines: CreatorLine[]) =>
+  lines.some((line) => line.units.some((unit) => KANA.test(unit.text)));
+
+/**
+ * Cuts Japanese words into one piece per symbol, as typed lyrics are:
+ * small kana and ー stay with their mora. Words with a reading keep it and
+ * stay whole. Returns `lines` itself when nothing changed.
+ */
+export function splitJapanese(lines: CreatorLine[]): CreatorLine[] {
+  let changed = false;
+  const next = lines.map((line) => {
+    let lineChanged = false;
+    const units = line.units.flatMap((unit) => {
+      if (
+        unit.roman ||
+        (!KANA.test(unit.text) && !/\p{Script=Han}/u.test(unit.text))
+      )
+        return [unit];
+      const parts = symbolPieces(unit.text).filter(Boolean);
+      if (parts.length < 2) return [unit];
+      lineChanged = true;
+      return divided(unit, parts);
+    });
+    if (!lineChanged) return line;
+    changed = true;
+    return { ...line, units };
+  });
+  return changed ? next : lines;
+}
+
 /** A line split in two ends where a comma stood; the comma goes. */
 function dropEndComma(units: CreatorUnit[]): CreatorUnit[] {
   const last = units[units.length - 1];

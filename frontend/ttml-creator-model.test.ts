@@ -80,7 +80,9 @@ import {
   romanizeRequest,
   setLineText,
   setUnitRoman,
+  hasJapanese,
   splitAllWords,
+  splitJapanese,
   splitMatching,
   splitUnit,
   toLyrics,
@@ -1400,6 +1402,32 @@ describe("TTML Creator word menu", () => {
     expect(toText(splitMatching(lines, "baby", cut, true))).toBe(
       "Ba|by ba|by BA|BY",
     );
+  });
+
+  it("splits Japanese words per symbol, keeping small kana with their mora", () => {
+    // Typed lyrics already split per symbol; imported ones arrive whole.
+    const lines: CreatorLine[] = [
+      {
+        units: [
+          { text: "引き抜くカセッ", joined: false, start: 1000, end: 1600 },
+          { text: "ト", joined: true },
+          { text: "hello", joined: false },
+          { text: "迷路", joined: false, roman: "mei|ro" },
+        ],
+        background: false,
+        opposite: false,
+      },
+    ];
+    expect(hasJapanese(lines)).toBe(true);
+    const split = splitJapanese(lines);
+    expect(split[0].units.map((unit) => unit.text)).toEqual([
+      "引", "き", "抜", "く", "カ", "セッ", "ト", "hello", "迷路",
+    ]);
+    expect(split[0].units[0]).toMatchObject({ start: 1000, end: 1100 });
+    expect(split[0].units[6].joined).toBe(true);
+    const english = parseText("hello there");
+    expect(hasJapanese(english)).toBe(false);
+    expect(splitJapanese(english)).toBe(english);
   });
 
   it("splits every whole word and leaves split words alone", () => {
