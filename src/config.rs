@@ -222,6 +222,8 @@ pub struct Settings {
     pub library_folder_sorts: std::collections::BTreeMap<String, String>,
     /// Your Library's rows: compact, list, grid or large_grid.
     pub library_view: String,
+    /// Song lists' rows: list (artwork, artists under the title) or compact.
+    pub songs_view: String,
     pub lyric_size: f32,
     pub lyric_offset_ms: i64,
     /// Per-song lyric offsets by track URI, added to `lyric_offset_ms`.
@@ -422,6 +424,7 @@ impl Default for Settings {
             library_sort: "recents".into(),
             library_folder_sorts: Default::default(),
             library_view: "list".into(),
+            songs_view: "list".into(),
             lyric_size: 36.0,
             lyric_offset_ms: 0,
             romaji_as_written: true,
@@ -654,6 +657,9 @@ impl Settings {
         }
         if !["compact", "list", "grid", "large_grid"].contains(&self.library_view.as_str()) {
             self.library_view = "list".into();
+        }
+        if !["compact", "list"].contains(&self.songs_view.as_str()) {
+            self.songs_view = "list".into();
         }
         if !["animated", "static", "cover", "artist", "color", "none"]
             .contains(&self.lyrics_background.as_str())

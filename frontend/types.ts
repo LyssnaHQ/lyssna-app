@@ -166,6 +166,8 @@ export interface Settings {
   library_folder_sorts?: Record<string, LibrarySort>;
   /** Your Library's rows. */
   library_view?: LibraryView;
+  /** Song lists' rows: list, or compact without artwork. */
+  songs_view?: "list" | "compact";
   /** The marker colour: "#rrggbb", or "cover" for the artwork's colour. */
   lyrics_highlighter_color?: string;
   /** Space Gravity with the Highlighter: marker lines join sung words. */

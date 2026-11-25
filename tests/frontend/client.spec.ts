@@ -3291,6 +3291,23 @@ test("playlist search spans unloaded pages and play counts drive sorting", async
   await expect(page.locator(".track-row").first()).toContainText("Song 125");
   await expect(page.getByLabel("Genre", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Length", { exact: true })).toBeVisible();
+  await expect(page.locator(".track-table.compact")).toHaveCount(0);
+  await page.getByRole("button", { name: "Compact", exact: true }).click();
+  await expect(page.locator(".track-table.compact")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Compact", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".track-row .cover").first()).toBeHidden();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__clientTest.commands
+          .filter((entry: any) => entry.command === "save_settings")
+          .at(-1)?.args.settings.songs_view,
+    ),
+  ).toBe("compact");
+  await page.getByRole("button", { name: "List", exact: true }).click();
+  await expect(page.locator(".track-table.compact")).toHaveCount(0);
 });
 
 test("Now playing and each page's sort are saved for the next launch", async ({

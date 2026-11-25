@@ -2588,6 +2588,38 @@ small {
   min-width: 0;
   flex: 1;
 }
+/* Compact song lists: no artwork, the artists in a column of their own
+   beside the title, and shorter rows. */
+.track-table.compact .track-row {
+  height: 36px;
+}
+.track-table.compact .track-cell > .cover {
+  display: none;
+}
+.track-table.compact .track-cell > div:last-child,
+.track-title-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.track-table.compact .track-name,
+.track-title-head > span:first-child {
+  flex: 1.4 1 0;
+  min-width: 0;
+}
+.track-table.compact .track-artists,
+.track-title-head > span:last-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.track-table.compact .track-name {
+  font-size: 14px;
+}
+.track-table.compact .track-artists {
+  margin-top: 0;
+  font-size: 13px;
+}
 .track-name {
   font-size: 15px;
   white-space: nowrap;

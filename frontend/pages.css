@@ -406,6 +406,14 @@
 .sort-menu > button.active {
   color: var(--spotify-green);
 }
+.sort-menu > .sort-menu-view {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sort-menu-check {
+  margin-left: auto;
+}
 .sort-menu hr {
   margin: 4px 0;
   border: 0;

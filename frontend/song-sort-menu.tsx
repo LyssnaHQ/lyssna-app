@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { List } from "lucide-react";
+import { AlignJustify, Check, List } from "lucide-react";
 
 const SORTS = [
   ["order", "Playlist order"],
@@ -24,14 +24,18 @@ export function SongSortMenu({
   sort,
   age,
   length,
+  view,
   onSort,
+  onView,
   onAge,
   onLength,
 }: {
   sort: string;
   age: string;
   length: string;
+  view: "list" | "compact";
   onSort: (value: string) => void;
+  onView: (value: "list" | "compact") => void;
   onAge: (value: string) => void;
   onLength: (value: string) => void;
 }) {
@@ -83,6 +87,24 @@ export function SongSortMenu({
               onClick={() => onSort(value)}
             >
               {name}
+            </button>
+          ))}
+          <span className="sort-menu-heading">View as</span>
+          {(
+            [
+              ["compact", "Compact", AlignJustify],
+              ["list", "List", List],
+            ] as const
+          ).map(([value, name, Icon]) => (
+            <button
+              key={value}
+              className={`sort-menu-view ${value === view ? "active" : ""}`}
+              aria-pressed={value === view}
+              onClick={() => onView(value)}
+            >
+              <Icon size={16} />
+              {name}
+              {value === view && <Check size={16} className="sort-menu-check" />}
             </button>
           ))}
           <hr />

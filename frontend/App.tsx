@@ -2515,6 +2515,9 @@ function App() {
   );
   const collection =
     likedRoute || localRoute || state.route.startsWith("playlist:");
+  // Compact rows drop the artwork and set the artists beside the title.
+  const compactSongs =
+    !!collection && !entity?.artist && state.settings.songs_view === "compact";
   const collectionPlays =
     collection &&
     !likedRoute &&
@@ -4980,6 +4983,10 @@ function App() {
                               sort={songSort}
                               age={songAge}
                               length={songLength}
+                              view={state.settings.songs_view ?? "list"}
+                              onView={(songs_view) =>
+                                updateSettings({ songs_view })
+                              }
                               onSort={setSongSort}
                               onAge={setSongAge}
                               onLength={setSongLength}
@@ -5002,11 +5009,18 @@ function App() {
                     <>
                       <div
                         ref={trackTable}
-                        className={`track-table ${collectionPlays ? "collection-table" : ""} ${collection ? "dated-table" : ""} ${entity?.album ? "album-table" : ""}`}
+                        className={`track-table ${collectionPlays ? "collection-table" : ""} ${collection ? "dated-table" : ""} ${entity?.album ? "album-table" : ""} ${compactSongs ? "compact" : ""}`}
                       >
                         <div className="track-table-head">
                           <span>#</span>
-                          <span>{headerSort("title", "Title")}</span>
+                          {compactSongs ? (
+                            <span className="track-title-head">
+                              <span>{headerSort("title", "Title")}</span>
+                              <span>Artist</span>
+                            </span>
+                          ) : (
+                            <span>{headerSort("title", "Title")}</span>
+                          )}
                           <span>
                             {entity?.artist
                               ? "Streams"
