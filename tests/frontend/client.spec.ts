@@ -17635,6 +17635,43 @@ test("instrumental submissions review without lyrics and long titles stay in the
   await panel.screenshot({ path: "test-results/review-instrumental.png" });
 });
 
+test("TTML Creator draws only the lines near the view in a long draft", async ({
+  page,
+}) => {
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await openSettings(page, "Sources");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page
+    .locator(".player-extras")
+    .getByTitle("TTML Creator", { exact: true })
+    .click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  await creator.getByRole("button", { name: "Edit as text" }).click();
+  await creator
+    .getByLabel("Lyrics text")
+    .fill(
+      Array.from({ length: 300 }, (_, index) => `line ${index + 1} goes here`).join("\n"),
+    );
+  await creator.getByRole("button", { name: "Done" }).click();
+  await expect(
+    creator.locator('.ttml-line[data-line="0"] .ttml-word'),
+  ).toHaveText(["line", "1", "goes", "here"]);
+  await expect(creator.locator(".ttml-line-slot").first()).toBeAttached();
+  expect(await creator.locator(".ttml-line").count()).toBeLessThan(100);
+  await creator.locator(".ttml-lines").evaluate((list) => {
+    list.scrollTop = list.scrollHeight;
+  });
+  await expect(
+    creator.locator('.ttml-line[data-line="299"] .ttml-word'),
+  ).toHaveText(["line", "300", "goes", "here"]);
+  await expect(creator.locator('.ttml-line-slot[data-line="10"]')).toBeAttached();
+});
+
 test("TTML Creator times words on the playing song, slows it and saves TTML", async ({
   page,
 }) => {

@@ -218,6 +218,8 @@ const SPLITS_KEY = "lyssna.ttml-splits";
 const SPECTROGRAM_KEY = "lyssna.ttml-spectrogram";
 const SYNC_ROMAN_KEY = "lyssna.ttml-sync-roman";
 const GLIDE_MS = 550;
+const WINDOW_FROM = 150;
+const LINE_GUESS_PX = 72;
 const OFFSET_KEY = "lyssna.ttml-offset";
 const CLASSIC_KEY = "lyssna.ttml-classic-tabs";
 const WORD_ROMAN_KEY = "lyssna.ttml-word-roman";
@@ -2178,6 +2180,48 @@ export function TtmlCreator({
   ]);
 
   const list = useRef<HTMLDivElement>(null);
+  // The creator redraws every frame while the song plays. A long draft
+  // draws only the lines near the view; the rest hold their last height.
+  const windowed = lines.length >= WINDOW_FROM;
+  const [near, setNear] = useState<ReadonlySet<number>>(() => new Set());
+  const heights = useRef(new Map<number, number>());
+  const watcher = useRef<IntersectionObserver | null>(null);
+  useEffect(() => {
+    if (!windowed || !list.current) return;
+    const seen = new Set<number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let changed = false;
+        for (const entry of entries) {
+          const element = entry.target as HTMLElement;
+          if (!element.isConnected) {
+            observer.unobserve(element);
+            continue;
+          }
+          const index = Number(element.dataset.line);
+          if (!element.classList.contains("ttml-line-slot"))
+            heights.current.set(index, entry.boundingClientRect.height);
+          if (entry.isIntersecting === seen.has(index)) continue;
+          changed = true;
+          if (entry.isIntersecting) seen.add(index);
+          else seen.delete(index);
+        }
+        if (changed) setNear(new Set(seen));
+      },
+      { root: list.current, rootMargin: "800px 0px" },
+    );
+    watcher.current = observer;
+    list.current
+      .querySelectorAll<HTMLElement>("[data-line]")
+      .forEach((element) => observer.observe(element));
+    return () => {
+      observer.disconnect();
+      watcher.current = null;
+    };
+  }, [windowed]);
+  const watchLine = useCallback((element: HTMLElement | null) => {
+    if (element) watcher.current?.observe(element);
+  }, []);
   const glide = useRef(0);
   const reduceMotion = !!state.settings.reduce_motion;
   const centre = useCallback(
@@ -3406,6 +3450,34 @@ export function TtmlCreator({
             }}
           >
             {lines.map((line, lineIndex) => {
+              if (
+                windowed &&
+                !near.has(lineIndex) &&
+                cursor.line !== lineIndex &&
+                focusLine !== lineIndex &&
+                editingSection?.line !== lineIndex &&
+                !picked.has(lineIndex) &&
+                !(drag?.kind === "line" && drag.line === lineIndex)
+              )
+                return (
+                  <Fragment key={lineIndex}>
+                    {line.part && (
+                      <p className="ttml-part">
+                        {line.singer
+                          ? `${line.part} - ${line.singer}`
+                          : line.part}
+                      </p>
+                    )}
+                    <div
+                      ref={watchLine}
+                      data-line={lineIndex}
+                      className="ttml-line-slot"
+                      style={{
+                        height: heights.current.get(lineIndex) ?? LINE_GUESS_PX,
+                      }}
+                    />
+                  </Fragment>
+                );
               const adder = (
                 <input
                   className="ttml-chip-add"
@@ -3527,6 +3599,7 @@ export function TtmlCreator({
                     </p>
                   )}
                   <div
+                    ref={windowed ? watchLine : undefined}
                     data-line={lineIndex}
                     {...pickProps(lineIndex)}
                     onContextMenu={(event) => openLineMenu(event, lineIndex)}

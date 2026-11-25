@@ -283,6 +283,9 @@
   overflow-y: auto;
   padding: 2px 2px 40vh;
 }
+.ttml-line-slot {
+  flex-shrink: 0;
+}
 .ttml-part {
   margin: 10px 0 0 4px;
   color: #ffffff8c;
