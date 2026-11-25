@@ -118,7 +118,7 @@ test("Storage settings show the offline location and move downloads", async ({
   page,
 }) => {
   await startClient(page);
-  await openSettings(page);
+  await openSettings(page, "Playback");
   const dialog = page.getByRole("dialog", { name: "Lyssna settings" });
   await expect(dialog).toContainText("Offline storage location");
   await expect(dialog).toContainText("AppData\Local\Lyssna");
@@ -687,7 +687,7 @@ test("audio output selection saves headphones and can return to system default",
   page,
 }) => {
   await startClient(page);
-  await openSettings(page);
+  await openSettings(page, "Playback");
   const output = page.getByRole("combobox", {
     name: "Audio output",
     exact: true,
@@ -7335,7 +7335,7 @@ test("lyrics toolbar toggles romanization, word sync and layout", async ({
   await expect(dialog.locator(".credit-person")).toHaveCount(2);
   await dialog.getByLabel("Search settings").fill("");
   await expect(dialog.locator(".credit-person")).toHaveCount(0);
-  await dialog.getByRole("tab", { name: "General" }).click();
+  await dialog.getByRole("tab", { name: "Playback" }).click();
   await expect(
     dialog.getByRole("combobox", { name: "Audio output" }),
   ).toBeVisible();
@@ -9918,7 +9918,7 @@ test("Settings shows the song cache size and clears it", async ({ page }) => {
   await page.evaluate(
     () => ((window as any).__clientTest.cacheBytes = 734_003_200),
   );
-  await openSettings(page);
+  await openSettings(page, "Playback");
   await expect(page.getByText("Cache: 700 MB")).toBeVisible();
   await page.getByRole("button", { name: "Clear cache" }).click();
   await expect(page.getByText("Cache: 0 MB")).toBeVisible();
@@ -10584,6 +10584,7 @@ test("Lyssna settings combines app and lyrics options with ordered sources", asy
   const dialog = page.getByRole("dialog", { name: "Lyssna settings" });
   await expect(dialog).toBeVisible();
   await expect(page.locator(".settings-page")).toHaveCount(0);
+  await dialog.getByRole("tab", { name: "Playback" }).click();
   await expect(
     dialog.getByRole("combobox", { name: "Audio output" }),
   ).toBeVisible();
@@ -11945,7 +11946,7 @@ test("a green bar names the other device playing and opens the device list", asy
   await playOn("Lyssna Player");
   await expect(bar).toHaveText("Playing on Lyssna Player");
   await page.keyboard.press("Escape");
-  await openSettings(page, "General");
+  await openSettings(page, "Playback");
   await page.getByLabel("Play through Spotify Soloist").check();
   await expect(bar).toHaveCount(0);
 });
@@ -17401,7 +17402,7 @@ test("Soloist greys out playback settings it cannot honour", async ({
       keys_refused: true,
     }),
   );
-  await openSettings(page, "General");
+  await openSettings(page, "Playback");
   const row = page.locator(".setting-row", { hasText: "Audio output" });
   await expect(row).not.toHaveClass(/unavailable/);
   await expect(page.locator(".soloist-refused")).toBeVisible();
@@ -17441,7 +17442,7 @@ test("Soloist explains when this computer cannot run it", async ({ page }) => {
       args: any,
     ) => (command === "soloist_supported" ? false : invoke(command, args));
   });
-  await openSettings(page, "General");
+  await openSettings(page, "Playback");
   const row = page.locator(".setting-row", {
     hasText: "Play through Spotify Soloist",
   });
@@ -17494,7 +17495,7 @@ test("reviewers see waiting submissions and decide them from the TTML Creator", 
   });
   await startClient(page);
   await playLyricTrack(page);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -17572,7 +17573,7 @@ test("TTML Creator times words on the playing song, slows it and saves TTML", as
   await playLyricTrack(page, false);
   const bar = page.locator(".player-extras");
   await expect(bar.getByTitle("TTML Creator", { exact: true })).toHaveCount(0);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -17874,7 +17875,7 @@ test("TTML Creator uploads an edit of Apple Music's sync as one", async ({
       },
     });
   });
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -17902,7 +17903,7 @@ test("TTML Creator previews an untouched draft until Show preview is off", async
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -17939,7 +17940,7 @@ test("TTML Creator takes plain lyrics from Genius into the text editor", async (
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -17972,7 +17973,7 @@ test("TTML Creator names sections from Genius without touching timings", async (
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18062,7 +18063,7 @@ test("TTML Creator spectrogram zooms, scrolls, reads out and seeks", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18161,7 +18162,7 @@ test("TTML Creator spectrogram gives each vocal its own header row", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18228,7 +18229,7 @@ test("a lyric file dropped on the TTML Creator loads into it with word timings",
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18302,7 +18303,7 @@ test("line-synced lyrics show as whole lines on the TTML Creator spectrogram", a
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18375,7 +18376,7 @@ test("right-clicking a word on the TTML Creator spectrogram plays only that word
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18509,7 +18510,7 @@ test("TTML Creator spectrogram waits after scrolling before following again", as
         playback: { ...last.playback, progress_ms },
       });
     }, progress_ms);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18551,7 +18552,7 @@ test("TTML Creator spectrogram retimes words while the song plays", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18666,7 +18667,7 @@ test("layout the TTML Creator borrowed comes back after a restart", async ({
   ).toBe(null);
 
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18726,7 +18727,7 @@ test("TTML Creator plays a paused song itself when Soloist would play it", async
       },
     });
   }, song);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18798,7 +18799,7 @@ test("TTML Creator plays the song itself, slowed, while Spotify Soloist plays", 
       },
     });
   }, song);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18907,7 +18908,7 @@ test("TTML Creator puts a waveform and speed in the player bar", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -18995,7 +18996,7 @@ test("TTML Creator can bring back separate Lyrics, Sync and Preview tabs", async
   await page.setViewportSize({ width: 1280, height: 800 });
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19106,7 +19107,7 @@ test("TTML Creator walkthrough opens once, waits for tried keys and reopens from
   await page.addInitScript(() => sessionStorage.setItem("tour-test", "1"));
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19209,7 +19210,7 @@ test("TTML Creator offers Type word here on the active or hovered line", async (
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19282,7 +19283,7 @@ test("TTML Creator moves Ctrl or Shift picked words as a bunch", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19355,7 +19356,7 @@ test("TTML Creator replaces one word or every identical word", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19428,7 +19429,7 @@ test("TTML Creator word menu splits words and moves them to new lines", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19547,7 +19548,7 @@ test("double-clicking a TTML Creator word edits it when paused and replays while
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19637,7 +19638,7 @@ test("double-clicking a TTML Creator word edits it when paused and replays while
 test("clicking away from Type word here leaves the box", async ({ page }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19678,7 +19679,7 @@ test("right-clicking a TTML Creator line opens line actions", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19729,7 +19730,7 @@ test("Now playing lyrics card folds while the TTML Creator is open", async ({
   await playLyricTrack(page);
   const card = page.locator(".now-playing .lyric-preview");
   await expect(card).not.toHaveClass(/\bcollapsed\b/);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19771,7 +19772,7 @@ test("TTML Creator holds crossfade so its repeat never fades into itself", async
 }) => {
   await startClient(page);
   await playLyricTrack(page);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19796,7 +19797,7 @@ test("TTML Creator holds crossfade so its repeat never fades into itself", async
 test("TTML Creator Sync follows the playing line", async ({ page }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19860,7 +19861,7 @@ test("TTML Creator stays on words being worked on while the song plays", async (
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19937,7 +19938,7 @@ test("TTML Creator selects a line by its blank space and keeps it in view", asyn
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -19976,7 +19977,7 @@ test("TTML Creator changes several selected lines at once", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20032,7 +20033,7 @@ test("TTML Creator imports and exports other lyric formats", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20116,7 +20117,7 @@ test("TTML Creator never starts from Spicy Lyrics or Apple Music lyrics", async 
       },
     });
   });
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20176,7 +20177,7 @@ test("TTML Creator starts from Apple Music lyrics that came through Lyssna", asy
       },
     });
   });
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20196,7 +20197,7 @@ test("TTML Creator saves drafts with a time and keeps versions", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20667,7 +20668,7 @@ test("TTML Creator reopens at the paused song position", async ({ page }) => {
         playback: { ...last.playback, is_playing: false, progress_ms },
       });
     }, progress_ms);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20793,8 +20794,9 @@ test("TTML Creator follows the lyrics timing offset", async ({ page }) => {
     };
   });
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await openSettings(page, "Lyrics");
   await page.getByLabel("Timing offset").fill("500");
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20821,7 +20823,7 @@ test("TTML Creator follows the lyrics timing offset", async ({ page }) => {
 test("TTML Creator moves selected words to a new line", async ({ page }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -20859,7 +20861,7 @@ test("TTML Creator keyboard shortcuts select, duplicate and save", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -21546,7 +21548,7 @@ test("the TTML Creator offers Mark instrumental only for songs without lyrics", 
   );
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -21663,7 +21665,7 @@ test("TTML Creator matches a local file to an ISRC before it can be submitted", 
       local_match_isrc: "USAT21811534",
     };
   });
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -21716,7 +21718,7 @@ test("TTML Creator clears the whole draft after a second click", async ({
 }) => {
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
@@ -21831,7 +21833,7 @@ test("TTML Creator resets a draft to source lyrics and labels its buttons when w
   await page.setViewportSize({ width: 1920, height: 1080 });
   await startClient(page);
   await playLyricTrack(page, false);
-  await openSettings(page, "Lyrics");
+  await openSettings(page, "Sources");
   await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
   await page
     .getByRole("dialog", { name: "Lyssna settings" })
