@@ -2340,6 +2340,7 @@ enum Outcome {
 }
 
 pub(crate) fn sign_in_error(error: librespot_core::Error) -> anyhow::Error {
+    diagnostic(&format!("sign-in refused: {:?} {}", error.kind, error.error));
     let failure = Failure::from_connection(error);
     if failure.rejected_credentials {
         crate::auth::SignInRequired::NativeRejected.into()
@@ -2385,7 +2386,7 @@ impl Failure {
         } else if message == "Login failed with reason: Premium account required" {
             "Spotify reports this audio account requires Premium".into()
         } else {
-            format!("Spotify audio connection failed: {}", error.kind)
+            format!("Spotify audio connection failed: {} ({message})", error.kind)
         };
         Self {
             reason,
