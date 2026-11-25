@@ -627,8 +627,10 @@ small {
   display: flex;
   gap: 0;
 }
-.history-buttons .icon-button {
+.history-buttons .icon-button,
+.history-buttons .icon-button:hover {
   color: light-dark(#000, #fff);
+  background: none;
 }
 .history-buttons .icon-button:disabled {
   color: light-dark(#a7a7a7, #6a6a6a);
