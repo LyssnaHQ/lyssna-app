@@ -3830,18 +3830,14 @@ small {
     opacity 0.4s cubic-bezier(0.61, 1, 0.88, 1),
     filter 0.5s cubic-bezier(0.61, 1, 0.88, 1);
 }
+/* The lyric size setting holds at every window size, as in Lyssna Lyrics. */
 .lyrics-page .lyric-line,
 .lyrics-page .lyric-wait {
-  --lead-lyric-size: clamp(23px, 3.6cqw, var(--lyric-size));
+  --lead-lyric-size: var(--lyric-size);
   font-size: var(--lead-lyric-size);
 }
 .lyrics-page .lyric-line.background-vocal {
   font-size: calc(var(--lead-lyric-size) * 0.58);
-}
-/* Stacked (narrow) layouts give lyrics the full width, so size them from it. */
-.lyrics-page.narrow .lyric-line,
-.lyrics-page.narrow .lyric-wait {
-  --lead-lyric-size: clamp(30px, 6.2cqw, var(--lyric-size));
 }
 .lyric-line:focus,
 .lyric-line:focus-visible {
@@ -4362,11 +4358,16 @@ small {
   color: light-dark(#090909, #f6f6f6);
   text-decoration-color: currentColor;
 }
+/* One row that scrolls sideways when it runs out of room, never two. */
 .lyrics-toolbar {
   position: absolute;
   right: 16px;
   top: 14px;
   display: flex;
+  flex-wrap: nowrap;
+  max-width: calc(100% - 32px);
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 6px;
   z-index: 4;
   background: light-dark(#f2f2f06b, #0d0d0f6b);
@@ -6419,8 +6420,6 @@ input[type="range"]:hover {
   top: 14px;
   left: 16px;
   right: auto;
-  max-width: calc(var(--canvas-width) - 32px);
-  flex-wrap: wrap;
 }
 .canvas-lyrics.artwork-right:not(.narrow) {
   --canvas-direction: to left;
@@ -7166,12 +7165,6 @@ button.contributor-avatar {
   font-family: var(--lyric-detail-font, inherit);
 }
 
-/* Side-by-side lyrics in a tight panel: cap large lyric sizes to the
-   panel width so lines keep a few words each. */
-.lyrics-page:not(.narrow) .lyrics-body .lyric-line,
-.lyrics-page:not(.narrow) .lyric-wait {
-  --lead-lyric-size: min(var(--lyric-size), 4.6cqw);
-}
 /* Song and artist links beside the lyrics dim on hover like Spicy Lyrics'
    NowBar instead of underlining. */
 :is(.lyrics-title, .lyrics-artists) .text-link {

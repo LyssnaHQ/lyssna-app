@@ -10160,24 +10160,18 @@ test("lyrics toolbar sits over the cover art and follows it when flipped", async
         albumRight: album.left > page.left + page.width / 2,
         // One row of buttons, never wrapped.
         oneRow: toolbar.height < 60,
-        toolbarRight: toolbar.left > page.left + page.width / 2,
-        // Stays over the artwork column, not the lyrics.
-        overArtwork:
-          toolbar.left >=
-            page.left +
-              (toolbar.left > page.left + page.width / 2
-                ? page.width / 2
-                : 0) &&
-          (toolbar.left > page.left + page.width / 2
-            ? toolbar.left >= album.left - 40
-            : toolbar.right <= album.right + 40),
+        // Starts at the artwork's outer edge and runs inward, as in Lyssna Lyrics.
+        toolbarRight:
+          Math.abs(page.right - 16 - toolbar.right) < 3,
+        toolbarLeft:
+          Math.abs(toolbar.left - page.left - 16) < 3,
       };
     });
   await expect.poll(layout).toEqual({
     albumRight: false,
     oneRow: true,
     toolbarRight: false,
-    overArtwork: true,
+    toolbarLeft: true,
   });
   // The flip animates: the browser's transition starts and is not skipped.
   await page.evaluate(() => {
@@ -10205,7 +10199,7 @@ test("lyrics toolbar sits over the cover art and follows it when flipped", async
     albumRight: true,
     oneRow: true,
     toolbarRight: true,
-    overArtwork: true,
+    toolbarLeft: false,
   });
 });
 
