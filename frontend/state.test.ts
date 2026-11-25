@@ -9,6 +9,7 @@ import {
   position,
   nextToggle,
   sessionScreen,
+  type Action,
   type AppState,
   type ToggleIntent,
 } from "./state";
