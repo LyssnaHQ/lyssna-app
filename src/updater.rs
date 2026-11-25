@@ -21,15 +21,33 @@ use sha2::{Digest, Sha256};
 use crate::config::data_dir;
 
 pub const BASE_URL: &str = "https://updates.lyssna.org";
-pub const TARGET: &str = "windows-x86_64";
-pub const CHANNEL: &str = "channels/stable/lyssna-windows-x86_64.json";
+const MACOS: bool = cfg!(target_os = "macos");
+pub const TARGET: &str = if MACOS {
+    "macos-universal"
+} else {
+    "windows-x86_64"
+};
+pub const CHANNEL: &str = if MACOS {
+    "channels/stable/lyssna-macos-universal.json"
+} else {
+    "channels/stable/lyssna-windows-x86_64.json"
+};
+/// What a release publishes for this platform: the zipped app bundle on Mac.
+const ARTIFACT_FILE: &str = if MACOS {
+    "Lyssna.app.zip"
+} else {
+    "lyssna.exe"
+};
 /// Copies from before the rename read this channel and only accept `spotiflex.exe`.
 pub const LEGACY_CHANNEL: &str = "channels/stable/windows-x86_64.json";
 
 pub fn artifact(version: &str, executable: &str) -> String {
     format!("releases/{version}/{TARGET}/{executable}")
 }
-pub const SUPPORTED: bool = cfg!(all(target_os = "windows", target_arch = "x86_64"));
+pub const SUPPORTED: bool = cfg!(any(
+    all(target_os = "windows", target_arch = "x86_64"),
+    target_os = "macos"
+));
 pub const UNSUPPORTED_MESSAGE: &str =
     "Automatic updates are unavailable on this platform. Install new builds manually.";
 /// Set by `build.ps1`. A build from source must never be replaced by a
@@ -146,7 +164,7 @@ fn verify(envelope: &[u8], key: &VerifyingKey) -> Result<Manifest> {
         "Update targets a different platform"
     );
     ensure!(
-        manifest.artifact == artifact(&manifest.version, "lyssna.exe"),
+        manifest.artifact == artifact(&manifest.version, ARTIFACT_FILE),
         "Invalid update artifact path"
     );
     ensure!(
@@ -247,9 +265,10 @@ fn download(
     let directory = data_dir()?.join("updates");
     fs::create_dir_all(&directory)?;
     let path = directory.join(format!(
-        "lyssna-{}-{}.exe",
+        "lyssna-{}-{}.{}",
         manifest.version,
-        &manifest.sha256[..16]
+        &manifest.sha256[..16],
+        if MACOS { "zip" } else { "exe" }
     ));
     if path.exists() && verify_file(&path, &manifest).is_ok() {
         return Ok(ReadyUpdate {
@@ -320,6 +339,10 @@ fn install(update: ReadyUpdate) -> Result<()> {
         "Refusing to install an older version"
     );
     verify_file(&update.path, &manifest)?;
+    if MACOS {
+        install_app(&update.path)?;
+        return relaunch().context("Update installed; restart Lyssna to finish");
+    }
     let executable = std::env::current_exe()?;
     fs::copy(
         &executable,
@@ -329,6 +352,51 @@ fn install(update: ReadyUpdate) -> Result<()> {
     self_replace::self_replace(&update.path)
         .context("Cannot install update. Run Lyssna from a folder your account can write to.")?;
     relaunch().context("Update installed; restart Lyssna to finish")
+}
+
+/// The `.app` bundle an executable runs from: `Lyssna.app/Contents/MacOS/lyssna`.
+fn app_bundle(executable: &Path) -> Option<PathBuf> {
+    let bundle = executable.parent()?.parent()?.parent()?;
+    (bundle.extension()? == "app").then(|| bundle.to_path_buf())
+}
+
+/// Swaps the running app bundle for the one in `archive`, putting the old
+/// one back if the swap fails. A running Mac app keeps working after its
+/// bundle is replaced, and the download carries no quarantine flag, so the
+/// new copy opens without Gatekeeper asking again.
+fn install_app(archive: &Path) -> Result<()> {
+    let bundle = app_bundle(&std::env::current_exe()?)
+        .context("Cannot install update: Lyssna isn't running from its app")?;
+    let folder = bundle
+        .parent()
+        .context("Cannot install update: the app has no folder")?;
+    let staging = folder.join(".Lyssna-update");
+    let _ = fs::remove_dir_all(&staging);
+    let unpacked = std::process::Command::new("/usr/bin/ditto")
+        .args(["-x", "-k"])
+        .arg(archive)
+        .arg(&staging)
+        .status()
+        .is_ok_and(|status| status.success());
+    let fresh = staging.join("Lyssna.app");
+    if !unpacked || !fresh.join("Contents").join("Info.plist").is_file() {
+        let _ = fs::remove_dir_all(&staging);
+        anyhow::bail!(
+            "Cannot install update. Move Lyssna to a folder your account can write to, like Applications."
+        );
+    }
+    let previous = folder.join(".Lyssna-previous.app");
+    let _ = fs::remove_dir_all(&previous);
+    fs::rename(&bundle, &previous)
+        .context("Cannot install update. Move Lyssna to a folder your account can write to.")?;
+    if let Err(failure) = fs::rename(&fresh, &bundle) {
+        let _ = fs::rename(&previous, &bundle);
+        let _ = fs::remove_dir_all(&staging);
+        return Err(failure).context("Cannot install update");
+    }
+    let _ = fs::remove_dir_all(&staging);
+    let _ = fs::remove_dir_all(&previous);
+    Ok(())
 }
 
 /// Whether a published version should replace this copy.
@@ -341,7 +409,16 @@ fn newer(version: &str) -> Result<bool> {
 /// Start this executable again; the new copy waits for this one to exit,
 /// so it never finds it still running and hands over to it.
 pub fn relaunch() -> Result<()> {
-    let mut command = std::process::Command::new(std::env::current_exe()?);
+    let executable = std::env::current_exe()?;
+    // Through Launch Services on Mac, so the new copy is a proper app.
+    let mut command = match app_bundle(&executable).filter(|_| MACOS) {
+        Some(bundle) => {
+            let mut open = std::process::Command::new("/usr/bin/open");
+            open.arg("-n").arg(bundle).arg("--args");
+            open
+        }
+        None => std::process::Command::new(executable),
+    };
     command
         .arg(AFTER_EXIT_ARG)
         .arg(std::process::id().to_string());
@@ -402,9 +479,9 @@ impl Updater {
                 let _ = sender.send(event);
                 context.request_repaint();
             };
-            // The signed update service publishes Windows executables only,
+            // The signed update service publishes Windows and Mac builds only,
             // and a local build must not be replaced by a release. Never query
-            // that channel or stage an executable in either case.
+            // a channel or stage an update in either case.
             if let Some(message) = DISABLED {
                 emit(Event::Error(message.into()));
                 for command in receiver {
@@ -491,6 +568,15 @@ impl Drop for Updater {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+
+    #[test]
+    fn finds_the_app_bundle_around_a_mac_executable() {
+        assert_eq!(
+            app_bundle(Path::new("/Applications/Lyssna.app/Contents/MacOS/lyssna")),
+            Some(PathBuf::from("/Applications/Lyssna.app"))
+        );
+        assert_eq!(app_bundle(Path::new("/usr/local/bin/lyssna")), None);
+    }
 
     #[test]
     fn only_nightly_stops_update_checks() {
