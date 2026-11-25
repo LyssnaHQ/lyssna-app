@@ -476,6 +476,7 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn start() -> Self {
+        crate::native::log_librespot();
         let status = Arc::new(Mutex::new(Status::Starting));
         let stop = Arc::new(AtomicBool::new(false));
         let thread = supported().then(|| {

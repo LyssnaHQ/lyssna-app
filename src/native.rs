@@ -1168,12 +1168,15 @@ pub(crate) fn diagnostic(line: &str) {
 }
 
 /// Sends librespot's warnings and errors to the diagnostics log, so a load
-/// Spotify Connect refused leaves a reason behind. Lines that mention a
+/// Spotify Connect refused leaves a reason behind, and Soloist's steps, so a
+/// player that never connects says where it stopped. Lines that mention a
 /// token are dropped whole.
 struct LibrespotLog;
 impl log::Log for LibrespotLog {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Warn && metadata.target().starts_with("librespot")
+        let target = metadata.target();
+        (metadata.level() <= log::Level::Warn && target.starts_with("librespot"))
+            || (metadata.level() <= log::Level::Info && target.starts_with("lyssna::soloist"))
     }
     fn log(&self, record: &log::Record) {
         if !self.enabled(record.metadata()) {
@@ -1189,8 +1192,13 @@ impl log::Log for LibrespotLog {
             librespot_playback::player::note_audio_key_error(code);
         }
         let message: String = message.chars().take(300).collect();
+        let source = if record.target().starts_with("lyssna::soloist") {
+            "soloist"
+        } else {
+            "librespot"
+        };
         diagnostic(&format!(
-            "librespot {} {}: {message}",
+            "{source} {} {}: {message}",
             record.level(),
             record.target()
         ));
@@ -1205,10 +1213,10 @@ fn audio_key_error_code(message: &str) -> Option<u8> {
         .nth(1)?;
     u8::from_str_radix(code, 16).ok()
 }
-fn log_librespot() {
+pub(crate) fn log_librespot() {
     static LOG: LibrespotLog = LibrespotLog;
     if log::set_logger(&LOG).is_ok() {
-        log::set_max_level(log::LevelFilter::Warn);
+        log::set_max_level(log::LevelFilter::Info);
     }
 }
 
