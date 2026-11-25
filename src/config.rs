@@ -57,13 +57,15 @@ pub enum FullscreenVolume {
     Off,
 }
 
-/// Spotify's Audio quality levels that Lyssna can play: Normal 96 kbps, High
-/// 160 kbps, Very high 320 kbps.
+/// Spotify's Audio quality levels: Normal 96 kbps, High 160 kbps, Very high
+/// 320 kbps, and Lossless, which only Spotify Soloist plays; Lyssna's own
+/// player and downloads use Very high in its place.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AudioQuality {
     Normal,
     High,
+    Lossless,
     #[default]
     #[serde(other)]
     VeryHigh,
@@ -74,7 +76,7 @@ impl AudioQuality {
         match self {
             Self::Normal => 96,
             Self::High => 160,
-            Self::VeryHigh => 320,
+            Self::VeryHigh | Self::Lossless => 320,
         }
     }
     /// The value Spotify's own prefs store for this level.
@@ -83,6 +85,7 @@ impl AudioQuality {
             Self::Normal => 2,
             Self::High => 3,
             Self::VeryHigh => 4,
+            Self::Lossless => 5,
         }
     }
 }
@@ -652,6 +655,9 @@ impl Settings {
         if !crate::soloist::supported() {
             self.soloist = false;
         }
+        if self.download_quality == AudioQuality::Lossless {
+            self.download_quality = AudioQuality::VeryHigh;
+        }
         if !["dark", "light", "system"].contains(&self.theme.as_str()) {
             self.theme = "dark".into();
         }
@@ -797,6 +803,23 @@ mod tests {
         FullscreenAlwaysShow, FullscreenVolume, LyricsAnimator, PinnedLyricsFooter, Settings,
         YearPosition,
     };
+    #[test]
+    fn lossless_is_spotify_level_five_and_never_a_download_quality() {
+        use super::AudioQuality;
+        let lossless: AudioQuality = serde_json::from_str("\"lossless\"").unwrap();
+        assert_eq!(lossless, AudioQuality::Lossless);
+        assert_eq!(lossless.spotify_level(), 5);
+        assert_eq!(lossless.kbps(), 320);
+        let mut settings = Settings {
+            audio_quality: AudioQuality::Lossless,
+            download_quality: AudioQuality::Lossless,
+            ..Settings::default()
+        };
+        settings.clean_lyrics_options();
+        assert_eq!(settings.audio_quality, AudioQuality::Lossless);
+        assert_eq!(settings.download_quality, AudioQuality::VeryHigh);
+    }
+
     #[test]
     fn library_play_times_take_only_spotify_contexts_and_local_files() {
         assert!(super::played_key("spotify:playlist:4123456789abcdefghijkl"));

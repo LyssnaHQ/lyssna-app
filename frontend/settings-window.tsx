@@ -712,14 +712,17 @@ export function SettingsWindow({
           label="Streaming quality"
           help={
             soloistPlays
-              ? "Higher sounds better and uses more data. Spotify Soloist picks this up the next time playback is paused."
-              : "Higher sounds better and uses more data. Changes from the next song."
+              ? "Higher sounds better and uses more data. Lossless needs Spotify Premium. Spotify Soloist picks this up the next time playback is paused."
+              : settings.audio_quality === "lossless"
+                ? "Lossless plays through Spotify Soloist. Lyssna's own player uses Very high until Soloist is on."
+                : "Higher sounds better and uses more data. Changes from the next song."
           }
-          keywords="audio quality bitrate kbps streaming sound very high data"
+          keywords="audio quality bitrate kbps streaming sound very high lossless flac data"
         >
           <QualitySelect
             label="Streaming quality"
             value={settings.audio_quality ?? "very_high"}
+            lossless={!!soloistPlays}
             onChange={(audio_quality) => onSettings({ audio_quality })}
           />
         </SettingRow>,
@@ -2302,10 +2305,13 @@ function MarkerColourRow({
 function QualitySelect({
   label,
   value,
+  lossless = false,
   onChange,
 }: {
   label: string;
   value: AudioQuality;
+  /** Offer Lossless, which only Spotify Soloist plays. */
+  lossless?: boolean;
   onChange: (value: AudioQuality) => void;
 }) {
   return (
@@ -2318,6 +2324,9 @@ function QualitySelect({
       <option value="normal">Normal (96 kbps)</option>
       <option value="high">High (160 kbps)</option>
       <option value="very_high">Very high (320 kbps)</option>
+      {(lossless || value === "lossless") && (
+        <option value="lossless">Lossless (up to 24-bit/44.1 kHz)</option>
+      )}
     </select>
   );
 }

@@ -666,4 +666,4 @@ export type SoloistStatus =
 
 export type PlaylistPrivacy = { private: boolean; on_profile: boolean };
 
-export type AudioQuality = "normal" | "high" | "very_high";
+export type AudioQuality = "normal" | "high" | "very_high" | "lossless";

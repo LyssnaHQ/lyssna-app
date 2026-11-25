@@ -17404,10 +17404,15 @@ test("Soloist greys out playback settings it cannot honour", async ({
   );
   await openSettings(page, "Playback");
   const row = page.locator(".setting-row", { hasText: "Audio output" });
+  const quality = page.getByLabel("Streaming quality", { exact: true });
   await expect(row).not.toHaveClass(/unavailable/);
+  await expect(quality.locator('option[value="lossless"]')).toHaveCount(0);
   await expect(page.locator(".soloist-refused")).toBeVisible();
   await page.getByLabel("Play through Spotify Soloist").check();
   await expect(row).toHaveClass(/unavailable/);
+  // Only Soloist plays Lossless.
+  await quality.selectOption("lossless");
+  await expect(quality).toHaveValue("lossless");
   await expect(row.locator(".setting-unavailable")).toContainText(
     "Spotify Soloist",
   );
