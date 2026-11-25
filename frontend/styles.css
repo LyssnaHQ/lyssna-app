@@ -4346,7 +4346,8 @@ small {
 }
 .lyrics-page[data-tools="awake"] > .lyrics-toolbar,
 .lyrics-toolbar:hover,
-.lyrics-toolbar:focus-within {
+.lyrics-toolbar:focus-within,
+.lyrics-toolbar:has([aria-expanded="true"]) {
   opacity: 1;
 }
 /* Hovering darkens the frosted bar without making it opaque. */
@@ -4439,6 +4440,9 @@ small {
   }
   .lyrics-toolbar:not(.reduce-motion *) [data-icon="lyrics_artwork_right"]:is(:hover, :focus-visible) .part-right {
     translate: 2px 0;
+  }
+  .lyrics-toolbar:not(.reduce-motion *) [data-icon="source"]:is(:hover, :focus-visible) .part-note {
+    translate: 0 -2px;
   }
   .lyrics-toolbar:not(.reduce-motion *) [data-icon="upload"]:is(:hover, :focus-visible) .part-arrow {
     translate: 0 -2.5px;
@@ -5194,6 +5198,15 @@ input[type="range"]:hover {
 }
 .song-menu > button.active {
   background: light-dark(#00000014, #ffffff14);
+}
+/* The lyrics source menu lists short names, so its rows stay tight. */
+.source-menu {
+  min-width: 180px;
+  padding: 4px;
+}
+.source-menu > button {
+  padding: 7px 10px;
+  font-size: 13px;
 }
 .song-menu .menu-chevron {
   margin-left: auto;
