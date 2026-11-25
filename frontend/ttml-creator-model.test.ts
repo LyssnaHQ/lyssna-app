@@ -83,6 +83,7 @@ import {
   hasJapanese,
   splitAllWords,
   splitJapanese,
+  mergeNext,
   splitMatching,
   splitUnit,
   toLyrics,
@@ -1428,6 +1429,30 @@ describe("TTML Creator word menu", () => {
     const english = parseText("hello there");
     expect(hasJapanese(english)).toBe(false);
     expect(splitJapanese(english)).toBe(english);
+  });
+
+  it("merges a syllable or word with the next one", () => {
+    const lines: CreatorLine[] = [
+      {
+        units: [
+          { text: "ba", joined: false, start: 1000, end: 1200, roman: "ba" },
+          { text: "by", joined: true, start: 1200, end: 1500, roman: "bi" },
+          { text: "go", joined: false, end: 1900 },
+        ],
+        background: false,
+        opposite: false,
+      },
+    ];
+    const syllables = mergeNext(lines, { line: 0, unit: 0 });
+    expect(syllables[0].units).toEqual([
+      { text: "baby", joined: false, start: 1000, end: 1500, roman: "ba|bi" },
+      { text: "go", joined: false, end: 1900 },
+    ]);
+    const words = mergeNext(syllables, { line: 0, unit: 0 });
+    expect(words[0].units).toEqual([
+      { text: "baby go", joined: false, start: 1000, end: 1900, roman: "ba|bi" },
+    ]);
+    expect(mergeNext(words, { line: 0, unit: 0 })).toBe(words);
   });
 
   it("splits every whole word and leaves split words alone", () => {

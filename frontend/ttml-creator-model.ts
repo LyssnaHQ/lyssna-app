@@ -2244,6 +2244,45 @@ export const duplicateLine = (lines: CreatorLine[], index: number) =>
       ]
     : lines;
 
+/**
+ * Combines the word or syllable at `at` with the one after it, timed from
+ * the first one's start to the second one's end. Separate words keep a space
+ * between them.
+ */
+export function mergeNext(lines: CreatorLine[], at: Cursor): CreatorLine[] {
+  const line = lines[at.line];
+  const first = line?.units[at.unit];
+  const second = line?.units[at.unit + 1];
+  if (!first || !second) return lines;
+  const roman = [first.roman, second.roman].filter(Boolean).join("|");
+  const merged: CreatorUnit = {
+    text: first.text + (second.joined ? "" : " ") + second.text,
+    joined: first.joined,
+    ...(roman && { roman }),
+    ...(roman && first.romanAuto && second.romanAuto && { romanAuto: true }),
+    ...(first.romanSpaced !== undefined && { romanSpaced: first.romanSpaced }),
+    ...((first.start ?? second.start) !== undefined && {
+      start: first.start ?? second.start,
+    }),
+    ...((second.end ?? first.end) !== undefined && {
+      end: second.end ?? first.end,
+    }),
+    ...(first.sungBy && { sungBy: first.sungBy }),
+  };
+  return lines.map((each, index) =>
+    index === at.line
+      ? {
+          ...each,
+          units: [
+            ...each.units.slice(0, at.unit),
+            merged,
+            ...each.units.slice(at.unit + 2),
+          ],
+        }
+      : each,
+  );
+}
+
 export function toggleJoin(lines: CreatorLine[], at: Cursor): CreatorLine[] {
   if (at.unit === 0) return lines;
   return lines.map((line, index) =>

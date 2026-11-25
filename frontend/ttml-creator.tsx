@@ -86,6 +86,7 @@ import {
   fixFromGenius,
   type GeniusChanges,
   bracketsToBackground,
+  mergeNext,
   splitAllWords,
   hasJapanese,
   splitJapanese,
@@ -1566,6 +1567,16 @@ export function TtmlCreator({
                   ? "Space before this syllable"
                   : "Join to the word before",
                 run: () => setLines(toggleJoin(lines, at)),
+              },
+            ]
+          : []),
+        ...(line.units[at.unit + 1]
+          ? [
+              {
+                label: line.units[at.unit + 1].joined
+                  ? "Merge with next syllable"
+                  : "Merge with next word",
+                run: () => restructure(mergeNext(lines, at)),
               },
             ]
           : []),
