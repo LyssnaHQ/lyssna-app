@@ -221,6 +221,24 @@ describe("TTML Creator model", () => {
     expect(applySections(lines, "[Chorus]\nnothing alike")).toBeUndefined();
   });
 
+  it("reads Genius headers naming only a rapper as their verses", () => {
+    const lines = timeAll(
+      "Grab a hundred\nPut them on a track\nIt's a bird up high\nParachute down low",
+    );
+    const tagged = applySections(
+      lines,
+      "[Intro: Dan Bull]\nGrab a hundred\n[Dan Bull]\nPut them on a track\n[Mat4yo]\nIt's a bird up high\n[Randolph]\nParachute down low",
+    )!;
+    expect(
+      tagged.map((line) => [line.part, line.singer]),
+    ).toEqual([
+      ["Intro", "Dan Bull"],
+      ["Verse", "Dan Bull"],
+      ["Verse", "Mat4yo"],
+      ["Verse", "Randolph"],
+    ]);
+  });
+
   it("lands a tap on the earlier line still being timed", () => {
     const lines = parseText("die and live it\nrip the fabric");
     lines[0].units[0] = { ...lines[0].units[0], start: 1000, end: 1200 };

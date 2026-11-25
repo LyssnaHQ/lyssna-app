@@ -322,8 +322,9 @@ function headerStyles(raw: string, voices: string[]) {
  */
 export function applySections(
   lines: CreatorLine[],
-  text: string,
+  genius: string,
 ): CreatorLine[] | undefined {
+  const text = namedVerses(genius);
   const ours: string[] = [];
   const lineOf: number[] = [];
   const firstWord = new Map<number, number>();
@@ -400,6 +401,25 @@ export function applySections(
     return section ? { ...rest, ...section } : rest;
   });
   return geniusVoices(tagged, text, headers);
+}
+
+/**
+ * Rap battles and cyphers head each verse on Genius with only who raps it,
+ * "[Dan Bull]"; those read as "[Verse: Dan Bull]". Typed lyrics keep such
+ * lines as unknown headers instead.
+ */
+function namedVerses(text: string) {
+  return text.replace(
+    /^([\uE000-\uE003]*)\[([^\]\n]+)\]([\uE000-\uE003]*)[ \t]*$/gm,
+    (line, open: string, header: string, close: string) => {
+      const name = unmark(header).replace(/\s+/g, " ").trim();
+      return sectionOf(`[${name}]`) ||
+        !/\p{L}/u.test(name) ||
+        /[:?]/.test(name)
+        ? line
+        : `${open}[Verse: ${header.trim()}]${close}`;
+    },
+  );
 }
 
 interface Token {
