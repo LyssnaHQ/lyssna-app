@@ -52,6 +52,7 @@ import { Cover, usePlaybackClock } from "./components";
 import type { AppState } from "./state";
 import type { AppleOriginal, Lyrics, PlayerRequest, Track } from "./types";
 import {
+  dismissDraft,
   forgetWorking,
   markWorking,
   setShowsPreview,
@@ -2617,6 +2618,7 @@ export function TtmlCreator({
   const submittable = !!track && (track.is_local ? !!localIsrc : !!track.id);
   const submit = async () => {
     if (!track || submitting) return;
+    const submitted = current.current;
     setSubmitting(true);
     try {
       const result = await rpc<LyssnaSubmission>("lyssna_submit", {
@@ -2630,6 +2632,19 @@ export function TtmlCreator({
           ? `${result.song_title} is live on Lyssna.`
           : `${result.kind === "edit" ? "Your edit to " : ""}${result.song_title} is waiting for review on Lyssna.`,
       );
+      // Published lyrics replace the draft, so the lyrics view shows them.
+      // A draft edited during the upload, or another song, stays open.
+      const latest = current.current;
+      if (
+        result.status === "approved" &&
+        latest.uri === track.uri &&
+        latest.lines === submitted.lines &&
+        latest.text === submitted.text &&
+        latest.metadata === submitted.metadata
+      ) {
+        dismissDraft(track.uri);
+        onClose?.();
+      }
     } catch (error) {
       notify(String(error), true);
     } finally {

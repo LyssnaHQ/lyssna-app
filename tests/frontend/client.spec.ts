@@ -1081,7 +1081,12 @@ async function startClient(
           if (command === "audio_outputs")
             return ["Test speakers", "Test headphones"];
           if (command === "lyssna_submit")
-            return { id: "s1", song_title: args.track.name, kind: "new", status: "pending" };
+            return {
+              id: "s1",
+              song_title: args.track.name,
+              kind: "new",
+              status: (window as any).__lyssnaSubmitStatus ?? "pending",
+            };
           if (command === "lyssna_account") return (window as any).__lyssnaAccount ?? null;
           if (command === "lyssna_review") return (window as any).__lyssnaReview?.(args);
           if (command === "resolve_track")
@@ -17901,6 +17906,56 @@ test("TTML Creator uploads an edit of Apple Music's sync as one", async ({
       ),
     )
     .toEqual({ apple_id: "1440857781", sha256: "a".repeat(64) });
+});
+
+test("TTML Creator closes to the lyrics after an upload goes live", async ({
+  page,
+}) => {
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await page.evaluate(() => {
+    (window as any).__lyssnaSubmitStatus = "approved";
+    (window as any).__clientTest.emit({
+      type: "lyrics",
+      uri: "spotify:track:0123456789abcdefghijkl",
+      lyrics: {
+        source: "lrclib",
+        synced: true,
+        instrumental: false,
+        lines: [
+          {
+            text: "Test line one",
+            start_ms: 1000,
+            end_ms: 2200,
+            background: false,
+            opposite: false,
+            words: [
+              { text: "Test ", start_ms: 1000, end_ms: 1400 },
+              { text: "line ", start_ms: 1400, end_ms: 1800 },
+              { text: "one", start_ms: 1800, end_ms: 2200 },
+            ],
+            translation: "",
+            romanization: "",
+          },
+        ],
+      },
+    });
+  });
+  await openSettings(page, "Sources");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page.locator(".player-extras").getByTitle("TTML Creator", { exact: true }).click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  await expect(creator.locator(".ttml-line").first()).toBeVisible();
+  await creator.getByRole("button", { name: "Start from current lyrics" }).click();
+  await creator.getByRole("button", { name: "Submit to Lyssna" }).click();
+  await expect(page.getByText(/is live on Lyssna\./)).toBeVisible();
+  await expect(creator).toHaveCount(0);
+  await expect(page.locator(".lyrics-page")).toBeVisible();
+  await expect(page.locator(".ttml-draft-banner")).toHaveCount(0);
 });
 
 test("TTML Creator previews an untouched draft until Show preview is off", async ({
