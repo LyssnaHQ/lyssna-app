@@ -718,6 +718,9 @@ impl Desktop {
             soloist_link: Mutex::new(None),
             events_in: worker.events_in.clone(),
         });
+        if let Ok(Some(profile)) = crate::native::saved_profile() {
+            crate::soloist::set_account(&profile.id);
+        }
         sync_soloist(&inner);
         watch_soloist(inner.clone(), app.clone());
         inner.commands.send(Command::NativeLogin {
@@ -939,6 +942,15 @@ impl Desktop {
                                 snapshot.home_loading = false;
                                 snapshot.home_error.clear();
                                 pump.home_generation.fetch_add(1, Ordering::SeqCst);
+                            }
+                            // Soloist restarts in the new account's own folder.
+                            if crate::soloist::set_account(&profile.id) && snapshot.settings.soloist
+                            {
+                                let restart = pump.clone();
+                                thread::spawn(move || {
+                                    set_soloist(&restart, false);
+                                    sync_soloist(&restart);
+                                });
                             }
                             snapshot.profile = Some(profile.clone());
                             snapshot.login_issue = None;
@@ -2156,13 +2168,19 @@ fn saved_accounts() -> Vec<Profile> {
 /// Closes the current account, keeping it signed in here, and signs in a
 /// saved one (by ID) or opens the browser for a new one (no ID).
 #[tauri::command]
-fn switch_account(id: Option<String>, state: State<'_, Desktop>) -> std::result::Result<(), String> {
+fn switch_account(
+    id: Option<String>,
+    state: State<'_, Desktop>,
+) -> std::result::Result<(), String> {
     let result = || -> Result<()> {
         let mut snapshot = lock(&state.0.snapshot)?;
         ensure!(!snapshot.login_pending, "Sign-in already active");
         if let Some(id) = &id {
             ensure!(
-                snapshot.profile.as_ref().is_none_or(|profile| &profile.id != id),
+                snapshot
+                    .profile
+                    .as_ref()
+                    .is_none_or(|profile| &profile.id != id),
                 "Already using this account"
             );
             let profile = crate::native::saved_accounts()
@@ -2178,7 +2196,10 @@ fn switch_account(id: Option<String>, state: State<'_, Desktop>) -> std::result:
         *cancelled = Arc::new(AtomicBool::new(false));
         crate::auth::PICK_ACCOUNT.store(id.is_none(), Ordering::Release);
         let restoring = id.is_some();
-        state.0.commands.send(Command::SwitchAccount { restoring })?;
+        state
+            .0
+            .commands
+            .send(Command::SwitchAccount { restoring })?;
         state.0.commands.send(Command::NativeLogin {
             restoring,
             cancelled: cancelled.clone(),

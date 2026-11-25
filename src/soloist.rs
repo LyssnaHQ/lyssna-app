@@ -132,8 +132,52 @@ fn root() -> Result<PathBuf> {
     Ok(crate::config::data_dir()?.join("soloist"))
 }
 
+static ACCOUNT: Mutex<Option<String>> = Mutex::new(None);
+
+/// The Spotify account Soloist plays for. Each account keeps its own
+/// Soloist sign-in, so switching accounts never undoes another's pairing.
+/// True when the account changed.
+pub fn set_account(id: &str) -> bool {
+    let Ok(mut account) = ACCOUNT.lock() else {
+        return false;
+    };
+    if account.as_deref() == Some(id) {
+        return false;
+    }
+    *account = Some(id.to_owned());
+    true
+}
+
+fn account() -> Option<String> {
+    ACCOUNT.lock().ok().and_then(|account| account.clone())
+}
+
+fn account_data(root: &Path, account: Option<&str>) -> PathBuf {
+    match account.filter(|id| {
+        !id.is_empty()
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    }) {
+        Some(id) => {
+            let dir = root.join("accounts").join(id);
+            // The single sign-in from before accounts had their own moves to
+            // the first account Soloist plays for.
+            let shared = root.join("data");
+            if !dir.exists() && shared.is_dir() {
+                let _ = fs::create_dir_all(root.join("accounts"));
+                if let Err(error) = fs::rename(&shared, &dir) {
+                    log::warn!("Soloist: cannot move its sign-in to the account folder: {error}");
+                }
+            }
+            dir
+        }
+        None => root.join("data"),
+    }
+}
+
 pub fn data_dir() -> Result<PathBuf> {
-    Ok(root()?.join("data"))
+    Ok(account_data(&root()?, account().as_deref()))
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -721,7 +765,11 @@ fn supervise(status: &Mutex<Status>, stop: &AtomicBool) {
         );
         return;
     };
-    let (bin, data, cache) = (root.join("bin"), root.join("data"), root.join("cache"));
+    let (bin, data, cache) = (
+        root.join("bin"),
+        account_data(&root, account().as_deref()),
+        root.join("cache"),
+    );
     let job = job::Job::new().ok();
     let mut checked: Option<Instant> = None;
     let mut failures = 0u32;
@@ -1046,6 +1094,27 @@ mod tests {
         let merged = merge_prefs(sample);
         assert!(!merged.contains('\r'));
         assert!(merged.contains("audio.normalize_v2=false\n"));
+    }
+
+    #[test]
+    fn each_account_keeps_its_own_soloist_sign_in() {
+        let root =
+            std::env::temp_dir().join(format!("lyssna-soloist-accounts-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("data")).unwrap();
+        fs::write(root.join("data").join("session"), "first").unwrap();
+
+        let first = account_data(&root, Some("first"));
+        assert_eq!(first, root.join("accounts").join("first"));
+        assert_eq!(fs::read_to_string(first.join("session")).unwrap(), "first");
+        assert!(!root.join("data").exists());
+
+        let second = account_data(&root, Some("second"));
+        assert_eq!(second, root.join("accounts").join("second"));
+        assert!(!second.exists());
+        assert_eq!(account_data(&root, Some("../up")), root.join("data"));
+        assert_eq!(account_data(&root, None), root.join("data"));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
