@@ -472,8 +472,13 @@ fn same_recording(ttml: &str, duration_ms: u64) -> bool {
     duration_ms == 0 || length.abs_diff(duration_ms) <= TOLERANCE_MS
 }
 
+/// Only Apple's word-by-word syncs are named as the original of an edit;
+/// line-by-line ones are just where a sync starts and get no credit.
 fn apple_original(apple_id: Option<String>, ttml: &str) -> Option<crate::lyrics::AppleOriginal> {
     use sha2::{Digest, Sha256};
+    if !word_synced(ttml) {
+        return None;
+    }
     let apple_id = apple_id
         .filter(|id| (1..=15).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_digit()))?;
     let sha256 = Sha256::digest(ttml.as_bytes())
@@ -481,6 +486,19 @@ fn apple_original(apple_id: Option<String>, ttml: &str) -> Option<crate::lyrics:
         .map(|byte| format!("{byte:02x}"))
         .collect();
     Some(crate::lyrics::AppleOriginal { apple_id, sha256 })
+}
+
+/// Whether a TTML times its words: a line holds a timed span.
+fn word_synced(ttml: &str) -> bool {
+    roxmltree::Document::parse(ttml).is_ok_and(|document| {
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("p"))
+            .any(|line| {
+                line.descendants()
+                    .any(|span| span.has_tag_name("span") && span.attribute("begin").is_some())
+            })
+    })
 }
 
 /// The song's offset for this platform moves every timestamp.
@@ -648,14 +666,19 @@ mod tests {
 
     #[test]
     fn apple_original_names_the_sync_by_id_and_hash() {
-        let original = apple_original(Some("1440857781".into()), "abc").unwrap();
+        use sha2::{Digest, Sha256};
+        const WORD_SYNCED: &str = r#"<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="1" end="2"><span begin="1" end="2">One</span></p></div></body></tt>"#;
+        const LINE_SYNCED: &str = r#"<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="1" end="2">One</p></div></body></tt>"#;
+        let original = apple_original(Some("1440857781".into()), WORD_SYNCED).unwrap();
         assert_eq!(original.apple_id, "1440857781");
         assert_eq!(
             original.sha256,
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            format!("{:x}", Sha256::digest(WORD_SYNCED.as_bytes()))
         );
-        assert!(apple_original(Some("not-a-number".into()), "abc").is_none());
-        assert!(apple_original(None, "abc").is_none());
+        assert!(apple_original(Some("not-a-number".into()), WORD_SYNCED).is_none());
+        assert!(apple_original(None, WORD_SYNCED).is_none());
+        // Line-by-line Apple lyrics are never named as an edit's original.
+        assert!(apple_original(Some("1440857781".into()), LINE_SYNCED).is_none());
     }
 
     #[test]
