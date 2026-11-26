@@ -85,6 +85,7 @@ import {
   type VocalGap,
   wordGroups,
   vocalGap,
+  vocalEnd,
   lineBlur,
   tuneMotion,
 } from "./lyric-motion";
@@ -545,7 +546,12 @@ export function usePlaybackClock(
   state: Pick<AppState, "playback" | "observed_at" | "clock_revision"> &
     Partial<Pick<AppState, "local_device_name" | "playback_rate">>,
   stepMs = 0,
+  /** Renders again only when this changes with song time, instead of on
+   *  every frame. */
+  keyOf?: (position: number) => unknown,
 ) {
+  const keyed = useRef(keyOf);
+  keyed.current = keyOf;
   const clock = useRef(new PlaybackClock());
   const [time, setTime] = useState(performance.now());
   const native = state.local_device_name
@@ -566,13 +572,19 @@ export function usePlaybackClock(
     if (!state.playback.is_playing) return;
     let frame = 0,
       shown = 0,
-      step = -1;
+      step = -1,
+      key: unknown;
     const tick = (time: number) => {
-      const due = stepMs
-        ? Math.floor(clock.current.read(time) / stepMs) !== step
-        : frameDue(shown, time);
+      const keyOf = keyed.current;
+      const next = keyOf ? keyOf(clock.current.read(time)) : undefined;
+      const due = keyOf
+        ? next !== key
+        : stepMs
+          ? Math.floor(clock.current.read(time) / stepMs) !== step
+          : frameDue(shown, time);
       if (due) {
         shown = time;
+        key = next;
         if (stepMs) step = Math.floor(clock.current.read(time) / stepMs);
         setTime(time);
       }
@@ -595,14 +607,80 @@ export function usePlaybackClock(
   };
 }
 
-/** The song position lyrics follow: below zero while a held song waits. */
-export function useLyricPosition(
+/** Lyrics render again at least this often while a song plays, so a held
+ *  word never looks like a jump in song time. */
+const LYRIC_RENDER_MS = 250;
+/** How often a countdown between lines moves. */
+const COUNTDOWN_RENDER_MS = 33;
+
+/**
+ * When lyrics must render again as the song plays: as a line or word
+ * starts or ends, through a countdown, and a few times a second. The
+ * animator moves words between those on its own. Undefined where every
+ * frame is needed, as for the highlighter's pen.
+ */
+export function lyricMoments(
+  lyrics: Lyrics | null | undefined,
+  settings: Settings,
+): ((time: number) => string) | undefined {
+  if (!lyrics?.synced || settings.lyrics_highlighter) return;
+  const early = settings.lyrics_early_scroll
+    ? (settings.lyrics_early_scroll_ms ?? 200)
+    : 0;
+  const marks = new Set<number>();
+  for (const line of lyrics.lines) {
+    for (const at of [line.start_ms, line.end_ms, vocalEnd(line)]) {
+      marks.add(at);
+      if (early) marks.add(at - early);
+    }
+    for (const word of line.words) {
+      marks.add(word.start_ms);
+      marks.add(word.end_ms);
+    }
+  }
+  const sorted = Float64Array.from(marks).sort();
+  return (time) => {
+    let low = 0,
+      high = sorted.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (sorted[middle] <= time) low = middle + 1;
+      else high = middle;
+    }
+    const step = vocalGap(lyrics.lines, time)
+      ? Math.floor(time / COUNTDOWN_RENDER_MS)
+      : Math.floor(time / LYRIC_RENDER_MS);
+    return `${low}:${step}`;
+  };
+}
+
+/** The song position lyrics follow, below zero while a held song waits,
+ *  rendered as `lyrics` need it, with a reader for every frame between. */
+export function useLyricClock(
   state: Parameters<typeof usePlaybackClock>[0] & Pick<AppState, "settings">,
+  lyrics: Lyrics | null | undefined,
 ) {
-  const { position, wait } = usePlaybackClock(state);
-  return (
-    position - wait + lyricOffset(state.settings, state.playback.item?.uri)
+  const offset = lyricOffset(state.settings, state.playback.item?.uri);
+  const { settings } = state;
+  const moments = useMemo(
+    () => lyricMoments(lyrics, settings),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      lyrics,
+      settings.lyrics_highlighter,
+      settings.lyrics_early_scroll,
+      settings.lyrics_early_scroll_ms,
+    ],
   );
+  const { position, wait, read } = usePlaybackClock(
+    state,
+    0,
+    moments && ((at) => moments(at + offset)),
+  );
+  const time = position - wait + offset;
+  const shift = offset - wait;
+  const readTime = useCallback(() => read() + shift, [read, shift]);
+  return { time, readTime: wait ? undefined : readTime };
 }
 
 /** A clicked Space Gravity word starts this far early, so a device's
@@ -612,6 +690,7 @@ const lyricSeekTarget = (ms: number) => Math.max(0, ms - SEEK_FADE_LEAD_MS);
 export function LyricsDisplay({
   lyrics,
   positionMs,
+  readTime,
   playing = true,
   settings,
   onSeek,
@@ -621,6 +700,8 @@ export function LyricsDisplay({
 }: {
   lyrics: Lyrics;
   positionMs: number;
+  /** Song time on every frame, for words to move between renders. */
+  readTime?: () => number;
   playing?: boolean;
   settings: Settings;
   onSeek: (ms: number) => void;
@@ -795,6 +876,11 @@ export function LyricsDisplay({
     if (positionJumped || cueLine) animator.current?.reset();
     animator.current?.update(lyricTime);
   }, [lyricTime, cueLine, lyrics, settings.reduce_motion]);
+  const follows = lyrics.synced && playing && !cueLine ? readTime : undefined;
+  useLayoutEffect(() => {
+    animator.current?.follow(follows);
+    return () => animator.current?.follow(undefined);
+  }, [follows, lyrics, settings.reduce_motion, settings.lyrics_simple, tuning]);
   // Romanization, translations or a word filter change only the words: the
   // view stays on the current line instead of sliding to where it rewraps.
   const timing = useMemo(
@@ -1615,7 +1701,7 @@ function TimedLyricsPreview({
   state: AppState;
   onPlayer: (request: PlayerRequest) => void;
 }) {
-  const current = useLyricPosition(state);
+  const { time: current, readTime } = useLyricClock(state, state.lyrics);
   // Re-render when romanized lyrics finish converting.
   useRomanization();
   const lyrics = filterWords(
@@ -1632,6 +1718,7 @@ function TimedLyricsPreview({
       lyrics={lyrics}
       writers={state.playback.item?.songwriters}
       positionMs={current}
+      readTime={readTime}
       playing={state.playback.is_playing}
       settings={state.settings}
       compact
@@ -2024,10 +2111,40 @@ function SongLyricsPage({
   queueOpen?: boolean;
   children?: ReactNode;
 } & Links) {
-  const { position: songTime, wait } = usePlaybackClock(state),
-    current =
-      songTime - wait + lyricOffset(state.settings, state.playback.item?.uri),
+  const offset = lyricOffset(state.settings, state.playback.item?.uri);
+  const durationMs = state.playback.item?.duration_ms ?? 0;
+  const seekStepMs = Math.min(250, Math.max(50, durationMs / 1500));
+  // Space Gravity moves with song time on every frame; plain lyrics render
+  // as lines and words change and their animator moves words in between.
+  const moments = useMemo(
+    () =>
+      state.settings.space_gravity
+        ? undefined
+        : lyricMoments(state.lyrics, state.settings),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      state.lyrics,
+      state.settings.space_gravity,
+      state.settings.lyrics_highlighter,
+      state.settings.lyrics_early_scroll,
+      state.settings.lyrics_early_scroll_ms,
+    ],
+  );
+  const {
+    position: songTime,
+    wait,
+    read,
+  } = usePlaybackClock(
+    state,
+    0,
+    moments &&
+      ((at) =>
+        `${moments(at + offset)}|${Math.floor(at / seekStepMs)}|${durationMs - at <= UP_NEXT_LEAD_MS}`),
+  );
+  const current = songTime - wait + offset,
     track = state.playback.item;
+  const shift = offset - wait;
+  const readTime = useCallback(() => read() + shift, [read, shift]);
   const upNext = useUpNext(state);
   const upNextShown =
     !queueOpen &&
@@ -2057,13 +2174,9 @@ function SongLyricsPage({
     if (landing && landed) setLanding(null);
   }, [landing, landed]);
   const seekShown = seeking ?? (landed ? songTime : landing!.to);
-  // The lyrics need every frame; the bar only needs to move once it
-  // would show, or it restyles the page on every frame.
-  const seekStepMs = Math.min(
-      250,
-      Math.max(50, (track?.duration_ms ?? 0) / 1500),
-    ),
-    seekBar = seeking ?? Math.floor(seekShown / seekStepMs) * seekStepMs;
+  // The bar only needs to move once it would show, or it restyles the page
+  // on every frame Space Gravity renders.
+  const seekBar = seeking ?? Math.floor(seekShown / seekStepMs) * seekStepMs;
   const commitSeek = () => {
     if (seeking === null) return;
     onPlayer({ command: "seek", positionMs: seeking });
@@ -2524,6 +2637,7 @@ function SongLyricsPage({
                 lyrics={lyrics}
                 writers={state.playback.item?.songwriters}
                 positionMs={current}
+                readTime={wait ? undefined : readTime}
                 playing={state.playback.is_playing}
                 settings={state.settings}
                 upNext={upNextCard}

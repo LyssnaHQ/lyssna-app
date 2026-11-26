@@ -75,6 +75,9 @@ export class LyricAnimator {
   private time = 0;
   private last = performance.now();
   private frame = 0;
+  /** Song time while playing, read each frame so lyrics need not render
+   *  again for words to move. */
+  private clock?: () => number;
   constructor(
     private lyrics: Lyrics,
     private line: (index: number) => HTMLElement | null,
@@ -88,6 +91,12 @@ export class LyricAnimator {
   update(time: number) {
     this.time = time;
     this.run();
+  }
+  /** Reads song time on every frame from `clock`, or stops when undefined. */
+  follow(clock?: () => number) {
+    if (clock === this.clock) return;
+    this.clock = clock;
+    if (clock) this.run();
   }
   /** Drops all motion so text snaps to its resting state, as after a jump
    * in song time. */
@@ -112,6 +121,7 @@ export class LyricAnimator {
   }
 
   dispose() {
+    this.clock = undefined;
     cancelAnimationFrame(this.frame);
     this.reset();
   }
@@ -125,7 +135,9 @@ export class LyricAnimator {
     }
     const seconds = Math.min(0.1, Math.max(0, (now - this.last) / 1000));
     this.last = now;
-    this.frame = this.step(seconds) ? requestAnimationFrame(this.run) : 0;
+    if (this.clock) this.time = this.clock();
+    this.frame =
+      this.step(seconds) || this.clock ? requestAnimationFrame(this.run) : 0;
   };
   /** Rests a line's words. A finished line keeps their layers: dropping
    * them redraws the text a fraction of a pixel off, so its words visibly

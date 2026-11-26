@@ -18,7 +18,7 @@ import { useMotionCover } from "./motion-cover";
 import {
   LyricsDisplay,
   NO_LYRICS,
-  useLyricPosition,
+  useLyricClock,
   usePosition,
 } from "./components";
 import { displayLyrics } from "./word-sync";
@@ -240,12 +240,13 @@ function PopoutLyrics({
   lyrics: NonNullable<typeof emptyState.lyrics>;
   onSeek: (ms: number) => void;
 }) {
-  const current = useLyricPosition(state);
+  const { time: current, readTime } = useLyricClock(state, lyrics);
   return (
     <LyricsDisplay
       lyrics={lyrics}
       writers={state.playback.item?.songwriters}
       positionMs={current}
+      readTime={readTime}
       playing={state.playback.is_playing}
       settings={state.settings}
       onSeek={onSeek}
