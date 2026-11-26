@@ -17525,8 +17525,9 @@ test("reviewers see waiting submissions and decide them from the TTML Creator", 
   });
   await expect(button).toContainText("1");
   await button.click();
-  await expect(page.getByRole("region", { name: "TTML Creator" })).toHaveCount(0);
-  const queue = page.getByRole("region", { name: "Review submissions" });
+  // Reviewing opens in the TTML Creator's side panel, not a page of its own.
+  await expect(page.getByRole("region", { name: "TTML Creator" })).toBeVisible();
+  const queue = page.getByRole("complementary", { name: "Review" });
   await expect(queue).toContainText("Come & Go (with Marshmello)");
   await expect(queue).toContainText("Juice WRLD, Marshmello");
   await expect(queue).toContainText("New · @newcomer · Tier 1 · 3h ago");
@@ -17628,7 +17629,7 @@ test("instrumental submissions review without lyrics and long titles stay in the
     .getByRole("button", { name: "Close settings" })
     .click();
   await page.getByRole("button", { name: "Review submissions, 1 waiting" }).click();
-  const queue = page.getByRole("region", { name: "Review submissions" });
+  const queue = page.getByRole("complementary", { name: "Review" });
   await expect(queue).toContainText("Instrumental · @rain · Tier 3");
   await queue.locator(".review-list button").first().click();
   const panel = page.getByRole("complementary", { name: "Review" });

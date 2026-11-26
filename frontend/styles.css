@@ -8326,40 +8326,6 @@ button.contributor-avatar {
   pointer-events: none;
 }
 
-.review-page {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: min(720px, 100%);
-  margin: 0 auto;
-  padding: 24px;
-  color: #f3f3f3;
-}
-.review-page .review-head h3 {
-  font-size: 24px;
-}
-.review-page button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 6px 12px;
-  border: 0;
-  border-radius: 8px;
-  color: #f3f3f3;
-  background: #ffffff12;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.review-page button:hover {
-  background: #ffffff21;
-}
-.review-page .review-lanes button.active {
-  color: #000;
-  background: #f3f3f3;
-}
-.review-page .review-list button,
 .ttml-creator .review-list button {
   display: flex;
   align-items: center;

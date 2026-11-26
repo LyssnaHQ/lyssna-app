@@ -265,9 +265,7 @@ import {
   canMarkInstrumental,
   canReview,
   reviewQueue,
-  type ReviewSubmission,
 } from "./review-api";
-import { ReviewQueue } from "./review-panel";
 import { libraryTree, type LibraryEntry } from "./library-tree";
 import {
   entryAdded,
@@ -307,7 +305,7 @@ const isTextInput = (target: EventTarget | null) =>
   (!!target.closest('textarea,select,[contenteditable="true"]') ||
     (target instanceof HTMLInputElement && !NON_TEXT_INPUTS.has(target.type)));
 
-type Center = "browse" | "lyrics" | "profile" | "ttml" | "review";
+type Center = "browse" | "lyrics" | "profile" | "ttml";
 const LAYOUT_BEFORE_TTML = "lyssna.layout-before-ttml";
 // A history entry opened from the lyrics view; Back returns to the lyrics.
 const FROM_LYRICS = "lyrics>";
@@ -753,8 +751,6 @@ function App() {
   const [lyssnaTier, setLyssnaTier] = useState(0);
   const marksInstrumental = canMarkInstrumental(lyssnaRole, lyssnaTier);
   const [reviewWaiting, setReviewWaiting] = useState(0);
-  const [reviewPick, setReviewPick] = useState<ReviewSubmission>();
-  const [reviewInCreator, setReviewInCreator] = useState(false);
   const [reviewRestore, setReviewRestore] = useState(0);
   const [reviewCheck, setReviewCheck] = useState(0);
   // Lyssna sends reviewers no notice of new submissions, so the app counts
@@ -3962,9 +3958,11 @@ function App() {
                   : "Review submissions"
               }
               onClick={() => {
-                if (center === "ttml" && reviewInCreator)
-                  setReviewRestore((count) => count + 1);
-                else setCenter("review");
+                // Reviewing happens in the TTML Creator's side panel.
+                if (!state.settings.ttml_creator)
+                  updateSettings({ ttml_creator: true });
+                setCenter("ttml");
+                setReviewRestore((count) => count + 1);
               }}
             >
               <ClipboardCheck size={20} />
@@ -4284,9 +4282,7 @@ function App() {
               reviewer={reviewer}
               marksInstrumental={!!lyssnaRole}
               unmarksInstrumental={marksInstrumental}
-              reviewPick={reviewPick}
               reviewRestore={reviewRestore}
-              onReviewOpen={setReviewInCreator}
               onReviewed={() => setReviewCheck((count) => count + 1)}
               renderPreview={(lyrics, live) => (
                 <LyricsPage
@@ -4522,16 +4518,6 @@ function App() {
                 </button>
               </div>
             </LyricsPage>
-          ) : center === "review" ? (
-            <section className="review-page" aria-label="Review submissions">
-              <ReviewQueue
-                refresh={reviewCheck}
-                onPick={(submission) => {
-                  setReviewPick({ ...submission });
-                  setCenter("ttml");
-                }}
-              />
-            </section>
           ) : center === "profile" ? (
             profileView && (
               <ProfilePage

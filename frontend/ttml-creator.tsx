@@ -2499,6 +2499,13 @@ export function TtmlCreator({
     rememberedEdit.current = reviewEdit;
   }, [reviewEdit]);
   const pendingReview = useRef<ReviewOpen | undefined>(undefined);
+  // A song played from the review panel becomes the creator's song.
+  const pendingSong = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!pendingSong.current || playing?.uri !== pendingSong.current) return;
+    pendingSong.current = undefined;
+    if (track?.uri !== playing.uri) setTrack(playing);
+  }, [playing, track]);
   const [reviewTick, setReviewTick] = useState(0);
   const openReview = (open: ReviewOpen) => {
     pendingReview.current = open;
@@ -2566,7 +2573,10 @@ export function TtmlCreator({
           : undefined
       }
       editorTtml={ttml}
-      onPlay={(uri) => onPlayer({ command: "play", uri })}
+      onPlay={(uri) => {
+        pendingSong.current = uri;
+        onPlayer({ command: "play", uri });
+      }}
       onOpen={openReview}
       onParse={(text) =>
         onParse(

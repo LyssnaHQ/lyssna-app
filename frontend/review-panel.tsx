@@ -440,7 +440,12 @@ function ReviewDetail({
         <button
           disabled={!uri}
           title={uri === null ? "No Spotify link for this song" : undefined}
-          onClick={() => uri && onPlay(uri)}
+          onClick={() => {
+            if (!uri) return;
+            // Playing a submission opens it, unless it already is open.
+            if (ttml && !editing) onOpen({ submission, uri, ttml });
+            else onPlay(uri);
+          }}
         >
           <Play size={14} /> {playingIt ? "Playing" : "Play song"}
         </button>
