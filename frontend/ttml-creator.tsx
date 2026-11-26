@@ -86,6 +86,8 @@ import {
   fixFromGenius,
   type GeniusChanges,
   bracketsToBackground,
+  applyGeniusLyrics,
+  type GeniusKind,
   mergeNext,
   splitAllWords,
   hasJapanese,
@@ -831,31 +833,46 @@ export function TtmlCreator({
       )
       .finally(() => setFetching(false));
   };
-  const sectionsFromGenius = () => {
+  const helpFromGenius = (kind: GeniusKind) => {
     if (!track || fetching) return;
     const asked = track.uri;
     setFetching(true);
     rpc<string>("genius_lyrics", { track, styled: true })
       .then((found) => {
         if (geniusFor.current !== asked) return;
-        const tagged = applySections(lines, found);
-        if (!tagged) {
-          notify("Genius has no sections that match these lines.", true);
+        if (kind === "sections") {
+          const tagged = applySections(lines, found);
+          if (!tagged) {
+            notify("Genius has no sections that match these lines.", true);
+            return;
+          }
+          setLines(tagged);
+          setReview({
+            before: lines,
+            genius: found,
+            changes: geniusChanges(lines, tagged, found, kind),
+          });
           return;
         }
-        setLines(tagged);
+        // Missing lines and differences are worth a look even when no
+        // line changed.
+        const fixed = applyGeniusLyrics(lines, found) ?? lines;
+        if (fixed !== lines) setLines(fixed);
         setReview({
           before: lines,
           genius: found,
-          changes: geniusChanges(lines, tagged, found),
+          changes: geniusChanges(lines, fixed, found, kind),
         });
       })
       .catch((error) =>
-        notify(`Couldn't get sections from Genius: ${error}`, true),
+        notify(
+          `Couldn't get ${kind === "sections" ? "sections" : "lyrics"} from Genius: ${error}`,
+          true,
+        ),
       )
       .finally(() => setFetching(false));
   };
-  // What Sections from Genius changed, open until it's kept, undone or
+  // What Sections or Lyrics fixes from Genius changed, open until it's kept, undone or
   // the draft is edited (which keeps it).
   const [ignoredGenius, setIgnoredGenius] = useState<string[]>(() => {
     try {
@@ -882,7 +899,7 @@ export function TtmlCreator({
             ...review,
             shown: lines,
             edited: true,
-            changes: geniusChanges(review.before, lines, review.genius),
+            changes: geniusChanges(review.before, lines, review.genius, review.changes.kind),
           }
         : { ...review, shown: lines },
     );
@@ -917,10 +934,21 @@ export function TtmlCreator({
           <button
             role="menuitem"
             disabled={!lines.length}
-            title="Names sections like Chorus and Bridge on these lines and keeps every timing"
+            title="Moves bracketed words to background vocals, matches capitals and finds lines your draft lacks; keeps every timing"
             onClick={() => {
               setGeniusOpen(false);
-              sectionsFromGenius();
+              helpFromGenius("lyrics");
+            }}
+          >
+            Fix lyrics from Genius
+          </button>
+          <button
+            role="menuitem"
+            disabled={!lines.length}
+            title="Names sections like Chorus and Bridge, and who sings them, on these lines and keeps every timing"
+            onClick={() => {
+              setGeniusOpen(false);
+              helpFromGenius("sections");
             }}
           >
             Sections from Genius
@@ -4217,7 +4245,7 @@ export function TtmlCreator({
             setLines(next);
             setReview({
               ...review,
-              changes: geniusChanges(review.before, next, review.genius),
+              changes: geniusChanges(review.before, next, review.genius, review.changes.kind),
               shown: undefined,
             });
           }}
@@ -4230,7 +4258,7 @@ export function TtmlCreator({
             setLines(next);
             setReview({
               ...review,
-              changes: geniusChanges(review.before, next, review.genius),
+              changes: geniusChanges(review.before, next, review.genius, review.changes.kind),
               shown: undefined,
             });
           }}
@@ -4239,7 +4267,7 @@ export function TtmlCreator({
             setLines(next);
             setReview({
               ...review,
-              changes: geniusChanges(review.before, next, review.genius),
+              changes: geniusChanges(review.before, next, review.genius, review.changes.kind),
               shown: undefined,
             });
           }}

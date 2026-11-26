@@ -400,7 +400,22 @@ export function applySections(
     const section = parts.get(index);
     return section ? { ...rest, ...section } : rest;
   });
-  return geniusVoices(tagged, text, headers);
+  return geniusVoices(tagged, text, headers, "sections");
+}
+
+/**
+ * Lyrics fixes from Genius on a synced draft: what Genius brackets moves to
+ * background lines, lines start with Genius's capitals, and commas left at a
+ * line's end go. Sections, words and timings stay. Undefined when nothing
+ * changed.
+ */
+export function applyGeniusLyrics(
+  lines: CreatorLine[],
+  genius: string,
+): CreatorLine[] | undefined {
+  const text = namedVerses(genius);
+  const fixed = geniusVoices(lines, text, styledHeaders(text), "lyrics");
+  return JSON.stringify(fixed) === JSON.stringify(lines) ? undefined : fixed;
 }
 
 /**
@@ -975,8 +990,10 @@ function geniusVoices(
   placed: CreatorLine[],
   text: string,
   headers: Map<string, { italic?: string; bold?: string }>,
+  kind: GeniusKind,
 ): CreatorLine[] {
   const { tokensOf, match, groupSize } = alignGenius(placed, text, headers);
+  const sections = kind === "sections";
 
   // Placing sections skips Genius's bracketed words, so a section whose
   // first lines the draft sings from them ("Waking something ancient")
@@ -988,7 +1005,7 @@ function geniusVoices(
   const tagged = [...placed];
   tagged.forEach((line, index) => {
     const at = sectionOfLine[index];
-    if (!line.part || at === undefined) return;
+    if (!sections || !line.part || at === undefined) return;
     let start = index;
     for (let before = index - 1; before >= 0; before--) {
       if (tagged[before].part) break;
@@ -1007,22 +1024,24 @@ function geniusVoices(
   });
 
   const voicedLines = tagged.map((unpunctuated, index) => {
-    // Genius ends a line where a draft split it after a comma ("廻れ、").
-    const original = {
-      ...unpunctuated,
-      units: dropEndComma(unpunctuated.units),
-    };
-    // A lead line Genius starts with a capital starts with one here too.
-    const opening = tokensOf[index][0];
-    const line =
-      !original.background &&
-      opening?.units[0] === 0 &&
-      match.get(opening)?.capital
+    if (!sections) {
+      // Genius ends a line where a draft split it after a comma ("廻れ、").
+      const original = {
+        ...unpunctuated,
+        units: dropEndComma(unpunctuated.units),
+      };
+      // A lead line Genius starts with a capital starts with one here too.
+      const opening = tokensOf[index][0];
+      return !original.background &&
+        opening?.units[0] === 0 &&
+        match.get(opening)?.capital
         ? {
             ...original,
             units: [capitalFirst(original.units[0]), ...original.units.slice(1)],
           }
         : original;
+    }
+    const line = unpunctuated;
     const voices = sectionVoices(tagged, index);
     if (voices.length < 2) return line;
     let lineVoice: string | undefined;
@@ -1048,6 +1067,7 @@ function geniusVoices(
     };
   });
 
+  if (sections) return voicedLines;
   return voicedLines.flatMap((line, index) => {
     const runs = bracketRuns(line, tokensOf[index], match, groupSize);
     if (!runs.length) return [line];
@@ -1114,7 +1134,12 @@ function geniusVoices(
   });
 }
 
+/** Which half of Genius's help a draft took: sections and who sings
+ *  them, or the lyrics' brackets, capitals and missing lines. */
+export type GeniusKind = "sections" | "lyrics";
+
 export interface GeniusChanges {
+  kind: GeniusKind;
   sections: { line: number; part: string }[];
   /** Lines that became background vocals. */
   backgrounds: { line: number; text: string }[];
@@ -1141,15 +1166,19 @@ const textOf = (line: CreatorLine) =>
     .map((unit, index) => (index && !unit.joined ? " " : "") + unit.text)
     .join("");
 
-/** What Sections from Genius changed, for a look before keeping it. */
+/** What Sections or Lyrics fixes from Genius changed, for a look before
+ *  keeping it. */
 export function geniusChanges(
   before: CreatorLine[],
   after: CreatorLine[],
   genius?: string,
+  kind: GeniusKind = "sections",
 ): GeniusChanges {
-  const { leads, echoes: bracketed } = genius
-    ? geniusDisputes(after, genius)
-    : { leads: [], echoes: [] };
+  const lyrics = kind === "lyrics";
+  const { leads, echoes: bracketed } =
+    genius && lyrics
+      ? geniusDisputes(after, genius)
+      : { leads: [], echoes: [] };
   // What the draft already had isn't a change: each line's state before,
   // counted so a repeated chorus line matches once per copy.
   const had = (key: (line: CreatorLine) => string | undefined) => {
@@ -1180,13 +1209,14 @@ export function geniusChanges(
       : undefined,
   );
   const changes: GeniusChanges = {
+    kind,
     sections: [],
     backgrounds: [],
     singers: [],
     mixed: [],
     leads: leads.map((line) => ({ line, text: textOf(after[line]) })),
     echoes: bracketed.map((line) => ({ line, text: textOf(after[line]) })),
-    ...(genius
+    ...(genius && lyrics
       ? geniusGaps(after, genius)
       : { missing: [], differs: [] }),
     commas: [],
@@ -1201,15 +1231,23 @@ export function geniusChanges(
     if (bare !== text) trimmed.set(bare, (trimmed.get(bare) ?? 0) + 1);
   }
   after.forEach((line, index) => {
+    if (lyrics) {
+      if (line.background) {
+        if (!hadBackground(line))
+          changes.backgrounds.push({ line: index, text: textOf(line) });
+        else earlier(index, `(${textOf(line)})`);
+      }
+      const left = trimmed.get(textOf(line)) ?? 0;
+      if (left) {
+        trimmed.set(textOf(line), left - 1);
+        changes.commas.push(index);
+      }
+      return;
+    }
     if (line.part) {
       if (!hadSection(line))
         changes.sections.push({ line: index, part: line.part });
       else earlier(index, line.part);
-    }
-    if (line.background) {
-      if (!hadBackground(line))
-        changes.backgrounds.push({ line: index, text: textOf(line) });
-      else earlier(index, `(${textOf(line)})`);
     }
     if (line.sungBy && hadSinger(line))
       earlier(index, `Sung by ${line.sungBy}`);
@@ -1224,11 +1262,6 @@ export function geniusChanges(
     if (line.units.some((unit) => unit.sungBy)) {
       if (!hadMixed(line)) changes.mixed.push(index);
       else earlier(index, "Words sung by another voice");
-    }
-    const left = trimmed.get(textOf(line)) ?? 0;
-    if (left) {
-      trimmed.set(textOf(line), left - 1);
-      changes.commas.push(index);
     }
   });
   return changes;

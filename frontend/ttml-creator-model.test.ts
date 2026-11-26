@@ -83,6 +83,7 @@ import {
   hasJapanese,
   splitAllWords,
   splitJapanese,
+  applyGeniusLyrics,
   mergeNext,
   splitMatching,
   splitUnit,
@@ -111,6 +112,12 @@ function timeAll(text: string) {
   }
   return markEnd(lines, cursor, time).lines;
 }
+
+/** Sections from Genius, then Lyrics from Genius, as a reviewer might. */
+const geniusBoth = (lines: CreatorLine[], genius: string) => {
+  const sectioned = applySections(lines, genius);
+  return sectioned && (applyGeniusLyrics(sectioned, genius) ?? sectioned);
+};
 
 describe("TTML Creator model", () => {
   it("reads syllables, background vocals and the second singer from text", () => {
@@ -299,7 +306,7 @@ describe("TTML Creator model", () => {
 
   it("moves what Genius brackets to a backing line, with its own voice", () => {
     const lines = timeAll("Konrinzai big juicer ready to crush");
-    const tagged = applySections(
+    const tagged = geniusBoth(
       lines,
       "[Chorus: Konomi, \uE000Ashnikko\uE001]\n(Konrinzai) \uE000Big juicer ready to crush\uE001",
     )!;
@@ -319,7 +326,7 @@ describe("TTML Creator model", () => {
 
   it("splits Genius brackets at both ends of a line apart from its lead", () => {
     const lines = timeAll("あの星が tell me where to go\n(Run it)");
-    const tagged = applySections(
+    const tagged = geniusBoth(
       lines,
       "[Chorus: Aiko, \uE000Mira\uE001]\n(あの星が) \uE000Tell me where to go\uE001 (\uE000Run it\uE001)",
     )!;
@@ -338,7 +345,7 @@ describe("TTML Creator model", () => {
 
   it("capitalises a lead line that Genius starts with a capital", () => {
     const lines = timeAll("you're gonna be fine\nwe stay low");
-    const tagged = applySections(
+    const tagged = geniusBoth(
       lines,
       "[Verse: Aiko]\nYou're gonna be fine, we stay low",
     )!;
@@ -393,21 +400,21 @@ describe("TTML Creator model", () => {
     ).toEqual([1]);
   });
 
-  it("drops a comma Sections from Genius finds at the end of a line", () => {
+  it("drops a comma Lyrics from Genius finds at the end of a line", () => {
     const lines = timeAll("I'm lost, 運命廻れ、\n悠久");
-    const tagged = applySections(
+    const tagged = geniusBoth(
       lines,
       "[Verse: Aiko, Mira]\nI'm lost, 運命廻れ\n悠久",
     )!;
     expect(tagged[0].units.at(-1)!.text).toBe("れ");
-    expect(geniusChanges(lines, tagged).commas).toEqual([0]);
+    expect(geniusChanges(lines, tagged, undefined, "lyrics").commas).toEqual([0]);
   });
 
   it("points out where the draft lacks characters Genius has", () => {
     const lines = timeAll("Start here\n悠久のパレー\nGo on");
     const genius = "[Verse]\nStart here\n悠久のパレード\nGo on";
-    const tagged = applySections(lines, genius)!;
-    expect(geniusChanges(lines, tagged, genius).differs).toEqual([
+    const tagged = geniusBoth(lines, genius)!;
+    expect(geniusChanges(lines, tagged, genius, "lyrics").differs).toEqual([
       { line: 1, text: "悠 久 の パ レー", genius: "悠久のパレード", fixable: true },
     ]);
     const fixed = fixFromGenius(tagged[1], "悠久のパレード")!;
@@ -489,8 +496,8 @@ describe("TTML Creator model", () => {
     const lines = timeAll("Start here\nWow, oh, whoa\n1, 2, 3, 4\n影 Whoa");
     const genius =
       "[Outro]\nStart here\nWow, oh, woah\nOne, two, three, four\n影 woah";
-    const tagged = applySections(lines, genius)!;
-    const { differs } = geniusChanges(lines, tagged, genius);
+    const tagged = geniusBoth(lines, genius)!;
+    const { differs } = geniusChanges(lines, tagged, genius, "lyrics");
     expect(differs.map((each) => [each.line, each.fixable])).toEqual([
       [1, true],
       [3, true],
@@ -539,16 +546,30 @@ describe("TTML Creator model", () => {
     expect(geniusMissing(added, genius)).toEqual([]);
   });
 
-  it("lists what Sections from Genius changed", () => {
+  it("lists what Sections and Lyrics from Genius changed", () => {
     const lines = timeAll("Start here\nあの星が tell me where to go\n(Run it)");
-    const tagged = applySections(
-      lines,
-      "[Chorus: Aiko, Mira]\nStart here\n(あの星が) Tell me where to go (Run it)",
-    )!;
-    expect(geniusChanges(lines, tagged, "Start here")).toEqual({
+    const genius =
+      "[Chorus: Aiko, Mira]\nStart here\n(あの星が) Tell me where to go (Run it)";
+    const sectioned = applySections(lines, genius)!;
+    expect(geniusChanges(lines, sectioned, "Start here")).toEqual({
+      kind: "sections",
       sections: [{ line: 0, part: "Chorus" }],
+      backgrounds: [],
+      singers: [],
+      mixed: [],
+      leads: [],
+      echoes: [],
+      missing: [],
+      commas: [],
+      differs: [],
+      earlier: [],
+    });
+    const fixed = applyGeniusLyrics(sectioned, genius)!;
+    expect(geniusChanges(sectioned, fixed, "Start here", "lyrics")).toEqual({
+      kind: "lyrics",
+      sections: [],
       backgrounds: [{ line: 2, text: "あの星が" }],
-      singers: [{ voice: "Mira", lines: [1, 3] }],
+      singers: [],
       mixed: [],
       leads: [],
       echoes: [],
@@ -563,7 +584,7 @@ describe("TTML Creator model", () => {
     const lines = timeAll("Start here\nあの星が tell me where to go\nOh whoa").map(
       (line, index) => ({ ...line, background: index > 0 }),
     );
-    const tagged = applySections(
+    const tagged = geniusBoth(
       lines,
       "[Chorus: Aiko, Mira]\nStart here\n(あの星が) Tell me where to go\nOh, whoa",
     )!;
@@ -583,7 +604,7 @@ describe("TTML Creator model", () => {
 
   it("keeps the comma after a bracket mid-line on the lead", () => {
     const lines = timeAll("Ah (Something old), oh, whoa (Make it new)");
-    const tagged = applySections(
+    const tagged = geniusBoth(
       lines,
       "[Chorus: Aiko & \uE000Mira\uE001]\nAh (\uE000Something old\uE001), oh, whoa (\uE000Make it new\uE001)",
     )!;
@@ -601,7 +622,7 @@ describe("TTML Creator model", () => {
       ...line,
       units: line.units.map((unit) => ({ ...unit, joined: false })),
     }));
-    const tagged = applySections(
+    const tagged = geniusBoth(
       lines,
       "[Chorus: Aiko, \uE000Mira\uE001]\n(まだ かな？) \uE000Waiting in the rain\uE001",
     )!;

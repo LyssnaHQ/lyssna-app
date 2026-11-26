@@ -18107,7 +18107,9 @@ test("TTML Creator takes plain lyrics from Genius into the text editor", async (
   const creator = page.getByRole("region", { name: "TTML Creator" });
   await expect(creator.locator(".ttml-line").first()).toBeVisible();
   await creator.getByRole("button", { name: "Genius", exact: true }).click();
-  await creator.getByRole("menuitem", { name: "Lyrics from Genius" }).click();
+  await creator
+    .getByRole("menuitem", { name: "Lyrics from Genius", exact: true })
+    .click();
   const text = creator.getByLabel("Lyrics text");
   await expect(text).toHaveValue("From Genius one\nFrom Genius two");
   await expect
@@ -18172,8 +18174,9 @@ test("TTML Creator names sections from Genius without touching timings", async (
   expect(await read()).toEqual(words);
 
   // What changed waits beside the draft until it's kept or undone.
-  const review = page.getByRole("dialog", { name: "Changes from Genius" });
+  const review = page.getByRole("dialog", { name: "Sections from Genius" });
   await expect(review).toContainText("2 sections");
+  await expect(review).not.toContainText("missing from your draft");
   if (process.env.REVIEW_SHOT)
     await page.screenshot({ path: process.env.REVIEW_SHOT });
   await review.getByRole("button", { name: "Undo" }).click();
@@ -18183,6 +18186,14 @@ test("TTML Creator names sections from Genius without touching timings", async (
   await creator.getByRole("menuitem", { name: "Sections from Genius" }).click();
   await review.getByRole("button", { name: "Keep" }).click();
   await expect(review).toHaveCount(0);
+  await creator.getByRole("button", { name: "Genius", exact: true }).click();
+  await creator
+    .getByRole("menuitem", { name: "Fix lyrics from Genius" })
+    .click();
+  const fixes = page.getByRole("dialog", { name: "Lyrics from Genius" });
+  await expect(fixes).toContainText("Your lyrics already match Genius");
+  await fixes.getByRole("button", { name: "Keep" }).click();
+  await expect(fixes).toHaveCount(0);
 
   await creator.locator(".ttml-part").first().click({ button: "right" });
   const sections = page.getByRole("menu", { name: "Section actions" });
