@@ -485,7 +485,9 @@ fn serve(
                     .iter_mut()
                     .find(|client| client.id == id)
                     .context("Local control client disconnected")?;
-                client.stream.write_all(format!("{response}\n").as_bytes())?;
+                client
+                    .stream
+                    .write_all(format!("{response}\n").as_bytes())?;
             } else if message["type"] == "command"
                 && let Some(name) = message["command"].as_str()
             {
