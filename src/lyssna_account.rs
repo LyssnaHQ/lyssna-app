@@ -500,8 +500,7 @@ fn submission_body(
     Ok(body)
 }
 
-fn submit_failure(response: reqwest::blocking::Response) -> anyhow::Error {
-    let rejected = rejection(response);
+fn submit_failure(rejected: Rejection) -> anyhow::Error {
     let known = match rejected.code.as_deref() {
         Some("unverified") => Some("Confirm your email on lyssna.org before submitting lyrics"),
         Some("pending_exists") => Some("This song already has lyrics waiting for review"),
@@ -556,15 +555,37 @@ pub fn submit(
         bail!("Sign in to Lyssna in Settings to submit lyrics");
     };
     let path = submissions_path(act_as().as_ref());
-    let response = keyed(client.post(format!("{API}{path}")))
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .context("Cannot reach Lyssna")?;
+    let send = |body: &serde_json::Value| {
+        keyed(client.post(format!("{API}{path}")))
+            .bearer_auth(&token)
+            .json(body)
+            .send()
+            .context("Cannot reach Lyssna")
+    };
+    let mut response = send(&body)?;
     if !response.status().is_success() {
-        return Err(submit_failure(response));
+        let rejected = rejection(response);
+        if !drops_apple_credit(&rejected, &mut body) {
+            return Err(submit_failure(rejected));
+        }
+        // Lyssna credits Apple Music only for its word-synced lyrics; a
+        // draft saved from its line-synced ones goes up without the credit.
+        response = send(&body)?;
+        if !response.status().is_success() {
+            return Err(submit_failure(rejection(response)));
+        }
     }
     Ok(response.json()?)
+}
+
+/// Takes the Apple Music credit off `body` when Lyssna refused it because
+/// Apple's lyrics for the song are not word-synced.
+fn drops_apple_credit(rejected: &Rejection, body: &mut serde_json::Value) -> bool {
+    rejected.code.as_deref() == Some("apple_not_word_synced")
+        && body
+            .as_object_mut()
+            .and_then(|fields| fields.remove("apple_original"))
+            .is_some()
 }
 
 /// Asks Lyssna for lyrics for a Spotify song, counted once per account, or
@@ -1213,5 +1234,28 @@ mod tests {
         .unwrap();
         assert_eq!(submission.status, "pending");
         assert_eq!(submission.kind, "new");
+    }
+
+    #[test]
+    fn an_apple_credit_lyssna_refuses_comes_off_the_submission() {
+        let refused = |code: &str| Rejection {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            retry_after: None,
+            code: Some(code.into()),
+            message: None,
+        };
+        let mut body = serde_json::json!({"ttml": "<tt/>", "apple_original": {"apple_id": "1"}});
+        assert!(drops_apple_credit(
+            &refused("apple_not_word_synced"),
+            &mut body
+        ));
+        assert!(body.get("apple_original").is_none());
+        assert!(!drops_apple_credit(
+            &refused("apple_not_word_synced"),
+            &mut body
+        ));
+        let mut other = serde_json::json!({"apple_original": {}});
+        assert!(!drops_apple_credit(&refused("no_changes"), &mut other));
+        assert!(other.get("apple_original").is_some());
     }
 }
