@@ -1,11 +1,15 @@
 /** Limit Animation Frame Rate from Spicy Lyrics' Appearance settings: the
  *  app's animation loops skip frames to stay under one rate. 0 is no cap. */
 let chosen = 0;
-/** Lower while the window is in the background, behind other windows. */
-let background = 0;
+/** The rate while the window is unfocused, behind other windows. */
+const BACKGROUND_FPS = 30;
+let backgroundCap = true;
+let unfocused = false;
 let cap = 0;
 const settle = () => {
-  cap = chosen && background ? Math.min(chosen, background) : chosen || background;
+  const background = backgroundCap && unfocused ? BACKGROUND_FPS : 0;
+  cap =
+    chosen && background ? Math.min(chosen, background) : chosen || background;
 };
 
 export const frameCap = () => cap;
@@ -16,8 +20,13 @@ export function setFrameCap(fps: number) {
   settle();
 }
 
-export function setBackgroundFrameCap(fps: number) {
-  background = fps > 0 ? fps : 0;
+export function setBackgroundFrameCap(enabled: boolean) {
+  backgroundCap = enabled;
+  settle();
+}
+
+export function setWindowUnfocused(value: boolean) {
+  unfocused = value;
   settle();
 }
 

@@ -151,6 +151,7 @@ export interface Settings {
   reduce_motion: boolean;
   animation_fps_cap_enabled?: boolean;
   animation_fps_cap?: number;
+  background_fps_cap?: boolean;
   cover_animation?: boolean;
   liquid_glass?: boolean;
   theme?: "dark" | "light" | "system";

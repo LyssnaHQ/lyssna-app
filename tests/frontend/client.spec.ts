@@ -14725,6 +14725,21 @@ test("animation frame rate can be capped", async ({ page }) => {
       }),
     )
     .toEqual([true, 30]);
+  const background = page.getByRole("switch", {
+    name: "Slower animations in the background",
+  });
+  await expect(background).toBeChecked();
+  await background.click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__clientTest.commands
+            .filter((entry: any) => entry.command === "save_settings")
+            .at(-1)?.args.settings?.background_fps_cap,
+      ),
+    )
+    .toBe(false);
 });
 
 test("settings can be hidden and shown again", async ({ page }) => {

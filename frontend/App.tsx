@@ -211,7 +211,7 @@ import {
 import { AppMenu, type AppMenuGroup } from "./app-menu";
 import { AboutDialog } from "./about-dialog";
 import { presetOf } from "./animator-tuning";
-import { setFrameCap } from "./frame-cap";
+import { setBackgroundFrameCap, setFrameCap } from "./frame-cap";
 import { AnimatorPanel } from "./animator-settings";
 import {
   NextIcon,
@@ -1209,6 +1209,9 @@ function App() {
     state.settings.animation_fps_cap_enabled,
     state.settings.animation_fps_cap,
   ]);
+  useEffect(() => {
+    setBackgroundFrameCap(state.settings.background_fps_cap !== false);
+  }, [state.settings.background_fps_cap]);
   useBackgroundBrightness(state.settings.lyrics_background_brightness);
   const animatorPreset = presetOf(state.settings.lyrics_animator);
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { cappedFps, setBackgroundFrameCap } from "./frame-cap";
+import { cappedFps, setWindowUnfocused } from "./frame-cap";
 
 /** Whether the desktop window is minimized or focused, as reported by Rust. */
 export interface WindowActivity {
@@ -10,15 +10,12 @@ let current: WindowActivity = { minimized: false, focused: true };
 const listeners = new Set<() => void>();
 
 export const windowActivity = () => current;
-const BACKGROUND_FPS = 30;
 
 export function setWindowActivity(next: WindowActivity) {
   if (next.minimized === current.minimized && next.focused === current.focused)
     return;
   current = { minimized: next.minimized, focused: next.focused };
-  // Unfocused, the app mostly plays music behind other windows; its
-  // animations need not run at the display's full rate.
-  setBackgroundFrameCap(current.focused ? 0 : BACKGROUND_FPS);
+  setWindowUnfocused(!current.focused);
   listeners.forEach((listener) => listener());
 }
 

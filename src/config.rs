@@ -248,6 +248,8 @@ pub struct Settings {
     /// `animation_fps_cap`, 15 to 240.
     pub animation_fps_cap_enabled: bool,
     pub animation_fps_cap: u16,
+    /// Animations drop to 30 fps while the window is unfocused.
+    pub background_fps_cap: bool,
     /// The lyrics page artwork crossfades when the song changes.
     pub cover_animation: bool,
     pub liquid_glass: bool,
@@ -444,6 +446,7 @@ impl Default for Settings {
             reduce_motion: false,
             animation_fps_cap_enabled: false,
             animation_fps_cap: 60,
+            background_fps_cap: true,
             cover_animation: true,
             liquid_glass: false,
             theme: "dark".into(),

@@ -158,6 +158,7 @@ export const emptyState: AppState = {
     reduce_motion: false,
     animation_fps_cap_enabled: false,
     animation_fps_cap: 60,
+    background_fps_cap: true,
     cover_animation: true,
     liquid_glass: false,
     theme: "dark",

@@ -1,6 +1,6 @@
 import { useEffect, useReducer } from "react";
 import { rpc, subscribe } from "./bridge";
-import { setFrameCap } from "./frame-cap";
+import { setBackgroundFrameCap, setFrameCap } from "./frame-cap";
 import { emptyState, reducer, type AppState } from "./state";
 import type { PlayerRequest, Snapshot } from "./types";
 
@@ -40,6 +40,9 @@ export function useDesktopState() {
     state.settings.animation_fps_cap_enabled,
     state.settings.animation_fps_cap,
   ]);
+  useEffect(() => {
+    setBackgroundFrameCap(state.settings.background_fps_cap !== false);
+  }, [state.settings.background_fps_cap]);
   return [state, dispatch] as const;
 }
 

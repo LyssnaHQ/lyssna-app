@@ -1009,6 +1009,12 @@ export function SettingsWindow({
           " fps",
           !settings.animation_fps_cap_enabled,
         ),
+        flag(
+          "background_fps_cap",
+          "Slower animations in the background",
+          "Animations run at 30 fps while you're using another window, to save power.",
+          "fps frame rate background unfocused battery power",
+        ),
       ],
     ],
     [
