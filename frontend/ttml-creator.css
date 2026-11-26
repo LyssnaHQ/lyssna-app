@@ -671,6 +671,8 @@
   z-index: 60;
   width: min(380px, calc(100vw - 48px));
   max-height: 60vh;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 18px;
   gap: 12px;
@@ -689,38 +691,49 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.ttml-review-chip {
+.ttml-review .ttml-review-chip {
+  min-width: 0;
   max-width: 100%;
-  overflow: hidden;
   padding: 3px 9px;
   border: 1px solid #ffffff1f;
-  border-radius: 999px;
+  border-radius: 12px;
   background: #ffffff0f;
   color: inherit;
   font-size: 12.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
-.ttml-review-chip:hover {
+.ttml-review .ttml-review-chip:hover {
   background: #ffffff24;
 }
 .ttml-review-action {
   margin-top: 8px;
 }
 .ttml-review-pair {
-  display: inline-flex;
-  max-width: 100%;
+  display: flex;
+  flex: 1 1 100%;
+  align-items: flex-start;
+  min-width: 0;
   gap: 4px;
 }
-.ttml-review-chip.primary {
+.ttml-review-pair > :first-child {
+  flex: 0 1 auto;
+}
+.ttml-review .ttml-review-pair > :not(:first-child) {
+  flex: none;
+  white-space: nowrap;
+}
+.ttml-review .ttml-review-chip.primary {
   flex: none;
   border-color: transparent;
   background: #1ed760;
   color: #000;
   font-weight: 600;
 }
-.ttml-review-chip.primary:hover {
+.ttml-review .ttml-review-chip.primary:hover {
   background: #3be477;
 }
 .ttml-dialog-note {

@@ -18141,6 +18141,57 @@ test("TTML Creator takes plain lyrics from Genius into the text editor", async (
   await expect(creator.locator(".ttml-word").first()).toHaveText("From");
 });
 
+test("Lyrics from Genius wraps long lines inside its panel", async ({
+  page,
+}) => {
+  await startClient(page);
+  await playLyricTrack(page, false);
+  await openSettings(page, "Sources");
+  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
+  await page
+    .getByRole("dialog", { name: "Lyssna settings" })
+    .getByRole("button", { name: "Close settings" })
+    .click();
+  await page
+    .locator(".player-extras")
+    .getByTitle("TTML Creator", { exact: true })
+    .click();
+  const creator = page.getByRole("region", { name: "TTML Creator" });
+  const words = await creator.locator(".ttml-line").evaluateAll((lines) =>
+    lines.map((line) =>
+      Array.from(line.querySelectorAll(".ttml-word"))
+        .map((word) => word.textContent)
+        .join(" "),
+    ),
+  );
+  await page.evaluate(
+    (words) =>
+      ((window as any).__geniusText = [
+        "[Verse]",
+        words[0],
+        "(Oh, need a love, now, somebody to hold me close tonight)",
+        "(My heart is thinking of you every single day and night)",
+        `${words[1]} and a few more words Genius has here`,
+        ...words.slice(2),
+      ].join("\n")),
+    words,
+  );
+  await creator.getByRole("button", { name: "Genius", exact: true }).click();
+  await creator
+    .getByRole("menuitem", { name: "Fix lyrics from Genius" })
+    .click();
+  const fixes = page.getByRole("dialog", { name: "Lyrics from Genius" });
+  await expect(fixes).toContainText("missing from your draft");
+  await expect(fixes).toContainText("Differs from Genius");
+  expect(
+    await fixes.evaluate((panel) => panel.scrollWidth <= panel.clientWidth),
+  ).toBe(true);
+  await expect(fixes.getByRole("button", { name: "Keep" })).toBeInViewport({
+    ratio: 1,
+  });
+  if (process.env.REVIEW_SHOT) await fixes.screenshot({ path: process.env.REVIEW_SHOT });
+});
+
 test("TTML Creator names sections from Genius without touching timings", async ({
   page,
 }) => {
