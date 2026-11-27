@@ -9960,6 +9960,10 @@ test("updates can be downloaded manually before installing and restarting", asyn
     }),
   );
   await page
+    .getByRole("complementary", { name: "Lyssna update" })
+    .getByRole("button", { name: "Details" })
+    .click();
+  await page
     .getByRole("dialog", { name: "Lyssna 0.2.0 is available" })
     .getByRole("button", { name: "Download update", exact: true })
     .click();
@@ -10004,6 +10008,10 @@ test("update prompt lists each change and shows download progress", async ({
       status,
     );
   await emit("Update available");
+  await page
+    .getByRole("complementary", { name: "Lyssna update" })
+    .getByRole("button", { name: "Details" })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Lyssna 0.5.0 is available" });
   await expect(dialog.getByRole("listitem")).toHaveText([
     "First change.",
@@ -10026,7 +10034,7 @@ test("update prompt lists each change and shows download progress", async ({
   await expect(bar).toHaveCount(0);
 });
 
-test("startup updates prompt automatically, keep notes inert and respect Not now", async ({
+test("startup updates show a toast, keep notes inert and respect Not now", async ({
   page,
 }) => {
   await startClient(page);
@@ -10044,7 +10052,11 @@ test("startup updates prompt automatically, keep notes inert and respect Not now
       { version, notes },
     );
   await offer("0.2.0");
+  const toast = page.getByRole("complementary", { name: "Lyssna update" });
+  await expect(toast).toContainText("Lyssna 0.2.0 is ready");
   const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeHidden();
+  await toast.getByRole("button", { name: "Details" }).click();
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(`You're using version ${appVersion}`);
   await expect(
@@ -10073,10 +10085,59 @@ test("startup updates prompt automatically, keep notes inert and respect Not now
   await expect(dialog).toBeHidden();
   await offer("0.2.0");
   await expect(dialog).toBeHidden();
+  await expect(toast).toBeHidden();
   await offer("0.3.0");
+  await toast.getByRole("button", { name: "Details" }).click();
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+});
+
+test("dismissing the update toast nudges once and keeps the update for after restart", async ({
+  page,
+}) => {
+  await startClient(page);
+  await page.evaluate(() =>
+    (window as any).__clientTest.emit({
+      type: "update",
+      status: "Ready to install",
+      version: "9.9.9",
+      notes: "Faster start.",
+    }),
+  );
+  const toast = page.getByRole("complementary", { name: "Lyssna update" });
+  await toast.getByRole("button", { name: "Dismiss update" }).click();
+  await expect(toast).toContainText(`Staying on ${appVersion}`);
+  await toast.getByRole("button", { name: "Dismiss update" }).click();
+  await expect(toast).toBeHidden();
+  const pending = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("lyssna.pending-update") ?? "null"),
+  );
+  expect(pending).toEqual({ from: appVersion, to: "9.9.9", notes: "Faster start." });
+});
+
+test("after restarting on a new release, Lyssna says what changed once", async ({
+  page,
+}) => {
+  await page.addInitScript(
+    (version) =>
+      localStorage.setItem(
+        "lyssna.pending-update",
+        JSON.stringify({ from: "0.0.1", to: version, notes: "Faster start." }),
+      ),
+    appVersion,
+  );
+  await startClient(page);
+  const updated = page.getByRole("dialog", { name: `Updated to ${appVersion}` });
+  await expect(updated).toContainText("You were on 0.0.1.");
+  await expect(updated.getByRole("region", { name: "Release notes" })).toContainText(
+    "Faster start.",
+  );
+  await updated.getByRole("button", { name: "Got it" }).click();
+  await expect(updated).toBeHidden();
+  expect(
+    await page.evaluate(() => localStorage.getItem("lyssna.pending-update")),
+  ).toBeNull();
 });
 
 test("Your Library covers show a play button for playlists and Liked Songs", async ({

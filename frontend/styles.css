@@ -5708,6 +5708,102 @@ input[type="range"]:hover {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+.update-dialog[open] {
+  animation: update-enter 0.22s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.update-dialog[open]::backdrop {
+  animation: update-fade 0.22s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.update-dialog.update-closing {
+  pointer-events: none;
+  animation: update-enter 0.16s ease-in reverse both;
+}
+.update-dialog.update-closing::backdrop {
+  animation: update-fade 0.16s ease-in reverse both;
+}
+.update-dialog strong {
+  color: var(--text, light-dark(#000, #fff));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes update-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes update-fade {
+  from {
+    opacity: 0;
+  }
+}
+.update-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 105px;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(356px, calc(100vw - 48px));
+  padding: 14px 44px 14px 16px;
+  border: 1px solid light-dark(#00000015, #ffffff20);
+  border-radius: 14px;
+  background: light-dark(#e6e6e6, #191919);
+  box-shadow: 0 12px 32px -12px #0009;
+  color: var(--text, light-dark(#000, #fff));
+  animation: update-enter 0.4s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.update-toast > svg {
+  flex: 0 0 18px;
+  color: #ffa42b;
+}
+.update-toast-copy {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.update-toast-copy strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.update-toast-copy p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.update-toast .pill {
+  flex: none;
+}
+.update-toast-dismiss {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.update-toast-dismiss:hover {
+  background: light-dark(#0000001a, #ffffff1f);
+  color: var(--text, light-dark(#000, #fff));
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-dialog[open],
+  .update-dialog[open]::backdrop,
+  .update-toast {
+    animation: none;
+  }
+}
 /* First-run sign-in, laid out like Spotify's own login page: a plain
    column on the app background, centred in the window, not the area under
    the title bar. */
