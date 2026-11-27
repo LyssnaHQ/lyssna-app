@@ -1,20 +1,28 @@
 /* The review queue and a submission's review, docked in the right sidebar
    in place of Now playing or the queue. */
-.review-sidebar {
+/* Grey like Your Library, in the app's light or dark theme, rather than the
+   artwork colours Now playing and the queue sit on. */
+.now-playing.review-sidebar {
   display: flex;
   flex-direction: column;
+  color-scheme: inherit;
+  color: inherit;
+  background: var(--panel);
+}
+.liquid-glass .now-playing.review-sidebar {
+  background: var(--glass-fill);
 }
 .review-panel {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden auto;
-  scrollbar-gutter: stable;
-  color: #f5f5f5;
   font-size: 14px;
   text-align: left;
-  --review-muted: #b3b3b3;
-  --review-hover: #ffffff1a;
+  --review-muted: var(--muted);
+  --review-hover: light-dark(#0000000f, #ffffff1a);
+  --review-fill: light-dark(#0000000a, #ffffff0d);
+  --review-edge: light-dark(#0000001f, #ffffff1f);
   --review-accent: #1ed760;
 }
 .review-panel:focus {
@@ -29,14 +37,14 @@
   border: 0;
   border-radius: 8px;
   color: inherit;
-  background: #ffffff14;
+  background: light-dark(#0000000d, #ffffff14);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
   transition: background-color 0.15s;
 }
 .review-panel button:hover:not(:disabled) {
-  background: #ffffff24;
+  background: light-dark(#0000001a, #ffffff24);
 }
 .review-panel button:disabled {
   opacity: 0.45;
@@ -51,7 +59,10 @@
   gap: 8px;
   min-height: 60px;
   padding: 0 12px 0 18px;
-  background: #00000038;
+  background: var(--panel);
+}
+.liquid-glass .review-head {
+  background: transparent;
   backdrop-filter: blur(24px);
 }
 .review-detail .review-head {
@@ -103,7 +114,7 @@
 }
 .review-lanes {
   margin: 0 10px;
-  border-bottom: 1px solid #ffffff1a;
+  border-bottom: 1px solid var(--line);
 }
 .review-panel .review-lanes button {
   border-bottom: 2px solid transparent;
@@ -114,11 +125,11 @@
 }
 .review-panel .review-lanes button.active {
   border-bottom-color: var(--review-accent);
-  color: #f5f5f5;
+  color: inherit;
 }
 .review-panel .review-choice button.active {
-  color: #000;
-  background: #f3f3f3;
+  color: light-dark(#fff, #000);
+  background: light-dark(#161616, #f3f3f3);
 }
 .review-list {
   display: grid;
@@ -170,7 +181,7 @@
 }
 .review-song > span {
   overflow: hidden;
-  color: #cfcfcf;
+  color: var(--review-muted);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -191,16 +202,16 @@
 .review-instrumental {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid #ffffff1f;
+  border: 1px solid var(--review-edge);
   border-radius: 8px;
-  color: #d6d6d6;
+  color: var(--review-muted);
   font-size: 13px;
 }
 .review-section {
   display: grid;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid #ffffff1a;
+  border-top: 1px solid var(--line);
 }
 .review-section h4 {
   margin: 0;
@@ -221,9 +232,9 @@
 }
 .review-kinds li {
   padding: 3px 9px;
-  border: 1px solid #ffffff1f;
+  border: 1px solid var(--review-edge);
   border-radius: 6px;
-  background: #ffffff0d;
+  background: var(--review-fill);
   font-weight: 600;
 }
 .review-kinds span {
@@ -261,7 +272,7 @@
   background: #f5c4511a;
 }
 .review-lyrics li {
-  border-color: #ffffff24;
+  border-color: var(--review-edge);
 }
 .review-comments p {
   margin: 2px 0 0;
@@ -277,10 +288,10 @@
   flex: 1;
   min-width: 0;
   padding: 7px 10px;
-  border: 1px solid #ffffff1f;
+  border: 1px solid var(--review-edge);
   border-radius: 8px;
-  color: #f3f3f3;
-  background: #ffffff0d;
+  color: inherit;
+  background: var(--review-fill);
   font: inherit;
   font-size: 13px;
 }
@@ -300,7 +311,7 @@
   cursor: grab;
 }
 .review-diff li[draggable="true"]:hover {
-  box-shadow: inset 0 0 0 1px #ffffff35;
+  box-shadow: inset 0 0 0 1px var(--review-edge);
 }
 .review-decide {
   --outcome: #1ed760;
@@ -319,12 +330,12 @@
   gap: 4px;
   padding: 4px;
   border-radius: 10px;
-  background: #ffffff0d;
+  background: var(--review-fill);
 }
 .review-panel .review-outcomes button {
   flex: 1 0 auto;
   justify-content: center;
-  color: #bdbdbd;
+  color: var(--review-muted);
   background: transparent;
 }
 .review-panel .review-outcomes button[aria-checked="true"] {
@@ -337,7 +348,7 @@
   font-size: 12px;
 }
 .review-panel .review-decide .review-choice button.active {
-  color: #f3f3f3;
+  color: inherit;
   background: transparent;
   box-shadow: inset 0 0 0 2px var(--outcome);
 }
@@ -352,12 +363,12 @@
 }
 .review-notice {
   margin: 0 18px 18px;
-  color: #a8ecbc;
+  color: light-dark(#13843f, #a8ecbc);
   font-size: 13px;
 }
 @media (prefers-reduced-transparency: reduce) {
-  .review-head {
-    background: #181818;
+  .liquid-glass .review-head {
+    background: var(--panel);
     backdrop-filter: none;
   }
 }

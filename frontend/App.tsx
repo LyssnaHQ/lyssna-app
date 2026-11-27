@@ -5855,13 +5855,6 @@ function App() {
             <div className="panel-resizer" onPointerDown={resizeRight} />
             {reviewing ? (
               <aside className="now-playing review-sidebar">
-                {!state.settings.liquid_glass && (
-                  <Ambience
-                    track={state.playback.item ?? undefined}
-                    reduceMotion={state.settings.reduce_motion}
-                    animate={state.playback.is_playing}
-                  />
-                )}
                 <ReviewPanel
                   playing={state.playback.item ?? undefined}
                   onPlay={(uri) => play({ command: "play", uri })}
