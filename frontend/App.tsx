@@ -179,6 +179,8 @@ import {
 } from "./library-order";
 import { useAppFonts } from "./custom-fonts";
 import { UpdatePrompt } from "./update-prompt";
+import { ReviewPanel } from "./review-panel";
+import { reviewEditor } from "./review-editor";
 import { NightlyButton } from "./nightly-button";
 import { NightlyDialog } from "./nightly-dialog";
 import { GlassBackdrop } from "./liquid-glass";
@@ -428,8 +430,8 @@ function App() {
   const sidebar = state.settings.now_playing_open !== false;
   const setSidebar = (open: boolean) =>
     updateSettings({ now_playing_open: open });
-  // The right panel shows Now playing or the queue.
-  const [panel, setPanel] = useState<"now" | "queue">("now");
+  // The right panel shows Now playing, the queue or, for reviewers, review.
+  const [panel, setPanel] = useState<"now" | "queue" | "review">("now");
   // The Spotify Jam this computer is in, shown above the queue.
   const [jam, setJam] = useState<Jam | null>(null);
   const [jamInvite, setJamInvite] = useState(false);
@@ -751,8 +753,25 @@ function App() {
   const [lyssnaTier, setLyssnaTier] = useState(0);
   const marksInstrumental = canMarkInstrumental(lyssnaRole, lyssnaTier);
   const [reviewWaiting, setReviewWaiting] = useState(0);
-  const [reviewRestore, setReviewRestore] = useState(0);
   const [reviewCheck, setReviewCheck] = useState(0);
+  useEffect(() => {
+    if (!reviewer && panel === "review") setPanel("now");
+  }, [reviewer, panel]);
+  const reviewing = sidebar && panel === "review" && reviewer;
+  const reviewingRef = useRef(reviewing);
+  reviewingRef.current = reviewing;
+  const toggleReview = () =>
+    animateLayout(
+      () => {
+        if (reviewing) setPanel("now");
+        else {
+          setPanel("review");
+          setSidebar(true);
+        }
+      },
+      "panels",
+      state.settings.reduce_motion,
+    );
   // Lyssna sends reviewers no notice of new submissions, so the app counts
   // the queue itself every few minutes.
   useEffect(() => {
@@ -1184,11 +1203,17 @@ function App() {
         compact_library: !!settings.compact_library,
       };
       keep(layoutBeforeTtml.current);
-      updateSettings({ now_playing_open: false, compact_library: true });
+      // An open review stays beside the submission it loads.
+      updateSettings({
+        now_playing_open: reviewingRef.current,
+        compact_library: true,
+      });
     } else if (center !== "ttml") {
       const before = layoutBeforeTtml.current ?? kept();
       if (!before) return;
-      updateSettings(before);
+      updateSettings(
+        reviewingRef.current ? { ...before, now_playing_open: true } : before,
+      );
       layoutBeforeTtml.current = null;
       keep(null);
     }
@@ -3957,13 +3982,8 @@ function App() {
                   ? `Review submissions, ${reviewWaiting} waiting`
                   : "Review submissions"
               }
-              onClick={() => {
-                // Reviewing happens in the TTML Creator's side panel.
-                if (!state.settings.ttml_creator)
-                  updateSettings({ ttml_creator: true });
-                setCenter("ttml");
-                setReviewRestore((count) => count + 1);
-              }}
+              aria-pressed={reviewing}
+              onClick={toggleReview}
             >
               <ClipboardCheck size={20} />
               {reviewWaiting > 0 && (
@@ -4282,8 +4302,9 @@ function App() {
               reviewer={reviewer}
               marksInstrumental={!!lyssnaRole}
               unmarksInstrumental={marksInstrumental}
-              reviewRestore={reviewRestore}
-              onReviewed={() => setReviewCheck((count) => count + 1)}
+              onReview={() => {
+                if (!reviewing) toggleReview();
+              }}
               renderPreview={(lyrics, live) => (
                 <LyricsPage
                   state={{
@@ -5832,7 +5853,37 @@ function App() {
         {sidebar && (
           <>
             <div className="panel-resizer" onPointerDown={resizeRight} />
-            {panel === "queue" ? (
+            {reviewing ? (
+              <aside className="now-playing review-sidebar">
+                {!state.settings.liquid_glass && (
+                  <Ambience
+                    track={state.playback.item ?? undefined}
+                    reduceMotion={state.settings.reduce_motion}
+                    animate={state.playback.is_playing}
+                  />
+                )}
+                <ReviewPanel
+                  playing={state.playback.item ?? undefined}
+                  onPlay={(uri) => play({ command: "play", uri })}
+                  onOpen={(open) => {
+                    reviewEditor.open(open);
+                    if (!state.settings.ttml_creator)
+                      updateSettings({ ttml_creator: true });
+                    setCenter("ttml");
+                  }}
+                  onParse={(contents, durationMs) =>
+                    rpc<Lyrics>("parse_lyric_file", {
+                      filename: "review.ttml",
+                      contents,
+                      durationMs,
+                    })
+                  }
+                  onDecided={() => setReviewCheck((count) => count + 1)}
+                  notify={notify}
+                  onClose={toggleReview}
+                />
+              </aside>
+            ) : panel === "queue" ? (
               <QueuePanel
                 state={state}
                 onPlayer={play}
@@ -5958,7 +6009,7 @@ function App() {
           onSidebar={() =>
             animateLayout(
               () => {
-                if (sidebar && panel === "queue") setPanel("now");
+                if (sidebar && panel !== "now") setPanel("now");
                 else {
                   setSidebar(!sidebar);
                   setPanel("now");

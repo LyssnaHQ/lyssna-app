@@ -17533,7 +17533,7 @@ test("Soloist explains when this computer cannot run it", async ({ page }) => {
   await expect(page.getByLabel("Soloist API key")).toHaveCount(0);
 });
 
-test("reviewers see waiting submissions and decide them from the TTML Creator", async ({
+test("reviewers see waiting submissions and decide them from the right sidebar", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -17570,31 +17570,26 @@ test("reviewers see waiting submissions and decide them from the TTML Creator", 
         host.__decided = true;
       if (args.path.endsWith("/comments")) return [];
       if (args.path.endsWith("/ttml")) return "<tt></tt>";
+      if (args.method === "get" && args.path.startsWith("/v1/submissions/"))
+        return submission;
       return { ...submission, status: "approved" };
     };
   });
   await startClient(page);
   await playLyricTrack(page);
-  await openSettings(page, "Sources");
-  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
-  await page
-    .getByRole("dialog", { name: "Lyssna settings" })
-    .getByRole("button", { name: "Close settings" })
-    .click();
   const button = page.getByRole("button", {
     name: "Review submissions, 1 waiting",
   });
   await expect(button).toContainText("1");
   await button.click();
-  // Reviewing opens in the TTML Creator's side panel, not a page of its own.
-  await expect(page.getByRole("region", { name: "TTML Creator" })).toBeVisible();
-  const queue = page.getByRole("complementary", { name: "Review" });
-  await expect(queue).toContainText("Come & Go (with Marshmello)");
-  await expect(queue).toContainText("Juice WRLD, Marshmello");
-  await expect(queue).toContainText("New · @newcomer · Tier 1 · 3h ago");
-  await queue.getByRole("button", { name: /Come & Go/ }).click();
-  await expect(page.getByRole("region", { name: "TTML Creator" })).toBeVisible();
-  const panel = page.getByRole("complementary", { name: "Review" });
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+  // Reviewing docks in the right sidebar; the TTML Creator stays closed.
+  await expect(page.getByRole("region", { name: "TTML Creator" })).toHaveCount(0);
+  const panel = page.getByRole("region", { name: "Review" });
+  await expect(panel).toContainText("Come & Go (with Marshmello)");
+  await expect(panel).toContainText("Juice WRLD, Marshmello");
+  await expect(panel).toContainText("New · @newcomer · Tier 1 · 3h ago");
+  await panel.getByRole("button", { name: /Come & Go/ }).click();
   await panel.getByRole("radio", { name: "Changes" }).click();
   await expect(
     panel.getByRole("button", { name: "Ask for changes" }),
@@ -17605,14 +17600,11 @@ test("reviewers see waiting submissions and decide them from the TTML Creator", 
   await expect(
     panel.getByRole("button", { name: "Fix and approve" }),
   ).toBeDisabled();
-  await panel.getByRole("radio", { name: "Changes" }).click();
-  await panel.getByRole("button", { name: "Minimise review" }).click();
-  await expect(panel.getByRole("radio", { name: "Changes" })).toBeHidden();
-  await expect(panel).toContainText("Reviewing Come & Go");
-  await page.locator(".review-button").click();
-  await expect(page.getByRole("region", { name: "TTML Creator" })).toBeVisible();
-  await expect(panel.getByRole("radio", { name: "Changes" })).toBeChecked();
-  await panel.getByRole("radio", { name: "Approve" }).click();
+  // Now playing takes the sidebar back; the open submission waits.
+  await button.click();
+  await expect(panel).toHaveCount(0);
+  await button.click();
+  await expect(panel.getByRole("heading", { name: "Come & Go" })).toBeVisible();
   const opens = () =>
     page.evaluate(
       () =>
@@ -17623,17 +17615,13 @@ test("reviewers see waiting submissions and decide them from the TTML Creator", 
         ).length,
     );
   const opened = await opens();
-  const pen = page
-    .locator(".player-extras")
-    .getByTitle("TTML Creator", { exact: true });
-  await pen.click();
-  await expect(page.getByRole("region", { name: "TTML Creator" })).toHaveCount(0);
-  await pen.click();
-  await expect(panel.getByRole("radio", { name: "Approve" })).toBeVisible();
-  await page.waitForTimeout(300);
-  expect(await opens()).toBe(opened);
+  await panel.getByRole("button", { name: "Open in editor" }).click();
+  await expect(page.getByRole("region", { name: "TTML Creator" })).toBeVisible();
+  await expect.poll(opens).toBeGreaterThan(opened);
+  await expect(panel).toBeVisible();
   await panel.getByRole("radio", { name: "Minor fixes" }).click();
   await panel.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(panel).toContainText("Approved Come & Go.");
   await expect(panel).toContainText("Nothing waiting here.");
   const approved = await page.evaluate(() =>
     (window as any).__reviewCalls.find((call: any) =>
@@ -17645,6 +17633,8 @@ test("reviewers see waiting submissions and decide them from the TTML Creator", 
     path: "/v1/submissions/0b9f6c1e-8a51-4e8f-9a52-3a1f0d6e2c44/approve",
     body: { grade: 2 },
   });
+  await panel.getByRole("button", { name: "Close review" }).click();
+  await expect(panel).toHaveCount(0);
 });
 
 test("instrumental submissions review without lyrics and long titles stay in the panel", async ({
@@ -17678,22 +17668,16 @@ test("instrumental submissions review without lyrics and long titles stay in the
       if (args.path.startsWith("/v1/queue"))
         return args.path.includes("priority") ? [submission] : [];
       if (args.path.endsWith("/comments")) return [];
+      if (args.method === "get") return submission;
       return { ...submission, status: "approved" };
     };
   });
   await startClient(page);
   await playLyricTrack(page);
-  await openSettings(page, "Sources");
-  await page.getByRole("switch", { name: "TTML Creator", exact: true }).check();
-  await page
-    .getByRole("dialog", { name: "Lyssna settings" })
-    .getByRole("button", { name: "Close settings" })
-    .click();
   await page.getByRole("button", { name: "Review submissions, 1 waiting" }).click();
-  const queue = page.getByRole("complementary", { name: "Review" });
-  await expect(queue).toContainText("Instrumental · @rain · Tier 3");
-  await queue.locator(".review-list button").first().click();
-  const panel = page.getByRole("complementary", { name: "Review" });
+  const panel = page.getByRole("region", { name: "Review" });
+  await expect(panel).toContainText("Instrumental · @rain · Tier 3");
+  await panel.locator(".review-list button").first().click();
   await expect(panel).toContainText("Marked instrumental by @rain");
   await expect(panel).toContainText("No lyrics sent.");
   await expect(panel.getByRole("button", { name: "Open in editor" })).toHaveCount(0);
