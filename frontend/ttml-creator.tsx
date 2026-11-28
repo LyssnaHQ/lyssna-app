@@ -436,6 +436,8 @@ export function TtmlCreator({
   const heard = state.settings.lyric_offset_ms ?? 0;
   const native = state.playback.device.name === state.local_device_name;
   const here = !!track && playing?.uri === track.uri;
+  const lyssnaHasLyrics =
+    hasLyrics(state, track) && state.lyrics?.source === "lyssna";
   // Soloist can briefly show no device, so once the creator holds the song
   // it keeps it until another device or song takes over.
   const holding = useRef(false);
@@ -2976,11 +2978,13 @@ export function TtmlCreator({
           </span>
           {marksInstrumental &&
             here &&
-            (markedInstrumental(state, track) || !hasLyrics(state, track)) && (
+            (unmarksInstrumental || !lyssnaHasLyrics) && (
               <MarkInstrumental
                 track={track}
                 marked={markedInstrumental(state, track)}
                 canUnmark={unmarksInstrumental}
+                direct={lyssnaHasLyrics}
+                confirm={hasLyrics(state, track)}
                 notify={notify}
               />
             )}

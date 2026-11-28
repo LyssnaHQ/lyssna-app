@@ -35,6 +35,8 @@ export function MarkInstrumental({
   track,
   marked,
   canUnmark = false,
+  direct = false,
+  confirm = false,
   notify,
   className,
   plain = false,
@@ -42,19 +44,38 @@ export function MarkInstrumental({
   track: Track;
   marked: boolean;
   canUnmark?: boolean;
+  /** Lyssna has lyrics for the song, which a submission can't replace, so a
+   *  Trusted member marks it at once instead. */
+  direct?: boolean;
+  /** Lyrics are showing, so ask once more: the mark hides them for everyone. */
+  confirm?: boolean;
   notify: Notify;
   className?: string;
   /** Text only, for a row of quiet links. */
   plain?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState<string>();
   if (!spotifySong(track) || (marked && !canUnmark)) return null;
+  const asking = confirm && !marked && confirming === track.uri;
   const toggle = async () => {
+    if (confirm && !marked && !asking) {
+      setConfirming(track.uri);
+      window.setTimeout(
+        () => setConfirming((uri) => (uri === track.uri ? undefined : uri)),
+        5000,
+      );
+      return;
+    }
+    setConfirming(undefined);
     setBusy(true);
     try {
       if (marked) {
         await rpc("lyssna_mark_instrumental", { track, instrumental: null });
         notify("Instrumental mark taken back.");
+      } else if (direct) {
+        await rpc("lyssna_mark_instrumental", { track, instrumental: true });
+        notify("Marked instrumental on Lyssna. Its lyrics are no longer shown.");
       } else {
         const sent = await rpc<{ status: string }>("lyssna_submit", { track });
         notify(
@@ -78,11 +99,17 @@ export function MarkInstrumental({
       title={
         marked
           ? "Take back the instrumental mark on Lyssna"
-          : "Tell Lyssna this song has no lyrics"
+          : confirm
+            ? "This song has no lyrics any more: stop showing its lyrics for everyone"
+            : "Tell Lyssna this song has no lyrics"
       }
     >
       {!plain && <Music2 size={15} />}
-      {marked ? "Unmark instrumental" : "Mark instrumental"}
+      {marked
+        ? "Unmark instrumental"
+        : asking
+          ? "Hide its lyrics for everyone?"
+          : "Mark instrumental"}
     </button>
   );
 }

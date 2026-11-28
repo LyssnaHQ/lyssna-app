@@ -21818,12 +21818,10 @@ const commandArgs = (page: Page, name: string) =>
     name,
   );
 
-test("the TTML Creator offers Mark instrumental only for songs without lyrics", async ({
-  page,
-}) => {
+async function creatorAs(page: Page, account: { role: string; tier: number }) {
   await page.addInitScript(
     (account) => ((window as any).__lyssnaAccount = account),
-    { role: "user", tier: 1 },
+    account,
   );
   await startClient(page);
   await playLyricTrack(page, false);
@@ -21838,11 +21836,12 @@ test("the TTML Creator offers Mark instrumental only for songs without lyrics", 
     .getByTitle("TTML Creator", { exact: true })
     .click();
   const creator = page.getByRole("region", { name: "TTML Creator" });
-  const mark = creator.getByRole("button", { name: "Mark instrumental" });
-  // The playing song already has lyrics.
   await expect(creator).toBeVisible();
-  await expect(mark).toHaveCount(0);
-  await page.evaluate(() => {
+  return creator;
+}
+
+const showLyssnaLyrics = (page: Page) =>
+  page.evaluate(() => {
     (window as any).__clientTest.emit({
       type: "lyrics",
       uri: "spotify:track:0123456789abcdefghijkl",
@@ -21850,11 +21849,54 @@ test("the TTML Creator offers Mark instrumental only for songs without lyrics", 
         source: "lyssna",
         synced: true,
         instrumental: false,
-        lines: [],
+        lines: [{ startTimeMs: 0, words: "Papa-paparazzi" }],
       },
     });
   });
-  await expect(mark).toBeVisible();
+
+test("the TTML Creator can mark a song with lyrics instrumental after asking", async ({
+  page,
+}) => {
+  const creator = await creatorAs(page, { role: "user", tier: 1 });
+  // Lyrics from another source: a member sends the mark to review.
+  await creator.getByRole("button", { name: "Mark instrumental" }).click();
+  await expect(commandArgs(page, "lyssna_submit")).resolves.toEqual([]);
+  await creator
+    .getByRole("button", { name: "Hide its lyrics for everyone?" })
+    .click();
+  await expect
+    .poll(async () =>
+      (await commandArgs(page, "lyssna_submit")).map((args: any) => [
+        args.ttml ?? null,
+        args.track.uri,
+      ]),
+    )
+    .toEqual([[null, "spotify:track:0123456789abcdefghijkl"]]);
+  // Lyssna's own lyrics can't be replaced by a submission.
+  await showLyssnaLyrics(page);
+  await expect(
+    creator.getByRole("button", { name: "Mark instrumental" }),
+  ).toHaveCount(0);
+});
+
+test("Trusted members mark a song Lyssna has lyrics for instrumental at once", async ({
+  page,
+}) => {
+  const creator = await creatorAs(page, { role: "user", tier: 3 });
+  await showLyssnaLyrics(page);
+  await creator.getByRole("button", { name: "Mark instrumental" }).click();
+  await creator
+    .getByRole("button", { name: "Hide its lyrics for everyone?" })
+    .click();
+  await expect
+    .poll(async () =>
+      (await commandArgs(page, "lyssna_mark_instrumental")).map((args: any) => [
+        args.instrumental,
+        args.track.uri,
+      ]),
+    )
+    .toEqual([[true, "spotify:track:0123456789abcdefghijkl"]]);
+  expect(await commandArgs(page, "lyssna_submit")).toEqual([]);
 });
 
 test("listeners signed out of Lyssna can request lyrics but not mark instrumental", async ({
