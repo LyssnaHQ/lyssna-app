@@ -3441,27 +3441,33 @@ async fn lyssna_account() -> std::result::Result<Option<crate::lyssna_account::A
     .map_err(error)
 }
 #[tauri::command]
-async fn lyssna_sign_in() -> std::result::Result<crate::lyssna_account::Account, String> {
+async fn lyssna_sign_in(
+    app: tauri::AppHandle,
+) -> std::result::Result<crate::lyssna_account::Account, String> {
     LYSSNA_SIGN_IN_CANCELLED.store(false, Ordering::Relaxed);
-    tauri::async_runtime::spawn_blocking(|| {
+    let account = tauri::async_runtime::spawn_blocking(|| {
         crate::lyssna_account::sign_in(&crate::auth::http_client()?, &LYSSNA_SIGN_IN_CANCELLED)
     })
     .await
     .map_err(|_| "Lyssna sign-in worker unavailable".to_owned())?
-    .map_err(error)
+    .map_err(error)?;
+    let _ = app.emit("lyssna", json!({"type":"lyssna_account"}));
+    Ok(account)
 }
 #[tauri::command]
 fn lyssna_cancel_sign_in() {
     LYSSNA_SIGN_IN_CANCELLED.store(true, Ordering::Relaxed);
 }
 #[tauri::command]
-async fn lyssna_sign_out() -> std::result::Result<(), String> {
-    tauri::async_runtime::spawn_blocking(|| {
+async fn lyssna_sign_out(app: tauri::AppHandle) -> std::result::Result<(), String> {
+    let signed_out = tauri::async_runtime::spawn_blocking(|| {
         crate::lyssna_account::sign_out(&crate::auth::http_client()?)
     })
     .await
     .map_err(|_| "Lyssna account worker unavailable".to_owned())?
-    .map_err(error)
+    .map_err(error);
+    let _ = app.emit("lyssna", json!({"type":"lyssna_account"}));
+    signed_out
 }
 #[tauri::command]
 fn lyssna_act_as() -> Option<crate::lyssna_account::ActAs> {

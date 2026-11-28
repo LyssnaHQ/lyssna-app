@@ -17533,6 +17533,27 @@ test("Soloist explains when this computer cannot run it", async ({ page }) => {
   await expect(page.getByLabel("Soloist API key")).toHaveCount(0);
 });
 
+test("signing in to Lyssna as a moderator shows the Review button at once", async ({
+  page,
+}) => {
+  await startClient(page);
+  const button = page.getByRole("button", { name: /^Review submissions/ });
+  await expect(button).toHaveCount(0);
+  await page.evaluate(() => {
+    const host = window as any;
+    host.__lyssnaAccount = { role: "moderator" };
+    host.__lyssnaReview = () => [];
+    host.__clientTest.emit({ type: "lyssna_account" });
+  });
+  await expect(button).toBeVisible();
+  await page.evaluate(() => {
+    const host = window as any;
+    host.__lyssnaAccount = null;
+    host.__clientTest.emit({ type: "lyssna_account" });
+  });
+  await expect(button).toHaveCount(0);
+});
+
 test("reviewers see waiting submissions and decide them from the right sidebar", async ({
   page,
 }) => {

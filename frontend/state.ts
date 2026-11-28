@@ -345,6 +345,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return state;
     case "creator_profile":
       return { ...state, creator_profile_open: action.open };
+    case "lyssna_account":
+      return state;
     case "dj_context":
       return { ...state, dj_context: action.active };
     case "jam_changed":

@@ -796,9 +796,17 @@ function App() {
     };
     check();
     const timer = setInterval(check, 5 * 60_000);
+    // Signing in happens in the Settings window, and roles change on
+    // lyssna.org, so check again whenever either could have happened.
+    const stop = subscribe((event) => {
+      if (event.type === "lyssna_account") check();
+    });
+    window.addEventListener("focus", check);
     return () => {
       live = false;
       clearInterval(timer);
+      window.removeEventListener("focus", check);
+      void stop.then((unlisten) => unlisten());
     };
   }, [reviewCheck]);
   useEffect(() => {
