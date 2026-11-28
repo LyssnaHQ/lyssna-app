@@ -75,7 +75,9 @@ export function MarkInstrumental({
         notify("Instrumental mark taken back.");
       } else if (direct) {
         await rpc("lyssna_mark_instrumental", { track, instrumental: true });
-        notify("Marked instrumental on Lyssna. Its lyrics are no longer shown.");
+        notify(
+          "Marked instrumental on Lyssna. Its lyrics are no longer shown.",
+        );
       } else {
         const sent = await rpc<{ status: string }>("lyssna_submit", { track });
         notify(
