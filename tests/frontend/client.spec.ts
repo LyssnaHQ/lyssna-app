@@ -637,7 +637,7 @@ test("playing bars follow this computer's audio levels", async ({ page }) => {
         ),
       ),
     )
-    .toEqual(["1.000", "0.000", "0.620"]);
+    .toEqual(["0.900", "0.000", "0.419"]);
 });
 
 test("standby speakers are labelled and a failed transfer keeps controls on the active device", async ({

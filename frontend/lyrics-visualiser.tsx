@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { rpc } from "./bridge";
+import { shape } from "./level-bars";
 
 /** Frequency bars behind the lyrics, following what this computer plays and
  * tinted by the cover colour. Spectrum data is only computed while this
@@ -31,12 +32,10 @@ export function LyricsVisualiser({
           targets = bytes.map((byte, index) => {
             const level = live.current ? byte / 255 : 0;
             // Scaled to each bar's recent peak, as the level bars are, so
-            // loud, compressed songs still show their beats.
-            peaks[index] = Math.max(level, peaks[index] * 0.997, 0.6);
-            return Math.min(
-              1,
-              Math.max(0, (level / peaks[index] - 0.25) / 0.75),
-            );
+            // loud, compressed songs still show their beats. The curve and
+            // headroom keep a bar at its peak from pinning to the top.
+            peaks[index] = Math.max(level, peaks[index] * 0.997, 0.5);
+            return shape(level / peaks[index], 0.3);
           });
         }
       } catch {

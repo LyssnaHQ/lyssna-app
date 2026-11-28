@@ -688,7 +688,9 @@ fn spectrum_bars(samples: &[f32]) -> [u8; SPECTRUM_BARS] {
         // the treble bars move about as much as the bass.
         let octaves = (edge(index) / low).log2();
         let db = 10.0 * (peak / full).max(1e-12).log10() + 3.0 * octaves;
-        *bar = (((db + 66.0) / 60.0).clamp(0.0, 1.0) * 255.0) as u8;
+        // Top of the range sits above what mastered music reaches, so loud
+        // songs keep their shape instead of clipping at 255.
+        *bar = (((db + 72.0) / 80.0).clamp(0.0, 1.0) * 255.0) as u8;
     }
     bars
 }
@@ -733,7 +735,7 @@ fn band_levels(samples: &[f32]) -> u32 {
     let mut bytes = [0u8; 4];
     for ((byte, sum), lift) in bytes.iter_mut().zip(power).zip(lift) {
         let rms = (sum / frames as f32).sqrt().max(1e-6);
-        let level = (20.0 * rms.log10() + lift + 36.0) / 32.0;
+        let level = (20.0 * rms.log10() + lift + 42.0) / 44.0;
         *byte = (level.clamp(0.0, 1.0) * 255.0) as u8;
     }
     u32::from_le_bytes(bytes)
@@ -1557,9 +1559,9 @@ mod tests {
                 .collect()
         };
         let [low, _, high, _] = band_levels(&tone(60.0)).to_le_bytes();
-        assert!(low > 200 && high < 60, "{low} {high}");
+        assert!(low > 170 && high < 60, "{low} {high}");
         let [low, _, high, _] = band_levels(&tone(8_000.0)).to_le_bytes();
-        assert!(high > 200 && low < 60, "{low} {high}");
+        assert!(high > 170 && low < 60, "{low} {high}");
         assert_eq!(band_levels(&[0.0; 512]), 0);
     }
     #[test]

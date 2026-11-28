@@ -21,6 +21,13 @@ async function poll() {
   else timer = undefined;
 }
 
+/** Maps a level relative to its recent peak to a bar height. Only a level
+ * at its peak reaches 90%, and the curve keeps everyday levels lower. */
+export function shape(ratio: number, floor: number) {
+  const stretched = Math.min(1, Math.max(0, (ratio - floor) / (1 - floor)));
+  return stretched ** 1.6 * 0.9;
+}
+
 export function listenToLevels(listener: Listener) {
   listeners.add(listener);
   if (!timer) timer = setTimeout(poll, 0);
@@ -50,10 +57,7 @@ export function LevelBars({
         // bar to its band's recent peak and stretch the upper range so beats
         // still show.
         peaks[index] = Math.max(level, peaks[index] * 0.995, 0.5);
-        targets[index] = Math.min(
-          1,
-          Math.max(0, (level / peaks[index] - 0.35) / 0.65),
-        );
+        targets[index] = shape(level / peaks[index], 0.35);
       }),
     );
     let frame = requestAnimationFrame(function draw() {
